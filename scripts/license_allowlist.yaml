@@ -1,0 +1,13 @@
+# Exceptions to the license gate. Every entry needs a declared call style and a written
+# justification -- an allowlist without reasons is just a way of turning the gate off.
+#
+# `call_style` must be one of:
+#   subprocess   - invoked as a separate program. Copyleft is acceptable this way.
+#   not-imported - installed but never loaded into our process (build-time only, extras).
+#   misdeclared  - metadata is wrong; the real licence is permissive. Cite the evidence.
+#
+# Empty is the correct state. Nothing copyleft is currently imported or in the closure.
+# LibreOffice is a system binary, not a Python distribution, so it never appears here at all
+# -- which is exactly the point of the call-style rule.
+
+allowed: []

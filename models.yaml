@@ -1,0 +1,74 @@
+# Model allowlist. Enforced by `scripts/model_gate.py` under `make check`.
+#
+# Two independent tests, both of which a model must pass:
+#   1. Weights under a permissive licence. An undeclared licence is not permissive --
+#      absent a grant, all rights are reserved.
+#   2. Non-Chinese base-weight provenance, judged on the BASE WEIGHTS, not on the releasing
+#      organisation. A US lab fine-tuning a Chinese base does not clear the rule; conversely
+#      a Chinese-originated *architecture* trained from scratch on other weights does clear
+#      it, which is precisely the distinction that has to be evidenced rather than assumed.
+#
+# `allowed_models` is deliberately EMPTY in this phase. Stage 1 is model-free for text:
+# OCR is off, no conversion is run, and nothing should ever be fetched. An empty allowlist
+# plus the gate's cache scan therefore asserts something true and useful right now -- that
+# no model has been downloaded -- and it will fail the moment one appears.
+#
+# `pending_review` records models Docling WOULD fetch once M2 conversion runs, together with
+# what is actually known about each. These are not approved. The gate reports them on every
+# run and fails if one is found in a cache, so M2 cannot quietly begin by downloading a model
+# whose provenance is still an open question.
+
+version: 1
+
+allowed_models: []
+
+pending_review:
+  - model: "docling-project/docling-layout-heron"
+    license: "apache-2.0"
+    developer: "IBM Research (Deep Search team) / docling-project"
+    base_model: "UNCONFIRMED"
+    base_developer: "UNCONFIRMED"
+    purpose: "Default layout analysis model for Docling's PDF pipeline."
+    verified: "2026-09-09 against the HuggingFace model card and API."
+    blocker: |
+      Architecture is RT-DETRv2 (HF tag `rt_detr_v2`, config `RTDetrV2ForObjectDetection`),
+      and RT-DETR/RT-DETRv2 originated at Baidu. The licence is cleanly apache-2.0 and the
+      trainer is IBM Research, but the model card declares no `base_model` and neither the
+      card nor the abstract of the accompanying paper (arXiv:2509.11720) says whether the
+      weights were initialised from a Baidu or PekingU RT-DETRv2 checkpoint, from an
+      ImageNet-pretrained ResNet50 backbone, or from scratch.
+      DECISION NEEDED: architecture alone does not fail the provenance rule -- the same
+      reasoning already cleared Surya, which uses a Qwen-style architecture without Qwen
+      weights. But an RT-DETRv2 checkpoint as the initialisation point would fail it.
+      Resolve from the paper's methodology section or by asking the Docling maintainers
+      before M2 fetches this model.
+
+  - model: "docling-project/TableFormerV2"
+    license: "UNDECLARED"
+    developer: "docling-project"
+    base_model: "UNCONFIRMED"
+    base_developer: "UNCONFIRMED"
+    purpose: "Default table-structure model (TableFormerMode.ACCURATE) for Docling's PDF pipeline."
+    verified: "2026-09-09 against the HuggingFace model card and API."
+    blocker: |
+      The repository declares NO licence -- no `license` tag and no `cardData.license`. Its
+      only tags are `safetensors`, `TableFormerV2`, `region:us`, and the model card carries
+      no text. Absent an explicit grant the weights are all-rights-reserved, which fails
+      test 1 outright regardless of provenance.
+      MITIGATION AVAILABLE: the older `docling-project/docling-models` repository is
+      properly licensed (`apache-2.0` and `cdla-permissive-2.0`) and contains TableFormer in
+      accurate and fast variants. Pinning Docling's table model to that repo instead of
+      TableFormerV2 is very likely the way through, at the cost of using the older
+      TableFormer. That is a deliberate pin, not a default -- see the STOP-AND-ASK note in
+      the README.
+
+  - model: "docling-project/docling-layout-heron-onnx"
+    license: "UNCONFIRMED"
+    developer: "IBM Research (Deep Search team) / docling-project"
+    base_model: "docling-project/docling-layout-heron"
+    base_developer: "UNCONFIRMED"
+    purpose: >
+      ONNX export of the default layout model. Fetched instead of the safetensors weights
+      when the ONNXRuntime object-detection engine is selected, so it inherits the heron
+      question above and must be cleared alongside it.
+    verified: "2026-09-09 -- referenced as an engine override in docling's layout model spec."

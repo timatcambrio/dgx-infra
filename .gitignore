@@ -1,0 +1,12 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local configuration. SOURCE_DIR is machine-specific by design.
+.env
+
+# macOS
+.DS_Store
