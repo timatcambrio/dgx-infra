@@ -331,3 +331,29 @@ def test_no_enrichment_models_are_enabled(config):
     assert options.do_picture_classification is False
     assert options.do_code_enrichment is False
     assert options.do_formula_enrichment is False
+
+
+@pytest.mark.parametrize(
+    ("model", "base_model"),
+    [
+        ("docling-project/docling-layout-egret-large", "D-FINE"),
+        ("docling-project/docling-layout-egret-medium", "HGNet-V2 backbone"),
+    ],
+)
+def test_egret_layout_variants_fail_on_backbone_provenance(model, base_model):
+    """The 'more accurate' layout models are a provenance regression, not an upgrade.
+
+    Docling's egret variants are D-FINE based (USTC) on HGNet-V2 backbones (Baidu
+    PaddleClas). Switching layout model for accuracy must not quietly bypass the rule.
+    """
+    entry = {
+        "model": model,
+        "license": "apache-2.0",
+        "developer": "IBM Research",
+        "base_model": base_model,
+        "base_developer": "IBM Research",
+    }
+
+    _, problems = model_gate.check_entry(entry, 0)
+
+    assert any("provenance" in problem for problem in problems)

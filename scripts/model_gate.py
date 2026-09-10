@@ -58,6 +58,11 @@ CHINESE_PROVENANCE = (
     "bytedance", "opengvlab", "internlm", "internvl", "shanghai ai", "minicpm",
     "thudm", "openbmb", "modelscope", "baichuan", "xverse", "skywork", "ernie",
     "dots.ocr", "mineru", "rapidocr",
+    # Vision backbones and detector architectures of Chinese origin. These matter because a
+    # layout model is usually "someone else's detector, retrained": HGNet/PP-HGNet is Baidu's
+    # (PaddleClas), and D-FINE is from USTC. Docling's `egret` layout variants are built on
+    # both, so switching layout model "for better accuracy" would be a provenance regression.
+    "hgnet", "pp-hgnet", "d-fine", "dfine",
 )
 
 _HF_CACHE_DIR = re.compile(r"^models--(?P<org>.+?)--(?P<name>.+)$")

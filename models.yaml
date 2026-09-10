@@ -29,19 +29,25 @@ pending_review:
     base_model: "UNCONFIRMED"
     base_developer: "UNCONFIRMED"
     purpose: "Default layout analysis model for Docling's PDF pipeline."
-    verified: "2026-09-09 against the HuggingFace model card and API."
+    verified: |
+      2026-09-10. Licence apache-2.0 confirmed via the HuggingFace API; HF tag `rt_detr_v2`,
+      config `RTDetrV2ForObjectDetection`, backbone ResNet-50. Paper arXiv:2509.11720 read.
     blocker: |
-      Architecture is RT-DETRv2 (HF tag `rt_detr_v2`, config `RTDetrV2ForObjectDetection`),
-      and RT-DETR/RT-DETRv2 originated at Baidu. The licence is cleanly apache-2.0 and the
-      trainer is IBM Research, but the model card declares no `base_model` and neither the
-      card nor the abstract of the accompanying paper (arXiv:2509.11720) says whether the
-      weights were initialised from a Baidu or PekingU RT-DETRv2 checkpoint, from an
-      ImageNet-pretrained ResNet50 backbone, or from scratch.
-      DECISION NEEDED: architecture alone does not fail the provenance rule -- the same
-      reasoning already cleared Surya, which uses a Qwen-style architecture without Qwen
-      weights. But an RT-DETRv2 checkpoint as the initialisation point would fail it.
-      Resolve from the paper's methodology section or by asking the Docling maintainers
-      before M2 fetches this model.
+      NARROWED, not closed. The paper's Object Detectors section says only: "The backbones
+      (ResNet-50, ResNet-101, HGNet-V2) have been initialized with pre-trained weights." So
+      what was inherited is a *backbone*, not a Baidu RT-DETRv2 detector checkpoint -- the
+      detector itself was trained by IBM for 72 epochs on their own 150k-document corpus.
+      heron's backbone is ResNet-50, whose pretrained weights are conventionally ImageNet
+      (torchvision/MSRA) rather than anything Chinese-origin. The paper does not name the
+      source, so this is inference from convention, not a citation.
+      ASSESSMENT: probably clears. RT-DETRv2 is a Baidu-originated *architecture*, and
+      architecture alone does not fail the rule -- the same reasoning already cleared Surya
+      (Qwen-style architecture, non-Qwen weights). The residual question is narrow: which
+      ResNet-50 weights seeded the backbone. Worth one question to the Docling maintainers
+      rather than a blocking investigation.
+      DO NOT "upgrade" to the egret variants to get better accuracy: they are D-FINE based
+      (USTC) and use HGNet-V2 backbones (Baidu PaddleClas), so they are strictly worse on
+      provenance than heron. The gate now rejects both markers by name.
 
   - model: "docling-project/docling-models"
     license: "apache-2.0"
