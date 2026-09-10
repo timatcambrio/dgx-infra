@@ -156,9 +156,14 @@ Models must be permissively licensed **and** have non-Chinese base-weight proven
 judged on the base weights rather than the releasing organisation. A US company
 fine-tuning a Chinese base does not clear it.
 
-`models.yaml` is an explicit allowlist. In this phase it contains exactly Docling's layout
-and table-structure models (IBM, Apache-2.0) and nothing else, so the gate is meaningful
-from day one and will catch an OCR model appearing by accident.
+`models.yaml` is an explicit allowlist, and in this phase it is deliberately **empty**.
+Stage 1 is model-free for text, so nothing should ever be fetched; an empty allowlist plus
+the gate's cache scan therefore asserts something true and useful right now — that no model
+has been downloaded — and fails the moment one appears.
+
+Models Docling *would* fetch once M2 runs are listed under `pending_review` with what is
+known about each. The gate prints them on every run and fails if one is found in a cache, so
+M2 cannot quietly begin by downloading a model whose licence or provenance is still open.
 
 **Docling's OCR engine is pinned in `config.py` even though OCR is off.** Docling's OCR
 backends differ in provenance — RapidOCR wraps PaddleOCR (Baidu) models — so leaving engine
@@ -219,16 +224,15 @@ caught only by the alpha-ratio check.
 
 ## Open questions and STOP-AND-ASK items
 
-Three of these block M2. None should be resolved by guessing.
+Two of these block M2. None should be resolved by guessing.
 
-1. **`docling-project/TableFormerV2` declares no licence at all.** Docling's default
-   table-structure model has no `license` tag and no `cardData.license` on HuggingFace, and
-   an empty model card. Absent an explicit grant, all rights are reserved, which fails the
-   permissive-licence test outright. *Likely way through:* the older
-   `docling-project/docling-models` repo is properly licensed (`apache-2.0` and
-   `cdla-permissive-2.0`) and contains TableFormer in accurate and fast variants, so
-   Docling's table model can be pinned to that instead. That is a deliberate pin to make,
-   not a default to accept.
+1. **The table-structure model is fine — no action needed.** Docling's default
+   `PdfPipelineOptions` resolves `table_structure_options` to `TableStructureOptions`
+   (kind `docling_tableformer`), which fetches `docling-project/docling-models` —
+   `apache-2.0` plus `cdla-permissive-2.0`, IBM's own TableFormer weights rather than a
+   fine-tune of anyone's base. The unlicensed `docling-project/TableFormerV2` is reachable
+   only by explicitly opting into `TableStructureV2Options`, which nothing here does. It
+   stays listed in `models.yaml` precisely so that opting in would trip the gate.
 
 2. **`docling-project/docling-layout-heron`'s base weights are undocumented.** The default
    layout model is cleanly Apache-2.0 and trained by IBM Research, but its architecture is

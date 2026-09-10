@@ -43,24 +43,42 @@ pending_review:
       Resolve from the paper's methodology section or by asking the Docling maintainers
       before M2 fetches this model.
 
+  - model: "docling-project/docling-models"
+    license: "apache-2.0"
+    developer: "IBM Research (Deep Search team) / docling-project"
+    base_model: "TableFormer (trained from scratch)"
+    base_developer: "IBM Research"
+    purpose: >
+      TableFormer table-structure weights. This is what Docling's DEFAULT PdfPipelineOptions
+      actually fetches -- `table_structure_options` defaults to `TableStructureOptions`
+      (kind `docling_tableformer`), which resolves to the v1 TableStructureModel and this
+      repo. NOT TableFormerV2.
+    verified: |
+      2026-09-10. Licence `apache-2.0` + `cdla-permissive-2.0` confirmed via the HuggingFace
+      API. Default selection confirmed by constructing PdfPipelineOptions() and reading
+      table_structure_options.kind. TableFormer is IBM Research's own architecture and
+      weights (Nassar et al., IBM Research), not a fine-tune of a third-party base.
+    blocker: |
+      None known on licence or provenance. Left in pending_review only because this phase
+      fetches no model at all; promote it to allowed_models when M2 starts.
+
   - model: "docling-project/TableFormerV2"
     license: "UNDECLARED"
     developer: "docling-project"
     base_model: "UNCONFIRMED"
     base_developer: "UNCONFIRMED"
-    purpose: "Default table-structure model (TableFormerMode.ACCURATE) for Docling's PDF pipeline."
+    purpose: >
+      Newer table-structure model, reachable only by explicitly selecting
+      TableStructureV2Options (kind `docling_tableformer_v2`). NOT the default. Listed here
+      so that opting into it trips the gate.
     verified: "2026-09-09 against the HuggingFace model card and API."
     blocker: |
       The repository declares NO licence -- no `license` tag and no `cardData.license`. Its
       only tags are `safetensors`, `TableFormerV2`, `region:us`, and the model card carries
       no text. Absent an explicit grant the weights are all-rights-reserved, which fails
       test 1 outright regardless of provenance.
-      MITIGATION AVAILABLE: the older `docling-project/docling-models` repository is
-      properly licensed (`apache-2.0` and `cdla-permissive-2.0`) and contains TableFormer in
-      accurate and fast variants. Pinning Docling's table model to that repo instead of
-      TableFormerV2 is very likely the way through, at the cost of using the older
-      TableFormer. That is a deliberate pin, not a default -- see the STOP-AND-ASK note in
-      the README.
+      DO NOT opt into this model. The default (docling-models, above) is properly licensed
+      and needs no action.
 
   - model: "docling-project/docling-layout-heron-onnx"
     license: "UNCONFIRMED"
