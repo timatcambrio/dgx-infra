@@ -90,12 +90,24 @@ def test_needs_ocr_stub_keeps_salvageable_text(config, entry_for):
     assert "Partial text recovered" in text
 
 
-def test_pdf_conversion_fails_loudly_rather_than_emitting_nothing(config, entry_for):
-    """The PDF path is still deferred; it must not quietly produce an empty file."""
-    entry = entry_for("born_digital.pdf")
+def test_pdf_converts_with_the_model_free_engine_by_default(config, entry_for):
+    """Geometry is the default, so a PDF converts with no model and no network."""
+    result = convert_entry(entry_for("born_digital.pdf"), config)
 
-    with pytest.raises(NotImplementedError, match="M2"):
-        convert_entry(entry, config)
+    assert result.status == "written"
+    assert "model-free" in result.converter
+    assert "# Travel Reimbursement Handbook" in result.output.read_text()
+
+
+def test_docling_escalation_fails_loudly_until_it_is_cleared(config, entry_for, monkeypatch):
+    """Opting into Docling must explain what is missing, not silently fall back."""
+    monkeypatch.setenv("PDF_ENGINE", "docling")
+    from pipeline import config as config_module
+
+    escalated = config_module.load(source_dir=config.source_dir())
+
+    with pytest.raises(NotImplementedError, match="pending_review"):
+        convert_entry(entry_for("born_digital.pdf"), escalated, force=True)
 
 
 def test_docx_conversion_downloads_no_model(config, entry_for, tmp_path, monkeypatch):

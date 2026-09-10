@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import statistics
 import string
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import pypdfium2 as pdfium
@@ -49,6 +49,15 @@ class TriageResult:
     alpha_ratio: float | None
     text_class: str
     error: str | None = None
+    #: Widest column count seen on any page. 2 means at least one page is two-column, which
+    #: geometric extraction handles but is the likeliest place for it to get reading order
+    #: wrong, so it is worth knowing before trusting the output.
+    max_columns: int = 1
+    #: Tables drawn with ruling lines, which pdfplumber recovers reliably.
+    ruled_tables: int = 0
+    #: Pages where no ruled table was found but the text looks column-aligned -- i.e. probable
+    #: borderless tables, the weakest spot for model-free extraction.
+    borderless_table_pages: int = 0
     #: 1-based page numbers yielding under MIN_CHARS_PER_PAGE.
     #:
     #: A document can be `clean` overall and still contain individual pages with no usable
@@ -172,12 +181,36 @@ def triage_pdf(path: Path, config: Config) -> TriageResult:
     except pdfium.PdfiumError as exc:
         return _error_result(f"unreadable PDF: {exc}")
 
-    return classify(
+    result = classify(
         page_texts,
         min_chars_per_page=config.min_chars_per_page,
         min_alpha_ratio=config.min_alpha_ratio,
         max_low_page_fraction=config.max_low_page_fraction,
     )
+    if result.text_class == TEXT_CLASS_ERROR:
+        return result
+    return replace(result, **_layout_facts(path, config))
+
+
+def _layout_facts(path: Path, config: Config) -> dict:
+    """Column count and table style -- the two things that decide whether geometry suffices.
+
+    Diagnostic only: a failure here must never invalidate the coverage measurement, which is
+    the actual deliverable.
+    """
+    from .converters import pdf_geometry  # noqa: PLC0415 - avoids a circular import
+
+    try:
+        pages = pdf_geometry.analyse(path, config)
+    except Exception:  # noqa: BLE001 - diagnostics never fail a run
+        return {}
+    return {
+        "max_columns": max((page.columns for page in pages), default=1),
+        "ruled_tables": sum(page.ruled_tables for page in pages),
+        "borderless_table_pages": sum(
+            1 for page in pages if not page.ruled_tables and page.candidate_text_tables
+        ),
+    }
 
 
 def triage_text_native(_path: Path, _config: Config) -> TriageResult:

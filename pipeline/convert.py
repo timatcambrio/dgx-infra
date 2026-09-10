@@ -167,7 +167,10 @@ def _dispatch(
             body, converter = pdf.needs_ocr_stub(source_path)
             return body, converter, STATUS_STUB
         if text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL):
-            body, converter = pdf.convert(source_path, config)
+            triage = entry.get("triage") or {}
+            body, converter = pdf.convert(
+                source_path, config, low_pages=triage.get("low_pages") or ()
+            )
             return body, converter, STATUS_WRITTEN
         raise StopAndAsk(f"unexpected text_class {text_class!r} for {source_path.name}")
 

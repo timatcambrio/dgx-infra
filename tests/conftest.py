@@ -56,16 +56,25 @@ def config(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def entry_for():
-    """Factory building the manifest entry `inventory` would produce for one fixture."""
+def entry_for(config):
+    """Factory building the manifest entry `inventory` + `triage` would produce.
+
+    PDFs get real triage rather than a stubbed `clean`, because conversion output depends on
+    it — `low_pages` drives the missing-page note and `chars_per_page_mean` becomes
+    `text_coverage`. A stub here would make the golden files describe something the pipeline
+    never actually produces.
+    """
     from pipeline import manifest as manifest_module
+    from pipeline.triage import triage_pdf
 
     def build(fixture_name: str, source_root: Path = FIXTURES) -> dict:
-        entry = manifest_module.new_entry(
-            fixture_name, manifest_module.format_for(Path(fixture_name))
-        )
+        source_format = manifest_module.format_for(Path(fixture_name))
+        entry = manifest_module.new_entry(fixture_name, source_format)
         entry["sha256"] = manifest_module.sha256_of(source_root / fixture_name)
-        entry["triage"] = {"text_class": "clean", "chars_per_page_mean": None}
+        if source_format == "pdf":
+            entry["triage"] = triage_pdf(source_root / fixture_name, config).to_dict()
+        else:
+            entry["triage"] = {"text_class": "clean", "chars_per_page_mean": None}
         return entry
 
     return build

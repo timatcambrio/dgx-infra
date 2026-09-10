@@ -16,7 +16,9 @@ from pathlib import Path
 
 from ..config import BANNED_OCR_ENGINES, Config
 from ..triage import extract_page_texts
+from . import pdf_geometry
 
+CONVERTER_GEOMETRIC = "pdfplumber-geometry (model-free)"
 CONVERTER_DOCLING = "docling (do_ocr=False)"
 CONVERTER_DOCLING_PDFPLUMBER = "docling+pdfplumber"
 CONVERTER_MARKITDOWN = "markitdown (fallback)"
@@ -88,11 +90,56 @@ def needs_ocr_stub(path: Path) -> tuple[str, str]:
     return "\n\n".join(parts), CONVERTER_STUB
 
 
-def convert(path: Path, config: Config) -> tuple[str, str]:
-    """Convert a `clean` or `partial` PDF. Returns `(markdown_body, converter_name)`."""
+def missing_pages_note(low_pages: list[int] | tuple[int, ...]) -> str:
+    """A visible marker naming pages that contributed no text.
+
+    A `partial` document converts fine and quietly omits its scanned pages. Downstream that
+    is indistinguishable from a document which simply never covered the topic, so anything
+    citing this file would be citing a document with holes in it and no way to know. Naming
+    the pages costs one line and makes the gap answerable.
+    """
+    if not low_pages:
+        return ""
+    numbers = ", ".join(str(number) for number in low_pages)
+    plural = "s" if len(low_pages) > 1 else ""
+    return (
+        f"> **INCOMPLETE — page{plural} {numbers} yielded no usable text and "
+        f"{'are' if plural else 'is'} not represented below.** No OCR was attempted."
+    )
+
+
+def convert(
+    path: Path, config: Config, low_pages: list[int] | tuple[int, ...] = ()
+) -> tuple[str, str]:
+    """Convert a `clean` or `partial` PDF. Returns `(markdown_body, converter_name)`.
+
+    Geometry is the default, and Docling is an escalation rather than a fallback. With a
+    usable text layer on every page — which is what triage established — a layout model buys
+    borderless-table structure and unusual reading orders, and costs a torch runtime, a model
+    download, per-platform output variance, and a base-weight provenance question. That is a
+    bad default trade for a corpus of born-digital handbooks, and a reasonable one for the
+    specific documents that turn out to need it.
+
+    Escalation is per document: set `converter: docling` on a manifest entry.
+    """
+    if _wants_docling(config):
+        return _convert_with_docling(path, config)
+
+    body = pdf_geometry.to_markdown(path, config)
+    note = missing_pages_note(low_pages)
+    return (f"{note}\n\n{body}" if note else body), CONVERTER_GEOMETRIC
+
+
+def _wants_docling(config: Config) -> bool:
+    return config.pdf_engine == "docling"
+
+
+def _convert_with_docling(path: Path, config: Config) -> tuple[str, str]:
+    """The escalation path. Requires the `pdf` extra and a cleared layout model."""
     raise NotImplementedError(
-        "M2: Docling PDF conversion, the pdfplumber table rescue and the MarkItDown "
-        "per-file fallback are deliberately not built yet. The M1 coverage report is a "
-        "decision gate, and the rescue and fallback heuristics should be shaped by the real "
-        "corpus rather than tuned against synthetic samples."
+        "The Docling PDF escalation is not wired up. It needs two things first: "
+        "`uv sync --extra pdf` to install the ML runtime, and a decision on "
+        "docling-project/docling-layout-heron's base-weight provenance, which models.yaml "
+        "still lists under pending_review. Use the default geometric engine, or resolve "
+        "those. See README 'Open questions'."
     )

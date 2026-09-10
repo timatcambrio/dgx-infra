@@ -53,6 +53,9 @@ def build(manifest: dict[str, Any], config: Config) -> dict[str, Any]:
                 "alpha_ratio": triage.get("alpha_ratio"),
                 "low_page_fraction": triage.get("low_page_fraction"),
                 "low_pages": triage.get("low_pages") or [],
+                "max_columns": triage.get("max_columns"),
+                "ruled_tables": triage.get("ruled_tables"),
+                "borderless_table_pages": triage.get("borderless_table_pages"),
                 "text_class": "MISSING" if missing else triage.get("text_class"),
                 "error": triage.get("error"),
                 "converter": (entry.get("conversion") or {}).get("converter"),
@@ -211,6 +214,24 @@ def render_table(report: dict[str, Any]) -> str:
         f"  low-text pages        : {totals['low_pages_total']} of "
         f"{totals['pages_total']} ({_pct(totals['low_page_fraction_corpus'])})",
     ]
+
+    # Layout facts decide whether model-free geometric extraction is enough for a document,
+    # or whether it should be escalated to a layout model. Reported rather than acted on:
+    # escalation is a deliberate choice, since it costs an ML runtime and a model download.
+    multi_column = [row for row in report["documents"] if (row.get("max_columns") or 1) > 1]
+    borderless = [row for row in report["documents"] if row.get("borderless_table_pages")]
+    if multi_column or borderless:
+        lines += ["", "LAYOUT NOTES (which documents geometry may struggle with)"]
+        for row in sorted(multi_column, key=lambda item: item["source_file"] or ""):
+            lines.append(
+                f"  {row['source_file']}: {row['max_columns']} columns detected -- check "
+                "reading order in the converted output"
+            )
+        for row in sorted(borderless, key=lambda item: item["source_file"] or ""):
+            lines.append(
+                f"  {row['source_file']}: {row['borderless_table_pages']} page(s) with "
+                "borderless tables -- recovered by column alignment, worth spot-checking"
+            )
 
     # A document can be `clean` overall and still hold individual pages with no usable text.
     # Those pages are where content goes missing silently, so name them: a cover or a

@@ -214,7 +214,7 @@ the default alone.
 | --- | --- |
 | **M0** — skeleton, gates, fixtures | Done. `make check` green: both gates pass, 140 tests pass. |
 | **M1** — inventory, triage, report | Machinery done and exercised end to end. **The decision gate itself is still open** — see below. |
-| **M2** — conversion | **DOCX and CSV done**, with goldens. The PDF path raises `NotImplementedError` pending the layout-model provenance question. |
+| **M2** — conversion | **Done for PDF, DOCX and CSV**, with goldens for each. PDF uses a model-free geometric engine; the Docling escalation is still gated. |
 | **M3** — quality pass on real samples | Not started. Needs M2 and the real corpus. |
 
 ### M1 has not actually run against a representative corpus
@@ -271,6 +271,51 @@ Logged, not blocking:
 For context on why the gate reports these on every run rather than filing them away: both
 `models.yaml` entries sit in `pending_review`, the allowlist is empty, and the model gate
 fails immediately if either model is ever actually downloaded.
+
+## How PDFs are converted
+
+**The default PDF engine is model-free.** `pdfplumber` reconstructs the document from
+character geometry — word positions, font sizes, ruling lines — and no model is involved at
+any point. Concretely it recovers reading order, heading levels from type size, ruled
+tables, borderless tables from column alignment, and strips running headers and footers by
+finding text that repeats in the same margin position across pages.
+
+This is the default because triage showed the corpus is uniformly born-digital. With a clean
+text layer on every page, a layout model buys borderless-table structure and unusual reading
+orders, and costs a torch runtime, a model download, per-platform output variance, and an
+unresolved base-weight provenance question. That is a poor default trade, and a reasonable
+one for the specific documents that turn out to need it.
+
+What it buys, beyond avoiding the provenance question: the default install carries **no ML
+runtime at all**, nothing is fetched at runtime (so an air-gap is a non-issue for Stage 1),
+output is byte-identical across machines, and a client can audit the extraction logic by
+reading it — which is not true of model weights.
+
+### Where geometry is weak, and how you find out
+
+`triage` records the two things that decide whether a document needs more, and `report`
+prints them under **LAYOUT NOTES**:
+
+- **Multi-column pages.** Handled, but it is the likeliest place for reading order to go
+  wrong. Detection is deliberately conservative — a gutter is only believed if it sits near
+  the page centre with real text on both sides, because treating an indent as a column
+  interleaves the page, which is far worse than treating a column as prose.
+- **Borderless tables.** Recovered by column alignment, but only when at least
+  `PDF_MIN_TABLE_ROWS` consecutive lines split into the same number of cells at aligned
+  positions. The bias is deliberate: a hallucinated table destroys the paragraph it
+  consumes, so a missed table beats an invented one.
+
+Pages that yielded no usable text are named in the converted file itself, with an
+`INCOMPLETE` callout listing the page numbers. A `partial` document otherwise omits its
+scanned pages silently, which downstream is indistinguishable from a document that never
+covered the topic.
+
+### Escalating a document to Docling
+
+Set `PDF_ENGINE=docling`. It is not wired up yet and will say so: it needs
+`uv sync --extra pdf` for the ML runtime, and a decision on the layout model's base-weight
+provenance (open question 2). Escalation is meant to be per document and deliberate, decided
+by looking at converted output rather than assumed up front.
 
 ## Out of scope — do not build
 

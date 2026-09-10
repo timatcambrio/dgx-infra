@@ -33,6 +33,13 @@ SUPPORTED_EXTENSIONS: dict[str, str] = {
 #: Chinese-trained weights into ingestion silently. `test_gates.py` asserts this value.
 DOCLING_OCR_ENGINE = "easyocr"
 
+#: PDF conversion engines. Geometry is the default: it needs no model, no ML runtime and no
+#: network, and produces identical output on every machine. `docling` is a per-document
+#: escalation for pages geometry handles badly (borderless tables, unusual columns) and
+#: requires the `pdf` extra plus a cleared layout model.
+PDF_ENGINE_GEOMETRY = "geometry"
+PDF_ENGINE_DOCLING = "docling"
+
 #: OCR engines that are banned outright on base-weight provenance grounds.
 BANNED_OCR_ENGINES = frozenset({"rapidocr", "paddleocr", "paddle"})
 
@@ -89,6 +96,16 @@ class Config:
     csv_max_rows: int
     csv_max_cols: int
     docling_ocr_engine: str
+    pdf_engine: str
+    pdf_heading_size_ratio: float
+    pdf_margin_fraction: float
+    pdf_repeat_page_fraction: float
+    pdf_line_tolerance: float
+    pdf_paragraph_gap_ratio: float
+    pdf_column_gap_fraction: float
+    pdf_cell_gap_ratio: float
+    pdf_min_table_rows: int
+    pdf_column_align_tolerance: float
     _source_dir: Path | None
 
     @property
@@ -154,5 +171,20 @@ def load(source_dir: Path | str | None = None, *, env_file: Path | None = None) 
         csv_max_rows=_env_int("CSV_MAX_ROWS", 300),
         csv_max_cols=_env_int("CSV_MAX_COLS", 12),
         docling_ocr_engine=os.environ.get("DOCLING_OCR_ENGINE", DOCLING_OCR_ENGINE),
+        pdf_engine=os.environ.get("PDF_ENGINE", PDF_ENGINE_GEOMETRY),
+        # Geometric PDF extraction. These describe page geometry, not document semantics,
+        # which is why they can be constants at all -- a heading is bigger than body text and
+        # a running header sits in the margin on most pages, in any typeset document.
+        pdf_heading_size_ratio=_env_float("PDF_HEADING_SIZE_RATIO", 1.15),
+        pdf_margin_fraction=_env_float("PDF_MARGIN_FRACTION", 0.08),
+        pdf_repeat_page_fraction=_env_float("PDF_REPEAT_PAGE_FRACTION", 0.5),
+        pdf_line_tolerance=_env_float("PDF_LINE_TOLERANCE", 3.0),
+        pdf_paragraph_gap_ratio=_env_float("PDF_PARAGRAPH_GAP_RATIO", 1.6),
+        pdf_column_gap_fraction=_env_float("PDF_COLUMN_GAP_FRACTION", 0.06),
+        # Borderless-table recovery. Strict on purpose: inventing a table inside prose
+        # destroys the paragraph it consumes, so a missed table beats a hallucinated one.
+        pdf_cell_gap_ratio=_env_float("PDF_CELL_GAP_RATIO", 1.5),
+        pdf_min_table_rows=_env_int("PDF_MIN_TABLE_ROWS", 3),
+        pdf_column_align_tolerance=_env_float("PDF_COLUMN_ALIGN_TOLERANCE", 8.0),
         _source_dir=resolved_source,
     )
