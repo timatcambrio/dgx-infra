@@ -29,6 +29,17 @@ PIPELINE_ENV_VARS = (
 )
 
 
+#: Captured before the autouse fixture below stubs it out, so tests that are specifically
+#: about .env parsing can put the real implementation back.
+REAL_LOAD_DOTENV = config_module.load_dotenv
+
+
+@pytest.fixture
+def real_dotenv(monkeypatch):
+    """Restore genuine .env loading for tests that exercise it."""
+    monkeypatch.setattr(config_module, "load_dotenv", REAL_LOAD_DOTENV)
+
+
 @pytest.fixture(autouse=True)
 def clean_environment(monkeypatch):
     """Remove pipeline variables so a local .env cannot influence a test result."""

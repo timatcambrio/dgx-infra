@@ -48,14 +48,14 @@ class ConfigError(RuntimeError):
     """Configuration is missing or unusable. Always actionable in its message."""
 
 
-def load_dotenv(path: Path | None = None) -> None:
+def load_dotenv(path: Path | str | None = None) -> None:
     """Load `KEY=VALUE` lines from a .env file without overriding the real environment.
 
     Deliberately stdlib-only: `python-dotenv` is not on the approved dependency list and
     this is a dozen lines. Real environment variables always win, so a per-run override
     like `SOURCE_DIR=... make triage` behaves the way anyone would expect.
     """
-    path = path or REPO_ROOT / ".env"
+    path = Path(path) if path is not None else REPO_ROOT / ".env"
     if not path.is_file():
         return
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -137,7 +137,7 @@ class Config:
         return path
 
 
-def load(source_dir: Path | str | None = None, *, env_file: Path | None = None) -> Config:
+def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = None) -> Config:
     """Build a `Config` from the environment, with `source_dir` overriding `SOURCE_DIR`."""
     load_dotenv(env_file)
 

@@ -178,3 +178,53 @@ def test_blank_line_runs_are_collapsed():
     from pipeline.converters import normalize_markdown
 
     assert normalize_markdown("A\n\n\n\n\nB") == "A\n\nB"
+
+
+# ------------------------------------------------------------------------- .env mechanics
+
+
+def test_commented_env_lines_are_ignored(tmp_path, real_dotenv):
+    """A `#`-prefixed line in .env is inert: the setting keeps its default."""
+    from pipeline import config as config_module
+
+    env = tmp_path / ".env"
+    env.write_text("# CSV_MAX_ROWS=5000\nCSV_MAX_COLS=25\n")
+
+    loaded = config_module.load(source_dir=tmp_path, env_file=env)
+
+    assert loaded.csv_max_rows == 300  # commented out, so the default stands
+    assert loaded.csv_max_cols == 25  # uncommented, so it applies
+
+
+def test_a_real_environment_variable_beats_the_env_file(tmp_path, real_dotenv, monkeypatch):
+    """So `CSV_MAX_ROWS=1000 make convert` works for a one-off run."""
+    from pipeline import config as config_module
+
+    env = tmp_path / ".env"
+    env.write_text("CSV_MAX_ROWS=400\n")
+    monkeypatch.setenv("CSV_MAX_ROWS", "999")
+
+    assert config_module.load(source_dir=tmp_path, env_file=env).csv_max_rows == 999
+
+
+def test_env_file_accepts_a_string_path(tmp_path, real_dotenv):
+    """`source_dir` takes str or Path, so `env_file` must not be fussier than its sibling."""
+    from pipeline import config as config_module
+
+    env = tmp_path / ".env"
+    env.write_text("CSV_MAX_COLS=7\n")
+
+    assert config_module.load(source_dir=str(tmp_path), env_file=str(env)).csv_max_cols == 7
+
+
+def test_a_raised_limit_lets_a_large_table_through(fixtures_dir, tmp_path, real_dotenv):
+    """The guardrail is a stop-and-think, not a wall: deciding to raise it must work."""
+    from pipeline import config as config_module
+
+    env = tmp_path / ".env"
+    env.write_text("CSV_MAX_ROWS=500\n")
+    permissive = config_module.load(source_dir=fixtures_dir, env_file=env)
+
+    body, _ = convert(fixtures_dir / "too_big.csv", permissive)
+
+    assert body.count("\n|") == 402
