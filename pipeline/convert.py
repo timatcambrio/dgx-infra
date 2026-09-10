@@ -16,7 +16,7 @@ from typing import Any
 
 from . import StopAndAsk
 from .config import Config
-from .converters import csv_table, office, pdf
+from .converters import csv_table, normalize_markdown, office, pdf
 from .frontmatter import build as build_frontmatter
 from .frontmatter import render as render_frontmatter
 from .manifest import (
@@ -118,6 +118,8 @@ def convert_entry(
         body, converter, status = _dispatch(entry, source_path, config, text_class)
     except StopAndAsk as exc:
         return ConversionResult(slug, source_file, STATUS_STOP_AND_ASK, message=str(exc))
+
+    body = normalize_markdown(body)
 
     meta = build_frontmatter(
         title=_title_for(entry, source_path),

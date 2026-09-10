@@ -258,3 +258,10 @@ def test_fixtures_regenerate_byte_identically(tmp_path):
 
     for name in module.GENERATORS:
         assert (tmp_path / name).read_bytes() == (committed / name).read_bytes(), name
+
+
+def test_docx_converts_identically_twice(config, entry_for):
+    """Docling's DOCX path is pure parsing, so it must be reproducible."""
+    first = convert_fixture_text("simple.docx", config, entry_for)
+    second = convert_fixture_text("simple.docx", config, entry_for)
+    assert first == second

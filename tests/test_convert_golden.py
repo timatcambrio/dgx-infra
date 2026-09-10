@@ -4,10 +4,9 @@ When a Docling version bump legitimately changes output, regenerate the goldens 
 commit that changes nothing else. A golden edited in the same commit as a code change hides
 exactly the regression the golden exists to catch.
 
-Only the CSV golden exists today. The PDF and DOCX goldens are M2 artefacts: producing them
-means running Docling, which is the M2 converter, and downloading its layout and table
-models — which `models.yaml` does not yet permit, because their licence and base-weight
-provenance are unresolved. Those tests skip loudly rather than silently passing.
+The CSV and DOCX goldens exist. The PDF goldens do not: producing them means downloading
+Docling's layout model, whose base-weight provenance `models.yaml` has not cleared. Those
+cases skip loudly rather than silently passing.
 """
 
 from __future__ import annotations
@@ -91,9 +90,42 @@ def test_needs_ocr_stub_keeps_salvageable_text(config, entry_for):
     assert "Partial text recovered" in text
 
 
-def test_docling_backed_formats_are_not_silently_skipped(config, entry_for):
-    """Until M2 lands, PDF and DOCX conversion must fail loudly, not emit an empty file."""
-    entry = entry_for("simple.docx")
+def test_pdf_conversion_fails_loudly_rather_than_emitting_nothing(config, entry_for):
+    """The PDF path is still deferred; it must not quietly produce an empty file."""
+    entry = entry_for("born_digital.pdf")
 
     with pytest.raises(NotImplementedError, match="M2"):
         convert_entry(entry, config)
+
+
+def test_docx_conversion_downloads_no_model(config, entry_for, tmp_path, monkeypatch):
+    """DOCX is pure parsing. If this starts fetching, the model gate has been bypassed.
+
+    The PDF path needs layout and table-structure models that `models.yaml` has not cleared;
+    DOCX needs none, which is the whole reason it could ship first. Assert that rather than
+    trusting it to stay true across Docling versions.
+    """
+    cache = tmp_path / "model-cache"
+    cache.mkdir()
+    monkeypatch.setenv("HF_HOME", str(cache))
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+
+    result = convert_entry(entry_for("simple.docx"), config, force=True)
+
+    assert result.status == "written"
+    assert list(cache.rglob("*")) == []
+
+
+def test_docx_output_is_well_formed_markdown(config, entry_for):
+    """A table jammed against a list renders as literal pipes, so it must be separated."""
+    text = convert_entry(entry_for("simple.docx"), config, force=True).output.read_text()
+    lines = text.splitlines()
+
+    for index, line in enumerate(lines):
+        if line.startswith("|") and index and not lines[index - 1].startswith("|"):
+            assert lines[index - 1].strip() == "", "table must be preceded by a blank line"
+
+    assert "## Travel Reimbursement Handbook" in text
+    assert "- Lodging" in text
+    assert "<table" not in text and "<p>" not in text  # no raw HTML

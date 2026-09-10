@@ -147,3 +147,34 @@ def test_blank_rows_are_dropped(tmp_path):
     path.write_text("a,b\n1,2\n,\n3,4\n")
 
     assert read_rows(path) == [["a", "b"], ["1", "2"], ["3", "4"]]
+
+
+# --------------------------------------------------------------- shared markdown tidying
+
+
+def test_blank_line_inserted_before_a_table_after_a_list():
+    """GFM ignores a table that starts on the line after list content."""
+    from pipeline.converters import normalize_markdown
+
+    text = normalize_markdown("- Lodging\n| A | B |\n| --- | --- |\n")
+
+    assert text == "- Lodging\n\n| A | B |\n| --- | --- |"
+
+
+def test_existing_blank_line_before_a_table_is_not_doubled():
+    from pipeline.converters import normalize_markdown
+
+    assert normalize_markdown("Text\n\n| A |\n") == "Text\n\n| A |"
+
+
+def test_consecutive_table_rows_are_left_alone():
+    from pipeline.converters import normalize_markdown
+
+    table = "| A | B |\n| --- | --- |\n| 1 | 2 |"
+    assert normalize_markdown(table) == table
+
+
+def test_blank_line_runs_are_collapsed():
+    from pipeline.converters import normalize_markdown
+
+    assert normalize_markdown("A\n\n\n\n\nB") == "A\n\nB"

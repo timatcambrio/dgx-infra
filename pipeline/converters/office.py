@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from functools import lru_cache
 from pathlib import Path
 
 from ..config import Config
@@ -80,10 +81,35 @@ def doc_to_docx(path: Path, config: Config) -> Path:
     return produced
 
 
+@lru_cache(maxsize=1)
+def _docx_converter():
+    """A Docling converter restricted to DOCX.
+
+    The restriction is a safety property, not an optimisation. Docling's DOCX path is pure
+    parsing and downloads nothing, whereas its PDF path fetches layout and table-structure
+    models. Declaring the allowed format means a mistake in dispatch surfaces as a plain
+    "format not allowed" error instead of silently reaching for a model that `models.yaml`
+    has not cleared.
+
+    Cached because constructing the converter is the expensive part, and it is stateless
+    across documents.
+    """
+    from docling.datamodel.base_models import InputFormat  # noqa: PLC0415 - lazy by design
+    from docling.document_converter import DocumentConverter  # noqa: PLC0415
+
+    return DocumentConverter(allowed_formats=[InputFormat.DOCX])
+
+
+def docx_to_markdown(path: Path) -> str:
+    """DOCX -> markdown via Docling. Fetches no model."""
+    result = _docx_converter().convert(path)
+    return result.document.export_to_markdown()
+
+
 def convert(path: Path, config: Config) -> tuple[str, str]:
     """Convert a DOCX, or a legacy DOC/DOT via LibreOffice first."""
-    raise NotImplementedError(
-        "M2: Docling DOCX conversion is deliberately not built yet -- see "
-        "pipeline/converters/pdf.py for why. `doc_to_docx` (the LibreOffice subprocess step) "
-        "is implemented and independently testable."
-    )
+    suffix = path.suffix.lower()
+    if suffix in (".doc", ".dot"):
+        docx_path = doc_to_docx(path, config)
+        return docx_to_markdown(docx_path), CONVERTER_LIBREOFFICE_DOCLING
+    return docx_to_markdown(path), CONVERTER_DOCLING

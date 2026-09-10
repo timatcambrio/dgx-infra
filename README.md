@@ -203,7 +203,7 @@ the default alone.
 | --- | --- |
 | **M0** — skeleton, gates, fixtures | Done. `make check` green: both gates pass, 140 tests pass. |
 | **M1** — inventory, triage, report | Machinery done and exercised end to end. **The decision gate itself is still open** — see below. |
-| **M2** — conversion | Not started, deliberately. CSV conversion and the `needs_ocr` stub are implemented (both model-free); the Docling-backed PDF and DOCX paths raise `NotImplementedError`. |
+| **M2** — conversion | **DOCX and CSV done**, with goldens. The PDF path raises `NotImplementedError` pending the layout-model provenance question. |
 | **M3** — quality pass on real samples | Not started. Needs M2 and the real corpus. |
 
 ### M1 has not actually run against a representative corpus
