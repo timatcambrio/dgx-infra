@@ -21,6 +21,7 @@ import argparse
 import os
 import re
 import sys
+import sysconfig
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,8 +90,8 @@ def default_cache_dirs() -> list[Path]:
     return [cache, cache / "hub"]
 
 
-def load_models(path: Path) -> tuple[list[dict], list[dict]]:
-    """Return `(allowed_models, pending_review)`.
+def load_models(path: Path) -> tuple[list[dict], list[dict], dict]:
+    """Return `(allowed_models, pending_review, whole_document)`.
 
     `allowed_models` is missing-key-fatal rather than defaulted: a typo in the key name must
     not silently produce an allowlist that permits nothing and passes.
@@ -101,7 +102,7 @@ def load_models(path: Path) -> tuple[list[dict], list[dict]]:
     models = data.get("allowed_models")
     if models is None:
         raise SystemExit(f"model_gate: {path} has no `allowed_models` key")
-    return models, data.get("pending_review") or []
+    return models, data.get("pending_review") or [], data
 
 
 def has_chinese_provenance(*values: str | None) -> str | None:
@@ -256,6 +257,70 @@ def scan_caches(
     return findings
 
 
+#: Weight-file extensions. A file with one of these inside an installed package is a model
+#: shipped as part of a wheel, which no cache scan will ever see.
+WEIGHT_SUFFIXES = frozenset(
+    {".onnx", ".pdmodel", ".pdiparams", ".safetensors", ".gguf", ".tflite", ".pt"}
+)
+#: Suffixes that are only *sometimes* weights, disambiguated by size:
+#: `.bin` is used for all sorts of data, and `.pth` collides outright with Python's
+#: path-configuration files, which sit in site-packages and are a few bytes long.
+AMBIGUOUS_WEIGHT_SUFFIXES = frozenset({".bin", ".pth"})
+BIN_WEIGHT_MIN_BYTES = 1_000_000
+
+
+def site_packages_dirs() -> list[Path]:
+    paths = {sysconfig.get_paths().get(key) for key in ("purelib", "platlib")}
+    return [Path(path) for path in paths if path and Path(path).is_dir()]
+
+
+def scan_installed_packages(
+    allowed_packages: set[str], directories: list[Path] | None = None
+) -> list[Finding]:
+    """Fail on model weights shipped *inside* an installed package.
+
+    This exists because of a real miss. `docling` is defined as `docling-slim[standard]`,
+    which installs `rapidocr` whether or not any OCR is used -- and the rapidocr wheel bundles
+    roughly 30MB of Baidu PaddleOCR weights (`PP-OCRv6_det`, `PP-OCRv6_rec`,
+    `ch_ppocr_mobile`) as ordinary files on disk. They never touch a model cache, so a
+    cache-scanning gate reports a clean run while banned weights sit in site-packages.
+
+    Judging a dependency by its declared requirements is not enough; what landed on disk has
+    to be looked at.
+    """
+    findings: list[Finding] = []
+    for directory in directories or site_packages_dirs():
+        for path in sorted(directory.rglob("*")):
+            if not path.is_file():
+                continue
+            suffix = path.suffix.lower()
+            is_weight = suffix in WEIGHT_SUFFIXES or (
+                suffix in AMBIGUOUS_WEIGHT_SUFFIXES
+                and path.stat().st_size >= BIN_WEIGHT_MIN_BYTES
+            )
+            if not is_weight:
+                continue
+
+            relative = path.relative_to(directory)
+            package = relative.parts[0] if relative.parts else path.name
+            if package.lower() in allowed_packages:
+                findings.append(
+                    Finding("OK", package, f"allowlisted bundled weights: {relative}")
+                )
+                continue
+            findings.append(
+                Finding(
+                    "FAIL",
+                    package,
+                    f"ships model weights inside the installed package "
+                    f"({relative}, {path.stat().st_size // 1024}KB). Weights bundled in a "
+                    "wheel bypass every cache-based check. Remove the dependency or narrow "
+                    "its extras.",
+                )
+            )
+    return findings
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--models-file", type=Path, default=DEFAULT_MODELS_FILE)
@@ -267,10 +332,21 @@ def main(argv: list[str] | None = None) -> int:
         help="Model cache to scan. Repeatable. Defaults to the HF and Docling caches.",
     )
     parser.add_argument("--skip-cache-scan", action="store_true")
+    parser.add_argument(
+        "--skip-package-scan",
+        action="store_true",
+        help="Skip scanning installed packages for bundled model weights.",
+    )
     args = parser.parse_args(argv)
 
-    models, pending = load_models(args.models_file)
+    models, pending, extra = load_models(args.models_file)
     findings = check_allowlist(models) + check_pending(pending)
+
+    if not args.skip_package_scan:
+        allowed_packages = {
+            str(name).lower() for name in (extra.get("allowed_bundled_packages") or [])
+        }
+        findings += scan_installed_packages(allowed_packages)
 
     scanned: list[Path] = []
     if not args.skip_cache_scan:

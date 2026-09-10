@@ -9,21 +9,42 @@ requires-python = ">=3.12,<3.13"
 # IMPORTED. Copyleft tools are allowed only when invoked as a subprocess (LibreOffice).
 # PyMuPDF / pymupdf4llm (AGPL) are import-only and therefore permanently banned.
 dependencies = [
-    "docling>=2.126.0,<3",          # MIT   - layout + TableFormer over an existing text layer
+    # MIT. `docling-slim` with explicit extras, NOT the `docling` meta-package.
+    #
+    # `docling` is defined as `docling-slim[standard]`, and that bundle installs every OCR
+    # backend whether or not you use one -- including `rapidocr`, whose wheel BUNDLES ~30MB
+    # of Baidu PaddleOCR weights (PP-OCRv6_det, PP-OCRv6_rec, ch_ppocr_mobile) as files on
+    # disk. Those are exactly the Chinese-trained weights the provenance rule forbids, and
+    # because they ship inside a wheel rather than a model cache, a cache-scanning gate never
+    # sees them. Naming extras keeps them off the machine in the first place.
+    #
+    # The PDF extras live in [project.optional-dependencies] below, not here.
+    "docling-slim[format-docx]>=2.126.0,<3",
     "pypdfium2>=5.0.3,<6",          # BSD   - page text extraction for triage
     "pdfplumber>=0.11.7,<0.12",     # MIT   - table geometry rescue
-    "markitdown>=0.1.3,<0.2",       # MIT   - per-file fallback only
     "pyyaml>=6.0.2,<7",             # MIT   - corpus.yaml
     "python-frontmatter>=1.1.0,<2", # MIT   - kb/ frontmatter
     "typer>=0.19.2,<0.20",          # MIT   - CLI
-    # torch 2.2.2 -- the last release with a macOS x86_64 wheel, see README "Platform
-    # constraint" -- was built against NumPy 1.x. With NumPy 2 installed its array bridge
-    # fails to initialise and Docling inference breaks. Scoped to the dev platform so the
-    # Linux target still gets current NumPy.
+]
+
+[project.optional-dependencies]
+# The PDF conversion path, deliberately NOT installed by default.
+#
+# Everything heavy in this project is here: `format-pdf-docling` pulls torch, and markitdown
+# pulls magika, which pulls onnxruntime. Behind an extra, the DOCX + CSV + triage install
+# stays small and carries no ML runtime at all -- which matters for an on-prem federal
+# deployment, where every megabyte is something the client fetches and audits.
+#
+# Install with:  uv sync --extra pdf
+pdf = [
+    "docling-slim[format-pdf-docling]>=2.126.0,<3",  # MIT - layout + TableFormer
+    "markitdown>=0.1.3,<0.2",                        # MIT - per-file fallback only
+    # torch 2.2.2 is the last release with a macOS x86_64 wheel (README "Platform
+    # constraint") and was built against NumPy 1.x; with NumPy 2 its array bridge fails to
+    # initialise. transformers 5.x separately disables its torch backend below torch 2.4,
+    # which would leave Docling with no usable models. Both scoped to the dev platform, and
+    # both only relevant once torch is present -- which is why they live in this extra.
     "numpy<2 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
-    # transformers 5.x disables its PyTorch backend outright below torch 2.4, which would
-    # leave Docling with no usable models on the dev Mac. Docling permits >=4.42, so hold
-    # the dev platform on the 4.x line. Linux is unaffected.
     "transformers<5 ; sys_platform == 'darwin' and platform_machine == 'x86_64'",
 ]
 

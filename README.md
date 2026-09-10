@@ -156,6 +156,17 @@ Models must be permissively licensed **and** have non-Chinese base-weight proven
 judged on the base weights rather than the releasing organisation. A US company
 fine-tuning a Chinese base does not clear it.
 
+The gate looks in two places, because they fail differently:
+
+- **Model caches** — anything downloaded at runtime that is not on the allowlist.
+- **Installed packages** — model weights shipped *inside* a wheel. This is not hypothetical.
+  The `docling` meta-package is defined as `docling-slim[standard]`, which installs
+  `rapidocr` whether or not any OCR is used, and the rapidocr wheel bundles roughly 30MB of
+  Baidu PaddleOCR weights (`PP-OCRv6_det`, `PP-OCRv6_rec`, `ch_ppocr_mobile`) as ordinary
+  files. They never touch a cache, so a cache-only gate reports a clean run while banned
+  weights sit in site-packages. This project therefore depends on **`docling-slim` with
+  named extras**, never on `docling`.
+
 `models.yaml` is an explicit allowlist, and in this phase it is deliberately **empty**.
 Stage 1 is model-free for text, so nothing should ever be fetched; an empty allowlist plus
 the gate's cache scan therefore asserts something true and useful right now — that no model

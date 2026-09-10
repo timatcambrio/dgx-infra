@@ -132,14 +132,14 @@ def test_lgpl_is_not_misread_as_gpl():
 
 
 def test_repo_models_yaml_passes_the_gate():
-    models, pending = model_gate.load_models(REPO_ROOT / "models.yaml")
+    models, pending, _ = model_gate.load_models(REPO_ROOT / "models.yaml")
     findings = model_gate.check_allowlist(models) + model_gate.check_pending(pending)
     assert _failures(findings) == []
 
 
 def test_allowlist_is_empty_in_this_phase():
     """Stage 1 is model-free for text: nothing at all should be approved to download."""
-    models, _ = model_gate.load_models(REPO_ROOT / "models.yaml")
+    models, _, _ = model_gate.load_models(REPO_ROOT / "models.yaml")
     assert models == []
 
 
@@ -166,7 +166,7 @@ def test_unlisted_cached_model_fails(tmp_path):
 def test_pending_model_found_in_cache_fails(tmp_path):
     """Starting M2 by downloading a model whose provenance is unresolved must break."""
     (tmp_path / "models--docling-project--TableFormerV2").mkdir()
-    _, pending = model_gate.load_models(REPO_ROOT / "models.yaml")
+    _, pending, _ = model_gate.load_models(REPO_ROOT / "models.yaml")
 
     findings = model_gate.scan_caches([], pending, [tmp_path])
 
@@ -357,3 +357,72 @@ def test_egret_layout_variants_fail_on_backbone_provenance(model, base_model):
     _, problems = model_gate.check_entry(entry, 0)
 
     assert any("provenance" in problem for problem in problems)
+
+
+def test_bundled_weights_in_an_installed_package_fail(tmp_path):
+    """Weights shipped inside a wheel never touch a cache, so the cache scan cannot see them.
+
+    This is not hypothetical: the `docling` meta-package is `docling-slim[standard]`, which
+    installs `rapidocr`, whose wheel bundles Baidu PaddleOCR weights as plain files.
+    """
+    package = tmp_path / "rapidocr" / "models"
+    package.mkdir(parents=True)
+    (package / "PP-OCRv6_det_small.onnx").write_bytes(b"x" * 2048)
+
+    findings = model_gate.scan_installed_packages(set(), [tmp_path])
+
+    failures = _failures(findings)
+    assert failures
+    assert failures[0].subject == "rapidocr"
+    assert "bypass every cache-based check" in failures[0].detail
+
+
+@pytest.mark.parametrize(
+    "filename", ["model.safetensors", "weights.pt", "net.onnx", "m.pdmodel", "q.gguf"]
+)
+def test_every_weight_format_is_detected(tmp_path, filename):
+    (tmp_path / "somepkg").mkdir()
+    (tmp_path / "somepkg" / filename).write_bytes(b"x" * 16)
+
+    assert _failures(model_gate.scan_installed_packages(set(), [tmp_path]))
+
+
+def test_small_bin_files_are_not_mistaken_for_weights(tmp_path):
+    """.bin is far too common to treat as a model outright; size disambiguates."""
+    (tmp_path / "somepkg").mkdir()
+    (tmp_path / "somepkg" / "lookup.bin").write_bytes(b"x" * 1024)
+
+    assert model_gate.scan_installed_packages(set(), [tmp_path]) == []
+
+
+def test_bundled_weights_can_be_allowlisted(tmp_path):
+    package = tmp_path / "approvedpkg"
+    package.mkdir()
+    (package / "model.onnx").write_bytes(b"x" * 2048)
+
+    findings = model_gate.scan_installed_packages({"approvedpkg"}, [tmp_path])
+
+    assert _failures(findings) == []
+
+
+def test_the_real_install_ships_no_bundled_weights():
+    """Regression guard: reinstalling `docling` instead of `docling-slim` must break this."""
+    assert _failures(model_gate.scan_installed_packages(set())) == []
+
+
+def test_python_path_files_are_not_mistaken_for_torch_weights(tmp_path):
+    """`.pth` is Python's path-configuration extension as well as a PyTorch one.
+
+    site-packages is full of tiny `.pth` files; treating them as weights makes the gate cry
+    wolf on every run, which is how a gate ends up switched off.
+    """
+    (tmp_path / "_virtualenv.pth").write_text("import _virtualenv\n")
+
+    assert model_gate.scan_installed_packages(set(), [tmp_path]) == []
+
+
+def test_a_real_sized_pth_checkpoint_is_still_caught(tmp_path):
+    (tmp_path / "somepkg").mkdir()
+    (tmp_path / "somepkg" / "resnet50.pth").write_bytes(b"x" * (BIG := 2_000_000))
+
+    assert _failures(model_gate.scan_installed_packages(set(), [tmp_path]))

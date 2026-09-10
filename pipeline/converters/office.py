@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from functools import lru_cache
+
 from pathlib import Path
 
 from ..config import Config
@@ -81,29 +81,32 @@ def doc_to_docx(path: Path, config: Config) -> Path:
     return produced
 
 
-@lru_cache(maxsize=1)
-def _docx_converter():
-    """A Docling converter restricted to DOCX.
-
-    The restriction is a safety property, not an optimisation. Docling's DOCX path is pure
-    parsing and downloads nothing, whereas its PDF path fetches layout and table-structure
-    models. Declaring the allowed format means a mistake in dispatch surfaces as a plain
-    "format not allowed" error instead of silently reaching for a model that `models.yaml`
-    has not cleared.
-
-    Cached because constructing the converter is the expensive part, and it is stateless
-    across documents.
-    """
-    from docling.datamodel.base_models import InputFormat  # noqa: PLC0415 - lazy by design
-    from docling.document_converter import DocumentConverter  # noqa: PLC0415
-
-    return DocumentConverter(allowed_formats=[InputFormat.DOCX])
-
-
 def docx_to_markdown(path: Path) -> str:
-    """DOCX -> markdown via Docling. Fetches no model."""
-    result = _docx_converter().convert(path)
-    return result.document.export_to_markdown()
+    """DOCX -> markdown via Docling's Word backend. Fetches no model.
+
+    Deliberately drives `MsWordDocumentBackend` directly rather than going through
+    `DocumentConverter`. Two reasons, and the first is the important one:
+
+    * `docling.document_converter` imports Docling's PDF backend unconditionally, so merely
+      importing it drags in the PDF machinery. Using the Word backend makes it structurally
+      impossible for the DOCX path to reach a layout or table model, rather than merely
+      unlikely -- which is what lets DOCX ship while the PDF path is still gated.
+    * It keeps the DOCX install to `docling-slim[format-docx]`, with no ML runtime at all.
+    """
+    from docling.backend.msword_backend import (  # noqa: PLC0415 - lazy by design
+        MsWordDocumentBackend,
+    )
+    from docling.datamodel.base_models import InputFormat  # noqa: PLC0415
+    from docling.datamodel.document import InputDocument  # noqa: PLC0415
+
+    in_doc = InputDocument(
+        path_or_stream=path,
+        format=InputFormat.DOCX,
+        backend=MsWordDocumentBackend,
+        filename=path.name,
+    )
+    document = MsWordDocumentBackend(in_doc=in_doc, path_or_stream=path).convert()
+    return document.export_to_markdown()
 
 
 def convert(path: Path, config: Config) -> tuple[str, str]:
