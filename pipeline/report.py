@@ -52,6 +52,7 @@ def build(manifest: dict[str, Any], config: Config) -> dict[str, Any]:
                 "chars_per_page_mean": triage.get("chars_per_page_mean"),
                 "alpha_ratio": triage.get("alpha_ratio"),
                 "low_page_fraction": triage.get("low_page_fraction"),
+                "low_pages": triage.get("low_pages") or [],
                 "text_class": "MISSING" if missing else triage.get("text_class"),
                 "error": triage.get("error"),
                 "converter": (entry.get("conversion") or {}).get("converter"),
@@ -80,6 +81,7 @@ def build(manifest: dict[str, Any], config: Config) -> dict[str, Any]:
     total_pages = sum(page_counts.values())
     needs_ocr_docs = class_counts[TEXT_CLASS_NEEDS_OCR]
     needs_ocr_pages = page_counts[TEXT_CLASS_NEEDS_OCR]
+    low_pages_total = sum(len(row.get("low_pages") or []) for row in triaged)
 
     totals = {
         "documents_in_manifest": len(rows),
@@ -96,6 +98,10 @@ def build(manifest: dict[str, Any], config: Config) -> dict[str, Any]:
         ),
         "needs_ocr_page_fraction": (
             round(needs_ocr_pages / total_pages, 4) if total_pages else None
+        ),
+        "low_pages_total": low_pages_total,
+        "low_page_fraction_corpus": (
+            round(low_pages_total / total_pages, 4) if total_pages else None
         ),
     }
 
@@ -202,7 +208,31 @@ def render_table(report: dict[str, Any]) -> str:
         "",
         f"  needs_ocr, documents  : {_pct(totals['needs_ocr_document_fraction'])}",
         f"  needs_ocr, pages      : {_pct(totals['needs_ocr_page_fraction'])}",
+        f"  low-text pages        : {totals['low_pages_total']} of "
+        f"{totals['pages_total']} ({_pct(totals['low_page_fraction_corpus'])})",
     ]
+
+    # A document can be `clean` overall and still hold individual pages with no usable text.
+    # Those pages are where content goes missing silently, so name them: a cover or a
+    # divider is nothing to worry about, a full-page scanned figure is.
+    with_low_pages = [
+        row
+        for row in sorted(report["documents"], key=lambda item: item["source_file"] or "")
+        if row.get("low_pages")
+    ]
+    if with_low_pages:
+        lines += [
+            "",
+            "LOW-TEXT PAGES (under MIN_CHARS_PER_PAGE, inside otherwise-usable documents)",
+            "  Check these by eye: a cover or divider is fine, a scanned figure is content",
+            "  that will be missing from kb/.",
+        ]
+        for row in with_low_pages:
+            pages = ", ".join(str(number) for number in row["low_pages"][:20])
+            if len(row["low_pages"]) > 20:
+                pages += ", ..."
+            lines.append(f"  {row['source_file']}")
+            lines.append(f"    page(s): {pages}")
 
     if report["stop_and_ask"]:
         lines += ["", "=" * 78, "STOP AND ASK", "=" * 78]

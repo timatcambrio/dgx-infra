@@ -119,3 +119,30 @@ def test_unreadable_pdf_is_recorded_not_raised(tmp_path, config):
 
     assert result.text_class == "error"
     assert result.error
+
+
+def test_low_pages_are_identified_by_number():
+    """A `clean` document can still hold pages with no usable text; name which ones."""
+    pages = ["x" * 500, "", "x" * 500, "", "x" * 500] + ["x" * 500] * 15
+
+    result = classify(pages, **THRESHOLDS)
+
+    assert result.text_class == "clean"
+    assert result.low_pages == (2, 4)
+    assert result.pages_below_threshold == 2
+
+
+def test_low_pages_survive_the_yaml_round_trip():
+    """Recorded as a list, so a second write cannot differ from the first."""
+    import yaml
+
+    result = classify(["", "x" * 500], **THRESHOLDS)
+    data = result.to_dict()
+
+    assert data["low_pages"] == [1]
+    assert yaml.safe_load(yaml.safe_dump(data))["low_pages"] == [1]
+
+
+def test_mixed_fixture_names_its_scanned_page(fixtures_dir, config):
+    result = triage_pdf(fixtures_dir / "mixed.pdf", config)
+    assert result.low_pages == (3,)

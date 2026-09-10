@@ -49,9 +49,20 @@ class TriageResult:
     alpha_ratio: float | None
     text_class: str
     error: str | None = None
+    #: 1-based page numbers yielding under MIN_CHARS_PER_PAGE.
+    #:
+    #: A document can be `clean` overall and still contain individual pages with no usable
+    #: text -- a cover, a divider, or a full-page scanned figure. The count alone cannot tell
+    #: those apart, and the difference decides whether real content is being lost. Recording
+    #: which pages they are makes that answerable by looking, without touching a threshold.
+    low_pages: tuple[int, ...] = ()
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        # A plain list round-trips through YAML unchanged; a tuple comes back as a list and
+        # would make the second write differ from the first.
+        data["low_pages"] = list(self.low_pages)
+        return data
 
 
 def alpha_ratio(text: str) -> float:
@@ -121,8 +132,12 @@ def classify(
         )
 
     counts = [len(text) for text in page_texts]
-    low_pages = sum(1 for count in counts if count < min_chars_per_page)
-    low_fraction = low_pages / page_count
+    low_pages = tuple(
+        number
+        for number, count in enumerate(counts, start=1)
+        if count < min_chars_per_page
+    )
+    low_fraction = len(low_pages) / page_count
     ratio = alpha_ratio("".join(page_texts))
     median = statistics.median(counts)
 
@@ -140,10 +155,11 @@ def classify(
         page_count=page_count,
         chars_per_page_mean=round(statistics.fmean(counts), 1),
         chars_per_page_median=round(float(median), 1),
-        pages_below_threshold=low_pages,
+        pages_below_threshold=len(low_pages),
         low_page_fraction=round(low_fraction, 4),
         alpha_ratio=round(ratio, 4),
         text_class=text_class,
+        low_pages=low_pages,
     )
 
 
