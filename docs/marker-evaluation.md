@@ -97,7 +97,68 @@ setting someone flips once.
 
 ## Results
 
-<!-- RESULTS -->
+Run 2026-09-11 on the dev Mac (Intel, Docker Desktop allotted **4 CPUs / 8 GB**), image
+`dgx-infra/marker:2.0.0` (1.96 GB), against the committed test fixtures. Timings are wall
+clock for `pipeline convert` on one document, and they are a floor, not a benchmark: the DGX
+has far more cores.
+
+| Fixture | Triage class | Marker | Time | Geometry engine |
+|---|---|---|---|---|
+| `born_digital.pdf` (3pp) | `clean` | Converted, content identical | **1m44s** (incl. first-run 429 MB download) | Converted, identical content |
+| `image_only.pdf` (1pp, scanned) | `needs_ocr` | **OCR'd correctly — full text recovered** | **5m17s** | INCOMPLETE stub only |
+| `mojibake.pdf` (1pp, broken cmap) | `needs_ocr` | **Passed the mojibake through unchanged** | 31s | `needs_ocr` stub |
+
+### What Marker is clearly better at
+
+**It reads documents with no text layer, and it reads them well.** `image_only.pdf` came back
+as clean, correctly structured markdown — heading, paragraph, every word right. The geometry
+engine cannot do this at all and emits an INCOMPLETE stub by design. **If the real corpus
+turns out to have a meaningful share of scanned documents, this is the entire argument for
+buying a licence**, and nothing else in this evaluation matters as much.
+
+### Where it is no better
+
+On born-digital pages the two are equivalent in content. Marker's markdown is slightly worse
+cosmetically — headings come out as `## **Heading**` (H2 carrying bold) rather than `#`, and
+currency is escaped as `\$180`. Those are trivial to post-process and are not an argument
+either way. **On the corpus as triaged so far — 0.0% `needs_ocr` — Marker buys nothing.**
+
+### The finding that cuts the other way
+
+**Marker did not catch the mojibake page.** `mojibake.pdf` is text-rich by character count
+(2574 chars/page) and completely unusable — a broken font-to-Unicode map. Marker's OCR-error
+detector accepted that text layer, never invoked the VLM (31 seconds, versus 5 minutes when
+it does), and passed the garbage through into its output verbatim.
+
+This project's `alpha_ratio` triage catches that case and classifies it `needs_ocr`. Marker
+does not. So Marker is **not** a replacement for the triage gate; if it were ever adopted it
+would have to run *behind* this project's classification rather than instead of it. Worth
+flagging to Datalab as well — it may be a genuine gap in their OCR-error model.
+
+(Caveat: `mojibake.pdf` is a synthetic fixture built to defeat character-count checks. A real
+broken-cmap scan may present differently. The finding is real; its frequency is not known.)
+
+### CPU viability: yes, with a caveat that matters
+
+CPU-only works end to end, including OCR, with no GPU anywhere — but only via llama.cpp.
+Surya's other backend is vllm, which is GPU-only, and surya's device auto-detection prefers
+`cuda > mps > cpu`, so a CPU run has to be pinned deliberately.
+
+**5m17s for a single scanned page on 4 cores** is the number to plan against. Extrapolating
+linearly (which is generous — it ignores per-run model load), a 100-page scanned document is
+roughly 9 hours on this machine. The DGX would be far faster, and on a GPU this is not a
+concern at all. But "Marker on CPU" is a batch-overnight proposition, not an interactive one.
+
+### Practical notes from actually running it
+
+- **~1.8 GB of weights** are fetched on first use: ~1.5 GB into the HF cache (including the
+  GGUF), 277 MB into the datalab cache from `models.datalab.to`.
+- **Nothing is fetched for born-digital PDFs beyond layout + OCR-error** — the 650M VLM is
+  downloaded and run only when a page actually needs OCR.
+- **Air-gap:** both caches must be pre-populated. The datalab one is not a HuggingFace repo,
+  so whatever mirroring process the client uses for HF will not cover it.
+- Marker also wants to download a rendering font at runtime; the image pre-fetches it.
+
 
 ## If the recommendation is to buy
 

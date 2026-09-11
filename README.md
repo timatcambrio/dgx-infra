@@ -216,7 +216,7 @@ the default alone.
 | **M1** — inventory, triage, report | Machinery done and exercised end to end. **The decision gate itself is still open** — see below. |
 | **M2** — conversion | **Done for PDF, DOCX and CSV**, with goldens for each. PDF uses a model-free geometric engine; the Docling escalation is still gated. |
 | **M3** — quality pass on real samples | Not started. Needs M2 and the real corpus. |
-| **Marker evaluation** | Branch `eval/marker-cpu`. Wired up and exercised on CPU; see `docs/marker-evaluation.md`. Evidence-gathering for a licence recommendation, not a delivery path. |
+| **Marker evaluation** | Branch `eval/marker-cpu`. Wired up and **run on CPU**, including OCR. It reads scanned pages the geometry engine cannot, in ~5 min/page on 4 cores; it does **not** catch the mojibake failure mode that `alpha_ratio` triage does. Numbers in `docs/marker-evaluation.md`. Evidence for a licence recommendation, not a delivery path. |
 
 ### M1 has not actually run against a representative corpus
 

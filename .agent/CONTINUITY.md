@@ -46,4 +46,15 @@ Canonical briefing. Facts only, each with an ISO date and a provenance tag.
 ## [OUTCOMES]
 
 - 2026-09-11 [TOOL] Full suite green, both gates pass with the evaluation tier in place.
-- 2026-09-11 [TOOL] Empirical CPU run: see `docs/marker-evaluation.md` "Results".
+- 2026-09-11 [TOOL] Empirical CPU run on the dev Mac (Docker, 4 CPU / 8 GB), full numbers in
+  `docs/marker-evaluation.md`:
+    * `born_digital.pdf` 1m44s, content identical to the geometry engine.
+    * `image_only.pdf` **OCR'd correctly in 5m17s** where geometry emits only a stub. This is
+      the entire case for a licence.
+    * `mojibake.pdf` **passed the broken text layer through unchanged in 31s** -- Marker's
+      OCR-error detector did not catch it, this project's `alpha_ratio` triage does. Marker
+      is therefore not a replacement for the triage gate.
+- 2026-09-11 [TOOL] CPU-only works end to end, via llama.cpp only (vllm is GPU-only). ~1.8 GB
+  of weights fetched on first use, across TWO caches (HF + models.datalab.to).
+- 2026-09-11 [ASSUMPTION] ~5 min/scanned page on 4 cores extrapolates to ~9h for a 100-page
+  scanned document on this machine. Linear extrapolation, not measured at that size.
