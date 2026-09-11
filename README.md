@@ -245,15 +245,33 @@ Two of these block M2. None should be resolved by guessing.
    only by explicitly opting into `TableStructureV2Options`, which nothing here does. It
    stays listed in `models.yaml` precisely so that opting in would trip the gate.
 
-2. **`docling-project/docling-layout-heron`'s base weights are undocumented.** The default
-   layout model is cleanly Apache-2.0 and trained by IBM Research, but its architecture is
-   RT-DETRv2 — which originated at Baidu — and neither the model card nor the abstract of
-   the accompanying paper (arXiv:2509.11720) says whether the weights were initialised from
-   a Baidu or PekingU RT-DETRv2 checkpoint, from an ImageNet-pretrained ResNet50 backbone,
-   or from scratch. Architecture alone does not fail the provenance rule; the same reasoning
-   already cleared Surya, which uses a Qwen-*style* architecture without Qwen weights. But an
-   RT-DETRv2 checkpoint as the starting point would fail it. Resolve from the paper's
-   methodology section or by asking the Docling maintainers.
+2. **`docling-project/docling-layout-heron` inherits a Baidu-lineage ImageNet backbone.
+   Needs a ruling, not more research.** Resolved 2026-09-11 from primary sources; the
+   remaining question is a policy call. The model is Apache-2.0 and IBM Research trained the
+   *detector* on their own 150k-document corpus, but arXiv:2509.11720 states plainly that
+   "the backbones (ResNet-50, ResNet-101, HGNet-V2) have been initialized with pre-trained
+   weights", and that "we trained the models with their native code implementations". The
+   native implementation for RT-DETRv2 is `lyuwenyu/RT-DETR` (the Baidu authors' repo), whose
+   r50vd config sets `pretrained: True`, which resolves to
+   `ResNet50_vd_ssld_v2_pretrained_from_paddle.pth` — a Baidu PaddleClas SSLD checkpoint.
+   Corroborating: the `vd` variant is a PaddleClas lineage and torchvision ships no
+   ResNet-vd, so no non-Paddle source of that backbone shape exists. There is no escape
+   hatch inside Docling — the DFINE-based `egret` variants use HGNet-V2, whose D-FINE
+   weights are `PPHGNetV2_B*_stage1.pth` ("PP" = PaddlePaddle), so all six layout variants
+   inherit the same lineage.
+
+   What is inherited is an ImageNet-1k *classification backbone* — convolutional features,
+   no language, no text corpus — not a base model in the sense the rule was written for
+   (Qwen, olmOCR-2, DeepSeek-OCR, where the inherited weights carry the behaviour). A strict
+   provenance reading fails it anyway. The call is [USER]'s and has consequences past this
+   repo: Paddle-lineage ImageNet backbones are pervasive in vision detectors, so a strict
+   reading rules out most modern layout and table-structure models permanently and makes the
+   geometry engine the only long-term option rather than the preferred one.
+
+   Residual uncertainty: the paper never names the checkpoint. The chain above rests on
+   their statement that they used the upstream repos' native code, where that checkpoint is
+   the default — strong inference, not a maintainer's confirmation. A question to the
+   Docling maintainers would settle it.
 
 3. **LibreOffice's pinned major version is unknown**, and it is not installed on the dev
    machine, so the `.doc`/`.dot` path is entirely unexercised. Needs the client's available

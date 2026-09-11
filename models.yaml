@@ -26,28 +26,48 @@ pending_review:
   - model: "docling-project/docling-layout-heron"
     license: "apache-2.0"
     developer: "IBM Research (Deep Search team) / docling-project"
-    base_model: "UNCONFIRMED"
-    base_developer: "UNCONFIRMED"
+    base_model: "ResNet50_vd_ssld_v2 (PaddleClas), via RT-DETRv2-r50vd"
+    base_developer: "Baidu (PaddleClas) -- ImageNet classification backbone only"
     purpose: "Default layout analysis model for Docling's PDF pipeline."
     verified: |
-      2026-09-10. Licence apache-2.0 confirmed via the HuggingFace API; HF tag `rt_detr_v2`,
-      config `RTDetrV2ForObjectDetection`, backbone ResNet-50. Paper arXiv:2509.11720 read.
+      2026-09-11. CLOSED, and it went the other way from the 2026-09-10 assessment below.
+      Chain, all from primary sources:
+        * arXiv:2509.11720 Object Detectors section: "The backbones (ResNet-50, ResNet-101,
+          HGNet-V2) have been initialized with pre-trained weights."
+        * Same section: "We trained the models with their native code implementations."
+        * Native for RT-DETRv2 is lyuwenyu/RT-DETR (the Baidu authors' repo). Its
+          configs/rtdetrv2/include/rtdetrv2_r50vd.yml sets `PResNet: {depth: 50, variant: d,
+          pretrained: True}`.
+        * `pretrained: True` resolves in src/nn/backbone/presnet.py to
+          `ResNet50_vd_ssld_v2_pretrained_from_paddle.pth` -- a Baidu PaddleClas SSLD
+          checkpoint. (101 -> `ResNet101_vd_ssld_pretrained_from_paddle.pth`.)
+        * Corroboration: the `vd` variant is a PaddleClas lineage. torchvision ships no
+          ResNet-vd, so there is no non-Paddle source for a backbone of that exact shape.
+          The 2026-09-10 "conventionally ImageNet (torchvision/MSRA)" assumption was wrong:
+          it is ImageNet-trained, but by Baidu, and it is the vd variant specifically.
+      SUPERSEDES the 2026-09-10 assessment ("probably clears"). It does not clear on a
+      strict reading.
     blocker: |
-      NARROWED, not closed. The paper's Object Detectors section says only: "The backbones
-      (ResNet-50, ResNet-101, HGNet-V2) have been initialized with pre-trained weights." So
-      what was inherited is a *backbone*, not a Baidu RT-DETRv2 detector checkpoint -- the
-      detector itself was trained by IBM for 72 epochs on their own 150k-document corpus.
-      heron's backbone is ResNet-50, whose pretrained weights are conventionally ImageNet
-      (torchvision/MSRA) rather than anything Chinese-origin. The paper does not name the
-      source, so this is inference from convention, not a citation.
-      ASSESSMENT: probably clears. RT-DETRv2 is a Baidu-originated *architecture*, and
-      architecture alone does not fail the rule -- the same reasoning already cleared Surya
-      (Qwen-style architecture, non-Qwen weights). The residual question is narrow: which
-      ResNet-50 weights seeded the backbone. Worth one question to the Docling maintainers
-      rather than a blocking investigation.
-      DO NOT "upgrade" to the egret variants to get better accuracy: they are D-FINE based
-      (USTC) and use HGNet-V2 backbones (Baidu PaddleClas), so they are strictly worse on
-      provenance than heron. The gate now rejects both markers by name.
+      NOT a research question any more -- a policy call for [USER], recorded in README open
+      question 2.
+      FOR: what was inherited is an ImageNet-1k *classification backbone* -- convolutional
+      features, no language, no text corpus -- which is a different object from the
+      Qwen/olmOCR/DeepSeek-OCR cases the rule was written to catch, where the inherited
+      weights carry the model's behaviour. The detector itself was trained by IBM for 72
+      epochs on their own 150k-document corpus.
+      AGAINST: the rule judges base weights, not the releasing organisation, and is
+      deliberately a bright line. "It is only the backbone" is exactly the sort of argument
+      that erodes one.
+      PRECEDENT: Paddle-lineage ImageNet backbones are pervasive across vision detectors. A
+      strict reading rules out most modern layout and table-structure models permanently and
+      makes the geometry engine the only long-term option rather than the preferred one.
+      RESIDUAL UNCERTAINTY: the paper never names the checkpoint. The chain rests on their
+      "native code implementations" statement, where that checkpoint is the repo default.
+      Strong inference, not a maintainer's confirmation. A question to the Docling
+      maintainers would close it; drafted, not yet filed.
+      DO NOT "upgrade" to the egret variants: D-FINE based, HGNet-V2 backbones whose D-FINE
+      weights are `PPHGNetV2_B*_stage1.pth` ("PP" = PaddlePaddle), so they are strictly
+      worse on provenance. The gate rejects both markers by name.
 
   - model: "docling-project/docling-models"
     license: "apache-2.0"
@@ -96,3 +116,31 @@ pending_review:
       when the ONNXRuntime object-detection engine is selected, so it inherits the heron
       question above and must be cleared alongside it.
     verified: "2026-09-09 -- referenced as an engine override in docling's layout model spec."
+
+  - model: "ibm-granite/granite-docling-258M"
+    license: "apache-2.0"
+    developer: "IBM Research"
+    base_model: "Idefics3 architecture; siglip2-base-patch16-512 vision encoder + Granite 165M LLM"
+    base_developer: "Google (SigLIP2 encoder) / IBM Research (Granite LLM)"
+    purpose: >
+      Docling's VLM pipeline, an alternative to the layout-model pipeline. Listed because it
+      is the only capable document VLM found so far that clears BOTH tests, and it would be
+      the natural escalation path if heron is ruled out.
+    verified: |
+      2026-09-11 from the HuggingFace model card. Frontmatter `license: apache-2.0`.
+      Architecture stated as Idefics3 with two substitutions: the vision encoder replaced by
+      `siglip2-base-patch16-512` (Google) and the language model by Granite 165M (IBM).
+      Trained by IBM Research on SynthCodeNet, SynthFormulaNet, SynthChartNet and
+      DoclingMatix, on IBM's Blue Vela cluster. No Chinese base weights in either inherited
+      component.
+    blocker: |
+      None known on licence or provenance -- this is the cleanest candidate in the landscape
+      survey (docs/parser-landscape.md). NOT promoted to allowed_models because three
+      practical questions are unanswered, none of which are compliance questions:
+        1. Inference cost on the target hardware (sm_70 DGX), unmeasured.
+        2. Whether a 258M VLM actually beats the geometry engine on THIS corpus. The 0%
+           needs_ocr result means the text layer is intact, so the VLM has to win on layout
+           alone to be worth its runtime.
+        3. Whether it forces a runtime model download the client-runs-the-pipeline
+           distribution shape cannot absorb.
+      Promote only after those are measured, and only if a VLM path is actually chosen.
