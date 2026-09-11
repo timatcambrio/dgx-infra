@@ -187,6 +187,14 @@ def _dispatch(
 
     if source_format == "pdf":
         if text_class == TEXT_CLASS_NEEDS_OCR:
+            if _is_evaluation(config):
+                # The one case where an evaluation run must NOT take the normal path. A
+                # document with no text layer is exactly where Marker could beat the
+                # geometry engine -- the engine cannot read it at all, and Marker can OCR
+                # it. Emitting the stub here would answer the easy half of the question and
+                # skip the half that decides whether a licence is worth buying.
+                body, converter = pdf.convert(source_path, config)
+                return body, converter, STATUS_WRITTEN
             body, converter = pdf.needs_ocr_stub(source_path)
             return body, converter, STATUS_STUB
         if text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL):

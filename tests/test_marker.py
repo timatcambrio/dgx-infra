@@ -190,3 +190,27 @@ def test_an_evaluation_records_nothing_in_the_manifest(marker_config, entry_for,
     convert_module.convert_entry(entry, marker_config, force=True)
 
     assert entry.get("conversion") is None
+
+
+def test_an_evaluation_runs_marker_on_needs_ocr_documents(marker_config, entry_for, monkeypatch):
+    """Where the geometry engine emits a stub, the evaluation must actually try.
+
+    A PDF with no text layer is the case Marker could win outright. Stubbing it would
+    measure only the documents that were never the problem.
+    """
+    from pipeline import convert as convert_module
+
+    seen: list[Path] = []
+
+    def fake(path, config):
+        seen.append(path)
+        return ("# OCR'd body\n", "marker")
+
+    monkeypatch.setattr(pdf_marker, "convert", fake)
+    entry = entry_for("image_only.pdf")
+    assert entry["triage"]["text_class"] == "needs_ocr", "fixture must still be the hard case"
+
+    result = convert_module.convert_entry(entry, marker_config, force=True)
+
+    assert seen, "marker was not invoked on a needs_ocr document"
+    assert result.status == convert_module.STATUS_WRITTEN

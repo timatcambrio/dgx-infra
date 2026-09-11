@@ -21,6 +21,7 @@ FROM --platform=linux/amd64 python:3.12-slim-bookworm
 # silently changed version is not evidence of anything.
 ARG MARKER_VERSION=2.0.0
 ARG TORCH_VERSION=2.7.1
+ARG TORCHVISION_VERSION=0.22.1
 
 # Surya's VLM recogniser needs llama.cpp on CPU (vllm is GPU-only). Off by default: a
 # born-digital corpus goes through layout + text extraction without ever reaching the VLM,
@@ -33,12 +34,21 @@ RUN apt-get update \
         ca-certificates curl unzip libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# torch from the CPU index FIRST, so the marker install finds its requirement already
-# satisfied and never pulls the default CUDA build — which is several gigabytes of nvidia
-# wheels that a CPU evaluation would download and never execute.
+# torch AND torchvision from the CPU index first, then marker under a constraints file that
+# forbids upgrading either.
+#
+# Both halves are load-bearing and the second one was learned the hard way. Installing torch
+# alone is not enough: marker requires `torchvision>=0.20`, and the newest torchvision on
+# PyPI pins a newer torch, so pip cheerfully replaced the CPU build with torch 2.14.0 and
+# started pulling half a gigabyte of nvidia CUDA wheels -- on a CPU-only evaluation, on a
+# machine with no GPU. Pinning the pair together and constraining the marker install is what
+# actually keeps CUDA out of the image.
 RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-        "torch==${TORCH_VERSION}"
-RUN pip install --no-cache-dir "marker-pdf==${MARKER_VERSION}"
+        "torch==${TORCH_VERSION}" "torchvision==${TORCHVISION_VERSION}"
+RUN printf 'torch==%s\ntorchvision==%s\n' "${TORCH_VERSION}" "${TORCHVISION_VERSION}" \
+        > /tmp/constraints.txt \
+    && pip install --no-cache-dir -c /tmp/constraints.txt "marker-pdf==${MARKER_VERSION}" \
+    && python -c "import torch; assert '+cpu' in torch.__version__, torch.__version__; print(torch.__version__)"
 
 RUN if [ "${WITH_LLAMA_CPP}" = "1" ]; then \
         curl -fsSL -o /tmp/llama.zip \
