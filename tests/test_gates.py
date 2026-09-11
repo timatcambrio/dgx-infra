@@ -426,3 +426,74 @@ def test_a_real_sized_pth_checkpoint_is_still_caught(tmp_path):
     (tmp_path / "somepkg" / "resnet50.pth").write_bytes(b"x" * (BIG := 2_000_000))
 
     assert _failures(model_gate.scan_installed_packages(set(), [tmp_path]))
+
+
+# ---------------------------------------------------------------------------------------
+# The evaluation tier. `evaluation_only` models are ones we already know are not deliverable
+# and run anyway, to produce evidence. The gate has to keep that distinction sharp: FAIL by
+# default so CI can never go green with them on disk, WARN only under an explicit flag.
+# ---------------------------------------------------------------------------------------
+
+
+def _evaluation() -> list[dict]:
+    data = model_gate.load_models(REPO_ROOT / "models.yaml")[2]
+    return data.get("evaluation_only") or []
+
+
+def test_every_evaluation_model_is_recorded_as_failing():
+    """A model in this section that passes `check_entry` is a bookkeeping error.
+
+    The section means 'known not deliverable'. If an entry ever comes back clean, either it
+    belongs in `allowed_models` or -- far more likely -- its licence or provenance was
+    written down wrongly.
+    """
+    evaluation = _evaluation()
+    assert evaluation, "the Marker evaluation must leave its weights recorded"
+    for index, entry in enumerate(evaluation):
+        _, problems = model_gate.check_entry(entry, index)
+        assert problems, f"{entry['model']} is in evaluation_only but records no problem"
+
+
+def test_evaluation_weights_in_a_cache_fail_by_default(tmp_path):
+    (tmp_path / "models--datalab-to--surya-ocr-2").mkdir()
+
+    findings = model_gate.scan_caches([], [], [tmp_path], _evaluation())
+
+    assert any("evaluation-only weights" in finding.detail for finding in _failures(findings))
+
+
+def test_evaluation_weights_are_a_warning_when_acknowledged(tmp_path):
+    (tmp_path / "models--datalab-to--surya-ocr-2").mkdir()
+
+    findings = model_gate.scan_caches(
+        [], [], [tmp_path], _evaluation(), allow_evaluation=True
+    )
+
+    assert _failures(findings) == []
+    assert any(finding.level == "WARN" for finding in findings)
+
+
+def test_the_non_huggingface_surya_caches_are_recognised(tmp_path):
+    """surya downloads detection weights from models.datalab.to, not HuggingFace.
+
+    Those land in a plain directory with no `models--org--name` shape, so without a
+    `cache_dir` entry the gate would report them as an unknown cache entry rather than as
+    what they are. Either way it fails, but only one of them reads as the truth.
+    """
+    (tmp_path / "text_detection").mkdir()
+
+    findings = model_gate.scan_caches([], [], [tmp_path], _evaluation())
+
+    assert any("evaluation-only weights" in finding.detail for finding in _failures(findings))
+
+
+def test_make_check_cannot_pass_with_evaluation_weights_present(tmp_path, capsys):
+    """The end-to-end property: no flag, no pass."""
+    (tmp_path / "models--datalab-to--surya-ocr-2-gguf").mkdir()
+
+    exit_code = model_gate.main(
+        ["--cache-dir", str(tmp_path), "--skip-package-scan"]
+    )
+
+    assert exit_code == 1
+    assert "evaluation-only weights" in capsys.readouterr().out

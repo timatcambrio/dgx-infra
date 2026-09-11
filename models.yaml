@@ -144,3 +144,109 @@ pending_review:
         3. Whether it forces a runtime model download the client-runs-the-pipeline
            distribution shape cannot absorb.
       Promote only after those are measured, and only if a VLM path is actually chosen.
+
+# ---------------------------------------------------------------------------------------
+# Models that exist in this repo ONLY to be measured, and that are known NOT to be
+# deliverable. Distinct from `pending_review`, where the question is still open: here the
+# answer is already no, and the model is run anyway to produce the evidence for or against
+# recommending that the client buy a licence.
+#
+# The gate FAILS on any of these found in a cache. `make check` and CI must never go green
+# with them on disk. A deliberate local evaluation runs the gate with --allow-evaluation
+# (`make marker-gate`), which downgrades them to WARN and says so in the output.
+# ---------------------------------------------------------------------------------------
+evaluation_only:
+  - model: "datalab-to/surya-ocr-2"
+    license: "openrail (modified AI Pubs Open RAIL-M)"
+    developer: "Datalab (US)"
+    base_model: "UNCONFIRMED -- Qwen3.5 architecture, no declared base weights"
+    base_developer: "UNCONFIRMED"
+    purpose: >
+      Surya 2, the 650M-parameter OCR/layout VLM that Marker drives. Fetched from
+      HuggingFace on first run.
+    verified: |
+      2026-09-11 from the HuggingFace API and the repo's own config.json.
+        * `cardData.license: openrail`, with a `license_link: LICENSE` -- Datalab's modified
+          AI Pubs Open RAIL-M, free for research, personal use, and organisations under $5M
+          funding/revenue. That is a field-of-use restriction, so it is not a permissive
+          licence no matter how the tag reads.
+        * config.json: `model_type: qwen3_5`, `architectures: [Qwen3_5ForConditionalGeneration]`.
+          The model card declares NO base model and states 650M parameters.
+      Both facts matter and they fail the two tests separately.
+    blocker: |
+      TEST 1 (licence): FAILS outright. A revenue-capped field-of-use restriction cannot be
+      accepted for a paid federal deployment. This is the blocker that a commercial licence
+      from Datalab would remove, and it is the whole reason this evaluation exists.
+      TEST 2 (provenance): OPEN, and it would not automatically clear even if the licence
+      were bought. The architecture is Alibaba's Qwen3.5 and the card names no base weights.
+      Architecture alone does not fail the rule -- the rule is about weights -- and a 650M
+      VLM does not correspond to any published Qwen3.5 checkpoint, which is consistent with
+      training from scratch. But "consistent with" is not evidence, and an unresolved
+      provenance question is not a pass. DO NOT record this as cleared without a statement
+      from Datalab about what the weights were initialised from. Ask them in the same
+      conversation as the licence quote; they are the only source that can close it.
+
+  - model: "datalab-to/surya-ocr-2-gguf"
+    license: "openrail (modified AI Pubs Open RAIL-M)"
+    developer: "Datalab (US)"
+    base_model: "datalab-to/surya-ocr-2"
+    base_developer: "UNCONFIRMED"
+    purpose: >
+      GGUF quantisation of the above, which is what the llama.cpp backend loads -- and
+      llama.cpp is the only Surya backend that runs on CPU at all (vllm is GPU-only).
+      A CPU evaluation therefore fetches this one, not the safetensors weights.
+    verified: "2026-09-11, HuggingFace API: cardData.license `openrail`."
+    blocker: "Inherits both findings above."
+
+  - model: "datalab-to/surya_layout2"
+    license: "openrail (modified AI Pubs Open RAIL-M)"
+    developer: "Datalab (US)"
+    base_model: "rf-detr"
+    base_developer: "Roboflow (US)"
+    purpose: >
+      The fast layout + reading-order detector (rf-detr). Runs on CPU and is used on every
+      page, including born-digital ones that never reach the OCR VLM.
+    verified: "2026-09-11, HuggingFace API: cardData.license `openrail`."
+    blocker: |
+      Licence fails on the same revenue cap. Provenance is the more interesting half:
+      rf-detr is Roboflow's, but its backbone lineage is not stated on the card. If a Marker
+      licence is ever seriously considered, that backbone needs the same treatment
+      docling-layout-heron got -- DINOv2 would clear, a PaddleClas checkpoint would not.
+      Not researched yet: the licence blocks it first.
+
+  - model: "s3://text_detection/2025_05_07"
+    cache_dir: "text_detection"
+    license: "UNDECLARED -- distributed outside HuggingFace, no model card"
+    developer: "Datalab (US)"
+    base_model: "UNCONFIRMED"
+    base_developer: "UNCONFIRMED"
+    purpose: >
+      Surya's text-detection weights. NOT on HuggingFace: surya downloads them from
+      https://models.datalab.to into platformdirs' `datalab` cache
+      (`MODEL_CACHE_DIR`, defaulted here to $WORK_DIR/models-datalab).
+    verified: |
+      2026-09-11 from surya/settings.py on datalab-to/surya master:
+      `DETECTOR_MODEL_CHECKPOINT: str = "s3://text_detection/2025_05_07"` and
+      `MODEL_CACHE_DIR: str = str(Path(user_cache_dir("datalab")) / "models")`.
+    blocker: |
+      Worth stating separately from the licence problem, because it is a gate problem: these
+      weights never touch a HuggingFace cache, so a scan of HF_HOME alone sees nothing while
+      they sit on disk. That is the same shape of blind spot as the rapidocr wheel that
+      bundled Baidu weights into site-packages. `pipeline/config.py` pins the datalab cache
+      into WORK_DIR and `default_cache_dirs()` scans it, so the gate can see them at all.
+      Licence is undeclared at the distribution point -- absent a grant, all rights reserved.
+
+  - model: "s3://ocr_error_detection/2025_02_18"
+    cache_dir: "ocr_error_detection"
+    license: "UNDECLARED -- distributed outside HuggingFace, no model card"
+    developer: "Datalab (US)"
+    base_model: "UNCONFIRMED"
+    base_developer: "UNCONFIRMED"
+    purpose: >
+      Surya's OCR-error detector, which decides whether a page's existing text layer is
+      good enough to keep. On a born-digital corpus this is the model that decides whether
+      the expensive VLM runs at all.
+    verified: |
+      2026-09-11, surya/settings.py:
+      `OCR_ERROR_MODEL_CHECKPOINT: str = "s3://ocr_error_detection/2025_02_18"`.
+    blocker: "Same as text_detection above."

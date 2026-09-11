@@ -86,8 +86,16 @@ def default_cache_dirs() -> list[Path]:
     sys.path.insert(0, str(REPO_ROOT))
     from pipeline import config as pipeline_config  # noqa: PLC0415 - needs the path above
 
-    cache = pipeline_config.load().model_cache_dir
-    return [cache, cache / "hub"]
+    config = pipeline_config.load()
+    # The datalab cache is not optional decoration. Surya pulls its detection and OCR-error
+    # weights from models.datalab.to rather than HuggingFace, so a gate that knows only about
+    # HF_HOME reports a clean run while RAIL-M weights sit on disk -- the same class of blind
+    # spot as weights bundled inside a wheel, which this project has already been bitten by.
+    return [
+        config.model_cache_dir,
+        config.model_cache_dir / "hub",
+        config.marker_cache_dir,
+    ]
 
 
 def load_models(path: Path) -> tuple[list[dict], list[dict], dict]:
@@ -190,8 +198,30 @@ def check_pending(pending: list[dict]) -> list[Finding]:
     return findings
 
 
+def check_evaluation(evaluation: list[dict]) -> list[Finding]:
+    """Report models that exist in this repo only to be measured, never delivered.
+
+    Distinct from `pending_review` because the question is different in kind. A pending model
+    might clear; an evaluation model is one we already know does not, and is being run anyway
+    to find out whether it is worth buying a licence for. Reporting them identically would
+    lose exactly the distinction that makes a licence recommendation defensible.
+    """
+    findings: list[Finding] = []
+    for index, entry in enumerate(evaluation):
+        name, problems = check_entry(entry, index)
+        detail = "; ".join(problems) if problems else "no licence or provenance problem recorded"
+        findings.append(
+            Finding("EVAL", name, f"evaluation only, NOT deliverable -- {detail}")
+        )
+    return findings
+
+
 def scan_caches(
-    models: list[dict], pending: list[dict], cache_dirs: list[Path]
+    models: list[dict],
+    pending: list[dict],
+    cache_dirs: list[Path],
+    evaluation: list[dict] | None = None,
+    allow_evaluation: bool = False,
 ) -> list[Finding]:
     """Fail on anything cached that is not on the allowlist.
 
@@ -200,13 +230,43 @@ def scan_caches(
     model appeared" and deserves to read that way.
     """
     findings: list[Finding] = []
+    evaluation = evaluation or []
     allowed_repos = {str(entry.get("model", "")).lower() for entry in models}
     pending_repos = {str(entry.get("model", "")).lower() for entry in pending}
-    allowed_dirs = {
-        str(value).lower()
-        for entry in models
-        for value in ([entry.get("cache_dir")] if entry.get("cache_dir") else [])
-    }
+    evaluation_repos = {str(entry.get("model", "")).lower() for entry in evaluation}
+
+    def _cache_dirs_of(entries: list[dict]) -> set[str]:
+        return {
+            str(entry["cache_dir"]).lower()
+            for entry in entries
+            if entry.get("cache_dir")
+        }
+
+    allowed_dirs = _cache_dirs_of(models)
+    evaluation_dirs = _cache_dirs_of(evaluation)
+
+    # An evaluation run downloads weights this project is not licensed to deliver. That has
+    # to be a FAILURE by default -- `make check` and CI must never go green with them on
+    # disk -- and an explicit, per-invocation acknowledgement otherwise. A flag that has to
+    # be typed is the difference between a deliberate evaluation and an accident.
+    def _evaluation_finding(subject: str, location: Path) -> Finding:
+        if allow_evaluation:
+            return Finding(
+                "WARN",
+                subject,
+                f"evaluation weights present at {location}. Acknowledged via "
+                "--allow-evaluation: these are RAIL-M licensed and NOT deliverable. Delete "
+                "them (`make clean-work`) before any run whose output leaves this machine.",
+            )
+        return Finding(
+            "FAIL",
+            subject,
+            f"evaluation-only weights found at {location}. They are listed in models.yaml "
+            "`evaluation_only`, which means their licence is known NOT to cover this "
+            "deployment. If this is a deliberate local evaluation, run the gate with "
+            "--allow-evaluation (or `make marker-gate`); CI must never pass with these "
+            "present.",
+        )
 
     for cache_dir in cache_dirs:
         if not cache_dir.is_dir():
@@ -220,6 +280,8 @@ def scan_caches(
                 repo = f"{match.group('org')}/{match.group('name')}".lower()
                 if repo in allowed_repos:
                     findings.append(Finding("OK", repo, f"cached at {child}"))
+                elif repo in evaluation_repos:
+                    findings.append(_evaluation_finding(repo, child))
                 elif repo in pending_repos:
                     findings.append(
                         Finding(
@@ -244,6 +306,8 @@ def scan_caches(
 
             if child.name.lower() in allowed_dirs:
                 findings.append(Finding("OK", child.name, f"cached at {child}"))
+            elif child.name.lower() in evaluation_dirs:
+                findings.append(_evaluation_finding(child.name, child))
             else:
                 findings.append(
                     Finding(
@@ -333,6 +397,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--skip-cache-scan", action="store_true")
     parser.add_argument(
+        "--allow-evaluation",
+        action="store_true",
+        default=os.environ.get("MODEL_GATE_ALLOW_EVALUATION") == "1",
+        help=(
+            "Downgrade `evaluation_only` weights found in a cache from FAIL to WARN. For a "
+            "deliberate local evaluation only -- never in CI, and never for a run whose "
+            "output is delivered."
+        ),
+    )
+    parser.add_argument(
         "--skip-package-scan",
         action="store_true",
         help="Skip scanning installed packages for bundled model weights.",
@@ -340,7 +414,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     models, pending, extra = load_models(args.models_file)
-    findings = check_allowlist(models) + check_pending(pending)
+    evaluation = extra.get("evaluation_only") or []
+    findings = check_allowlist(models) + check_pending(pending) + check_evaluation(evaluation)
 
     if not args.skip_package_scan:
         allowed_packages = {
@@ -351,7 +426,9 @@ def main(argv: list[str] | None = None) -> int:
     scanned: list[Path] = []
     if not args.skip_cache_scan:
         scanned = args.cache_dir if args.cache_dir else default_cache_dirs()
-        findings += scan_caches(models, pending, scanned)
+        findings += scan_caches(
+            models, pending, scanned, evaluation, allow_evaluation=args.allow_evaluation
+        )
 
     print("MODEL GATE (permissive licence AND non-Chinese base-weight provenance)")
     if not models:
@@ -368,6 +445,12 @@ def main(argv: list[str] | None = None) -> int:
         print("  scanned: " + ", ".join(str(path) for path in scanned))
     elif args.skip_cache_scan:
         print("  cache scan skipped")
+
+    if args.allow_evaluation:
+        print(
+            "  NOTE: --allow-evaluation is set. Evaluation-only weights do not fail this "
+            "run. Nothing produced under it may be delivered."
+        )
 
     failures = [finding for finding in findings if finding.level == "FAIL"]
     if failures:

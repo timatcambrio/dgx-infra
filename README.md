@@ -216,6 +216,7 @@ the default alone.
 | **M1** — inventory, triage, report | Machinery done and exercised end to end. **The decision gate itself is still open** — see below. |
 | **M2** — conversion | **Done for PDF, DOCX and CSV**, with goldens for each. PDF uses a model-free geometric engine; the Docling escalation is still gated. |
 | **M3** — quality pass on real samples | Not started. Needs M2 and the real corpus. |
+| **Marker evaluation** | Branch `eval/marker-cpu`. Wired up and exercised on CPU; see `docs/marker-evaluation.md`. Evidence-gathering for a licence recommendation, not a delivery path. |
 
 ### M1 has not actually run against a representative corpus
 
@@ -334,6 +335,44 @@ Set `PDF_ENGINE=docling`. It is not wired up yet and will say so: it needs
 `uv sync --extra pdf` for the ML runtime, and a decision on the layout model's base-weight
 provenance (open question 2). Escalation is meant to be per document and deliberate, decided
 by looking at converted output rather than assumed up front.
+
+## Evaluating Marker (branch `eval/marker-cpu`) — not a delivery path
+
+`PDF_ENGINE=marker` runs Marker on CPU to answer one question with evidence: is its output
+enough better than the geometry engine on this corpus to be worth recommending the client buy
+a Datalab commercial licence? Full write-up in `docs/marker-evaluation.md`.
+
+Three facts shape how it is wired up, and they are independent of each other:
+
+- **The weights are not licensed for this deployment.** Marker's code is Apache-2.0 (no
+  longer GPL), but the Surya weights it drives are `openrail` — Datalab's modified AI Pubs
+  Open RAIL-M, free only for research, personal use, and organisations under $5M
+  funding/revenue. A local evaluation by us *is* inside that grant; delivery is not.
+- **A provenance question a licence would not close.** `datalab-to/surya-ocr-2` is 650M
+  params with `model_type: qwen3_5` and **no declared base model**. Architecture alone does
+  not fail the rule, but an unresolved question is not a pass.
+- **Marker cannot be installed on the dev Mac.** It needs `torch >= 2.7`; torch's last macOS
+  x86_64 wheel is 2.2.2. So it runs as a **subprocess inside a pinned `linux/amd64`
+  container** — the same call-style rule that allows LibreOffice — and is never imported.
+  The default install is unchanged: no second torch, no effect on `uv.lock`.
+
+```bash
+make marker-image     # build the pinned CPU-only image
+make marker-eval      # convert with Marker; output is banner-marked NOT FOR DELIVERY
+make marker-gate      # the model gate, acknowledging the evaluation weights
+```
+
+**`make check` still fails while those weights are on disk, and that is deliberate.**
+`models.yaml` gains an `evaluation_only` tier — distinct from `pending_review`, where the
+question is still open — and the gate fails on any of it found in a cache. Only an explicit
+per-invocation `--allow-evaluation` downgrades that to a warning. Run `make clean-work` to
+remove the weights and CI goes green again.
+
+The gate also grew a blind spot fix in the process: Surya fetches two of its models from
+`models.datalab.to` rather than HuggingFace, so they never touched `HF_HOME`. That cache is
+now pinned into `WORK_DIR` and scanned alongside it.
+
+---
 
 ## Out of scope — do not build
 

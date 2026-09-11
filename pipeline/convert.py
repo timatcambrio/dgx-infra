@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from . import StopAndAsk
-from .config import Config
+from .config import PDF_ENGINE_MARKER, Config
 from .converters import csv_table, normalize_markdown, office, pdf
 from .frontmatter import build as build_frontmatter
 from .frontmatter import render as render_frontmatter
@@ -49,8 +49,26 @@ class SourceDigestMismatch(RuntimeError):
     """The source bytes no longer match what the manifest recorded for this output."""
 
 
+#: Where an evaluation run writes, relative to KB_PATH. Not `kb/`.
+EVAL_OUTPUT_DIR = "eval-marker"
+
+
 def output_path(entry: dict[str, Any], config: Config) -> Path:
+    """Where a converted document lands.
+
+    An evaluation run writes **beside** `kb/`, never into it. `kb/` is the deliverable, and
+    Marker's output is not deliverable -- its weights are licensed for research and personal
+    use only. Overwriting `kb/` with it would put content the client cannot legally receive
+    into the exact directory built to be handed over, recoverable only by re-running the
+    real converter over everything.
+    """
+    if _is_evaluation(config):
+        return config.kb_path / EVAL_OUTPUT_DIR / f"{entry['slug']}.md"
     return config.kb_dir / f"{entry['slug']}.md"
+
+
+def _is_evaluation(config: Config) -> bool:
+    return config.pdf_engine == PDF_ENGINE_MARKER
 
 
 def _title_for(entry: dict[str, Any], source_path: Path) -> str:
@@ -138,11 +156,16 @@ def convert_entry(
     rendered = render_frontmatter(meta, body)
     destination.write_text(rendered, encoding="utf-8")
 
-    entry["conversion"] = {
-        "converter": converter,
-        "output": destination.relative_to(config.kb_path).as_posix(),
-        "source_sha256": digest,
-    }
+    if not _is_evaluation(config):
+        entry["conversion"] = {
+            "converter": converter,
+            "output": destination.relative_to(config.kb_path).as_posix(),
+            "source_sha256": digest,
+        }
+    # An evaluation deliberately records nothing. `corpus.yaml` is committed, and a manifest
+    # claiming its documents were converted by an engine whose output was never delivered
+    # would be a false record of provenance -- and the next real run would skip the file as
+    # already converted.
     return ConversionResult(slug, source_file, status, destination, converter)
 
 

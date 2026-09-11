@@ -9,7 +9,8 @@ PYTHON := $(UV) run python
 .DEFAULT_GOAL := help
 
 .PHONY: help sync check test gates license-gate model-gate fixtures \
-        inventory triage convert report report-json clean-work
+        inventory triage convert report report-json clean-work \
+        marker-image marker-eval marker-gate
 
 help:  ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) \
@@ -49,6 +50,30 @@ report:  ## Print the coverage report
 
 report-json:  ## Print the coverage report as JSON
 	$(UV) run pipeline report --format json
+
+# ---------------------------------------------------------------------------------------
+# Marker evaluation. Not part of `check`, not part of any delivery path.
+#
+# Marker's code is Apache-2.0 but its Surya weights are revenue-capped RAIL-M, so nothing
+# these targets produce is deliverable. They exist to answer one question with evidence:
+# is Marker's output enough better than the geometry engine to be worth recommending that
+# the client buy a commercial licence? See docs/marker-evaluation.md.
+# ---------------------------------------------------------------------------------------
+
+MARKER_IMAGE ?= dgx-infra/marker:2.0.0
+
+marker-image:  ## Build the pinned CPU-only Marker image (linux/amd64)
+	docker build --platform linux/amd64 -f docker/marker.Dockerfile -t $(MARKER_IMAGE) .
+
+# Writes to $KB_PATH/eval-marker/, never to kb/, and records nothing in corpus.yaml.
+# Override the selection with e.g. `make marker-eval ONLY='handbook*.pdf'`.
+ONLY ?= *.pdf
+
+marker-eval:  ## Convert with Marker on CPU. Writes EVALUATION output; never deliverable.
+	PDF_ENGINE=marker $(UV) run pipeline convert --force --only '$(ONLY)'
+
+marker-gate:  ## Run the model gate acknowledging the evaluation weights (never in CI)
+	$(PYTHON) scripts/model_gate.py --allow-evaluation
 
 clean-work:  ## Delete WORK_DIR. Costs time to rebuild, never information.
 	$(PYTHON) -c "import shutil; from pipeline.config import load; \

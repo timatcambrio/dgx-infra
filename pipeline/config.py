@@ -40,6 +40,33 @@ DOCLING_OCR_ENGINE = "easyocr"
 PDF_ENGINE_GEOMETRY = "geometry"
 PDF_ENGINE_DOCLING = "docling"
 
+#: `marker` is an EVALUATION engine, not a delivery option. Two things make it different in
+#: kind from the other two, and both are recorded here rather than in a comment elsewhere:
+#:
+#: 1. **Its weights are not licensed for this deployment.** Marker's code is Apache-2.0, but
+#:    the Surya weights it drives carry a modified AI Pubs Open RAIL-M licence that is free
+#:    only for research, personal use, and organisations under $5M funding/revenue. A paid
+#:    federal deployment needs a commercial licence from Datalab. The point of this engine is
+#:    to produce the evidence for or against buying one.
+#: 2. **It is never imported.** Marker requires torch >= 2.7, and torch ships no macOS
+#:    x86_64 wheel after 2.2.2, so it cannot be installed into this project's venv on the dev
+#:    machine at all. It is invoked as a separate program -- the same call-style rule that
+#:    lets the pipeline use LibreOffice -- inside a pinned linux/amd64 container.
+PDF_ENGINE_MARKER = "marker"
+
+#: How `marker_single` is reached. `docker` runs the pinned image (the only option that
+#: works on darwin-x86_64); `local` invokes a `marker_single` already on PATH, which is what
+#: a Linux box with marker installed in its own environment would use.
+MARKER_RUNNER_DOCKER = "docker"
+MARKER_RUNNER_LOCAL = "local"
+
+#: Pinned image tag. Built by `make marker-image` from docker/marker.Dockerfile.
+MARKER_IMAGE = "dgx-infra/marker:2.0.0"
+
+#: Forced to CPU for this evaluation. The question being answered is whether Marker is
+#: usable without a GPU, so a run that quietly used one would not answer it.
+MARKER_DEVICE = "cpu"
+
 #: OCR engines that are banned outright on base-weight provenance grounds.
 BANNED_OCR_ENGINES = frozenset({"rapidocr", "paddleocr", "paddle"})
 
@@ -97,6 +124,13 @@ class Config:
     csv_max_cols: int
     docling_ocr_engine: str
     pdf_engine: str
+    marker_runner: str
+    marker_image: str
+    marker_binary: str
+    marker_device: str
+    marker_timeout: int
+    marker_cache_dir: Path
+    marker_page_range: str | None
     pdf_heading_size_ratio: float
     pdf_margin_fraction: float
     pdf_repeat_page_fraction: float
@@ -172,6 +206,22 @@ def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = 
         csv_max_cols=_env_int("CSV_MAX_COLS", 12),
         docling_ocr_engine=os.environ.get("DOCLING_OCR_ENGINE", DOCLING_OCR_ENGINE),
         pdf_engine=os.environ.get("PDF_ENGINE", PDF_ENGINE_GEOMETRY),
+        # Marker evaluation. Defaults are deliberately inert: nothing here runs unless
+        # PDF_ENGINE=marker is set explicitly.
+        marker_runner=os.environ.get("MARKER_RUNNER", MARKER_RUNNER_DOCKER),
+        marker_image=os.environ.get("MARKER_IMAGE", MARKER_IMAGE),
+        marker_binary=os.environ.get("MARKER_BINARY", "marker_single"),
+        marker_device=os.environ.get("MARKER_DEVICE", MARKER_DEVICE),
+        marker_timeout=_env_int("MARKER_TIMEOUT", 3600),
+        # Surya fetches its detection and OCR-error weights from models.datalab.to, NOT from
+        # HuggingFace, into platformdirs' `datalab` cache. A cache scan that only knows about
+        # HF_HOME therefore reports a clean run while RAIL-M weights sit on disk -- the same
+        # shape of blind spot as weights bundled inside a wheel. Pinning it next to the HF
+        # cache is what lets the model gate see them.
+        marker_cache_dir=Path(
+            os.environ.get("MARKER_CACHE_DIR", work_dir / "models-datalab")
+        ).expanduser().resolve(),
+        marker_page_range=os.environ.get("MARKER_PAGE_RANGE") or None,
         # Geometric PDF extraction. These describe page geometry, not document semantics,
         # which is why they can be constants at all -- a heading is bigger than body text and
         # a running header sits in the margin on most pages, in any typeset document.

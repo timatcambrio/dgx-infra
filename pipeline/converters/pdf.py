@@ -14,9 +14,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import BANNED_OCR_ENGINES, Config
+from ..config import BANNED_OCR_ENGINES, PDF_ENGINE_DOCLING, PDF_ENGINE_MARKER, Config
 from ..triage import extract_page_texts
-from . import pdf_geometry
+from . import pdf_geometry, pdf_marker
 
 CONVERTER_GEOMETRIC = "pdfplumber-geometry (model-free)"
 CONVERTER_DOCLING = "docling (do_ocr=False)"
@@ -121,7 +121,17 @@ def convert(
     specific documents that turn out to need it.
 
     Escalation is per document: set `converter: docling` on a manifest entry.
+
+    `PDF_ENGINE=marker` is a third path and is not an escalation at all -- it is a
+    licence evaluation that happens to produce markdown. Its output carries a banner
+    saying so.
     """
+    if _wants_marker(config):
+        # Deliberately before the Docling branch and deliberately not a fallback: Marker is
+        # an evaluation engine whose weights are not licensed for this deployment, so it only
+        # ever runs because someone set PDF_ENGINE=marker on purpose. See pdf_marker.py.
+        return pdf_marker.convert(path, config)
+
     if _wants_docling(config):
         return _convert_with_docling(path, config)
 
@@ -131,7 +141,11 @@ def convert(
 
 
 def _wants_docling(config: Config) -> bool:
-    return config.pdf_engine == "docling"
+    return config.pdf_engine == PDF_ENGINE_DOCLING
+
+
+def _wants_marker(config: Config) -> bool:
+    return config.pdf_engine == PDF_ENGINE_MARKER
 
 
 def _convert_with_docling(path: Path, config: Config) -> tuple[str, str]:

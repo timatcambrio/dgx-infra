@@ -23,6 +23,7 @@ from . import manifest as manifest_module
 from . import report as report_module
 from .config import SUPPORTED_EXTENSIONS, Config, ConfigError
 from .convert import SourceDigestMismatch, convert_entry
+from .converters.pdf_marker import MarkerError
 from .manifest import STATUS_MISSING, STATUS_PRESENT
 from .triage import triage_pdf, triage_text_native
 
@@ -185,6 +186,7 @@ def convert(
 
     stop_and_ask: list[str] = []
     not_implemented: list[str] = []
+    failed: list[str] = []
 
     for entry in entries:
         if entry.get("status") == STATUS_MISSING:
@@ -204,6 +206,14 @@ def convert(
             stop_and_ask.append(f"{entry['source_file']}: {exc}")
             typer.echo(f"  STOP-AND-ASK   {entry['source_file']}")
             continue
+        except MarkerError as exc:
+            # The Marker evaluation runs a container and a CPU VLM, so its failures are
+            # environmental far more often than they are bugs: no daemon, no image, or a
+            # run that simply took longer than the timeout. Every message names its fix,
+            # and a failure on one document must not abandon the rest of the run.
+            failed.append(f"{entry['source_file']}: {exc}")
+            typer.secho(f"  MARKER FAILED  {entry['source_file']}", fg=typer.colors.RED)
+            continue
 
         if result.status == "stop_and_ask":
             stop_and_ask.append(f"{result.source_file}: {result.message}")
@@ -218,11 +228,19 @@ def convert(
         for item in not_implemented:
             typer.echo(f"  * {item}")
 
+    if failed:
+        typer.secho("\nFAILED", fg=typer.colors.RED, bold=True)
+        for item in failed:
+            typer.secho(f"  * {item}", fg=typer.colors.RED)
+
     if stop_and_ask:
         typer.secho("\nSTOP AND ASK", fg=typer.colors.YELLOW, bold=True)
         for item in stop_and_ask:
             typer.secho(f"  * {item}", fg=typer.colors.YELLOW)
         raise typer.Exit(EXIT_STOP_AND_ASK)
+
+    if failed:
+        raise typer.Exit(1)
 
 
 @app.command()
