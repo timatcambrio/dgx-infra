@@ -166,6 +166,22 @@ def convert(path: Path, config: Config) -> tuple[str, str]:
         ) from exc
 
     if completed.returncode != 0:
+        if "llama-server binary not found" in (completed.stderr or ""):
+            # Worth its own message because the stack trace points at surya's spawn code and
+            # says `brew install llama.cpp`, which is advice for a laptop, not for the image
+            # this actually runs in. The real cause is structural: marker only reaches the
+            # OCR VLM when a page has no usable text layer, and on CPU that VLM can only run
+            # under llama.cpp -- vllm is GPU-only.
+            raise MarkerError(
+                f"Marker reached its OCR model on {path.name} and the image has no "
+                "`llama-server`. That means this document genuinely needs OCR, which is the "
+                "interesting case. Rebuild with the VLM backend:\n"
+                "  docker build --platform linux/amd64 --build-arg WITH_LLAMA_CPP=1 \\\n"
+                "    -f docker/marker.Dockerfile -t "
+                f"{config.marker_image} .\n"
+                "Note that CPU OCR through llama.cpp is slow -- budget MARKER_TIMEOUT "
+                "accordingly and record the timing, it is part of the answer."
+            )
         raise MarkerError(
             f"Marker exited {completed.returncode} on {path.name}.\n"
             f"  command: {' '.join(command)}\n"

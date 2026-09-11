@@ -68,6 +68,19 @@ CHINESE_PROVENANCE = (
 
 _HF_CACHE_DIR = re.compile(r"^models--(?P<org>.+?)--(?P<name>.+)$")
 
+#: HuggingFace's own cache layout directories, not models.
+#:
+#: `HF_HOME` contains `hub/` (where the `models--org--name` directories actually live, and
+#: which this gate scans in its own right) and `xet/` (a content-addressed chunk store
+#: backing them). Flagging those two as unknown models is a false positive that fires on
+#: every machine the moment anything is downloaded -- and a gate that cries wolf gets
+#: switched off, which costs more than the check is worth. They are reported, not failed.
+#:
+#: This does NOT create a hiding place: every model reachable through them appears in
+#: `hub/` under its own name and is judged there. `xet` holds bytes with no identity of
+#: their own, so the remedy for it is `make clean-work`, not an allowlist entry.
+HF_CACHE_LAYOUT_DIRS = frozenset({"hub", "xet", "datasets", "modules", "assets", "spaces"})
+
 
 @dataclass
 class Finding:
@@ -304,7 +317,16 @@ def scan_caches(
                     )
                 continue
 
-            if child.name.lower() in allowed_dirs:
+            if child.name.lower() in HF_CACHE_LAYOUT_DIRS:
+                findings.append(
+                    Finding(
+                        "INFO",
+                        child.name,
+                        f"HuggingFace cache layout directory at {child}, not a model. Its "
+                        "contents are judged under hub/.",
+                    )
+                )
+            elif child.name.lower() in allowed_dirs:
                 findings.append(Finding("OK", child.name, f"cached at {child}"))
             elif child.name.lower() in evaluation_dirs:
                 findings.append(_evaluation_finding(child.name, child))

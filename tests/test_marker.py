@@ -214,3 +214,23 @@ def test_an_evaluation_runs_marker_on_needs_ocr_documents(marker_config, entry_f
 
     assert seen, "marker was not invoked on a needs_ocr document"
     assert result.status == convert_module.STATUS_WRITTEN
+
+
+def test_a_missing_llama_server_is_explained_as_the_ocr_path(marker_config, fixtures_dir, monkeypatch):
+    """surya's own error says `brew install llama.cpp`, which is advice for the wrong machine."""
+    import subprocess
+
+    class Completed:
+        returncode = 1
+        stdout = ""
+        stderr = "surya.inference.backends.spawn.SpawnError: llama-server binary not found."
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/docker")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: Completed())
+
+    with pytest.raises(MarkerError) as excinfo:
+        pdf_marker.convert(fixtures_dir / "image_only.pdf", marker_config)
+
+    message = str(excinfo.value)
+    assert "WITH_LLAMA_CPP=1" in message
+    assert "genuinely needs OCR" in message

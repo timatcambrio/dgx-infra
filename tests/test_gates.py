@@ -497,3 +497,29 @@ def test_make_check_cannot_pass_with_evaluation_weights_present(tmp_path, capsys
 
     assert exit_code == 1
     assert "evaluation-only weights" in capsys.readouterr().out
+
+
+def test_huggingface_cache_layout_directories_are_not_reported_as_models(tmp_path):
+    """`hub/` and `xet/` are HF's own layout, and they appear the moment anything downloads.
+
+    Failing on them would make the gate fire on every machine for a non-reason. Everything
+    reachable through them is still judged: `hub/` is scanned in its own right.
+    """
+    (tmp_path / "hub").mkdir()
+    (tmp_path / "xet").mkdir()
+
+    findings = model_gate.scan_caches([], [], [tmp_path])
+
+    assert _failures(findings) == []
+    assert all(finding.level == "INFO" for finding in findings)
+
+
+def test_a_model_inside_hub_is_still_judged(tmp_path):
+    """The layout exemption must not become a hiding place."""
+    hub = tmp_path / "hub"
+    hub.mkdir()
+    (hub / "models--someorg--some-model").mkdir()
+
+    findings = model_gate.scan_caches([], [], [tmp_path, hub])
+
+    assert any("not in models.yaml" in finding.detail for finding in _failures(findings))

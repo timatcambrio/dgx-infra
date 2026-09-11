@@ -23,15 +23,23 @@ ARG MARKER_VERSION=2.0.0
 ARG TORCH_VERSION=2.7.1
 ARG TORCHVISION_VERSION=0.22.1
 
-# Surya's VLM recogniser needs llama.cpp on CPU (vllm is GPU-only). Off by default: a
-# born-digital corpus goes through layout + text extraction without ever reaching the VLM,
-# and the binary is a large download. Turn it on if a run reports a missing `llama-server`.
-ARG WITH_LLAMA_CPP=0
-ARG LLAMA_CPP_RELEASE=b6300
+# Surya's VLM recogniser needs llama.cpp on CPU (vllm is GPU-only), and marker reaches it
+# only when a page actually has to be OCR'd. Both halves are confirmed by running it:
+# born_digital.pdf converted fine without llama-server, and image_only.pdf died on
+# `SpawnError: llama-server binary not found`.
+#
+# On by default because the no-text-layer documents are the ones the evaluation exists to
+# measure. Build with --build-arg WITH_LLAMA_CPP=0 for a smaller image that can convert
+# born-digital PDFs only.
+#
+# llama.cpp is MIT, and it is a separate binary invoked as a server process -- not linked
+# into anything here.
+ARG WITH_LLAMA_CPP=1
+ARG LLAMA_CPP_RELEASE=b10909
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates curl unzip libgl1 libglib2.0-0 \
+        ca-certificates curl libgl1 libglib2.0-0 libgomp1 libcurl4 \
     && rm -rf /var/lib/apt/lists/*
 
 # torch AND torchvision from the CPU index first, then marker under a constraints file that
@@ -50,12 +58,23 @@ RUN printf 'torch==%s\ntorchvision==%s\n' "${TORCH_VERSION}" "${TORCHVISION_VERS
     && pip install --no-cache-dir -c /tmp/constraints.txt "marker-pdf==${MARKER_VERSION}" \
     && python -c "import torch; assert '+cpu' in torch.__version__, torch.__version__; print(torch.__version__)"
 
+# Marker downloads a rendering font into site-packages on first use. The container runs as
+# the calling user's uid, which cannot write there, so the run dies on a PermissionError
+# before it reaches a single page. Fetching it at build time fixes that and removes a runtime
+# network dependency at the same time -- which matters beyond this image, since the client
+# deployment is air-gapped and "it worked on the dev machine" would have hidden it.
+RUN python -c "from marker.util import download_font; download_font()" \
+    && chmod -R a+rwX /usr/local/lib/python3.12/site-packages/static
+
 RUN if [ "${WITH_LLAMA_CPP}" = "1" ]; then \
-        curl -fsSL -o /tmp/llama.zip \
-          "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_CPP_RELEASE}/llama-${LLAMA_CPP_RELEASE}-bin-ubuntu-x64.zip" \
-        && unzip -q /tmp/llama.zip -d /opt/llama \
-        && find /opt/llama -name 'llama-server' -exec install -m 0755 {} /usr/local/bin/ \; \
-        && rm -rf /tmp/llama.zip; \
+        curl -fsSL -o /tmp/llama.tar.gz \
+          "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_CPP_RELEASE}/llama-${LLAMA_CPP_RELEASE}-bin-ubuntu-x64.tar.gz" \
+        && mkdir -p /opt/llama && tar -xzf /tmp/llama.tar.gz -C /opt/llama \
+        && find /opt/llama -type f -name 'llama-server' -exec install -m 0755 {} /usr/local/bin/ \; \
+        && find /opt/llama -type f -name '*.so*' -exec install -m 0755 {} /usr/local/lib/ \; \
+        && ldconfig \
+        && rm -f /tmp/llama.tar.gz \
+        && llama-server --version; \
     fi
 
 # Caches are bind-mounted from WORK_DIR at run time so the model gate can see every weight
