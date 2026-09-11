@@ -70,12 +70,22 @@ RUN if [ "${WITH_LLAMA_CPP}" = "1" ]; then \
         curl -fsSL -o /tmp/llama.tar.gz \
           "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_CPP_RELEASE}/llama-${LLAMA_CPP_RELEASE}-bin-ubuntu-x64.tar.gz" \
         && mkdir -p /opt/llama && tar -xzf /tmp/llama.tar.gz -C /opt/llama \
-        && find /opt/llama -type f -name 'llama-server' -exec install -m 0755 {} /usr/local/bin/ \; \
-        && find /opt/llama -type f -name '*.so*' -exec install -m 0755 {} /usr/local/lib/ \; \
-        && ldconfig \
+        && ln -s "/opt/llama/llama-${LLAMA_CPP_RELEASE}" /opt/llama/current \
         && rm -f /tmp/llama.tar.gz \
-        && llama-server --version; \
+        && /opt/llama/current/llama-server --version; \
     fi
+
+# Point surya at the binary WHERE IT WAS UNPACKED, and tell ggml where its backends are.
+#
+# Copying `llama-server` into /usr/local/bin and its .so files into /usr/local/lib looks
+# tidier and does not work: ggml loads its CPU backend (`libggml-cpu-*.so`, one per
+# microarchitecture) dynamically at runtime, and it looks beside the executable, not along
+# the linker path. Split up that way the server starts, reports a version, and then dies on
+# `no backends are loaded` the moment it is asked to load a model -- 600 seconds later, as a
+# health-check timeout. Keeping the distribution intact is what makes it work.
+ENV LLAMA_CPP_BINARY=/opt/llama/current/llama-server \
+    GGML_BACKEND_PATH=/opt/llama/current \
+    LD_LIBRARY_PATH=/opt/llama/current
 
 # Caches are bind-mounted from WORK_DIR at run time so the model gate can see every weight
 # that lands on disk. These defaults matter only if someone runs the image by hand.
