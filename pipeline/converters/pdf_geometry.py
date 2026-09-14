@@ -35,6 +35,9 @@ _DIGITS = re.compile(r"\d+")
 
 _WHITESPACE = re.compile(r"\s+")
 
+#: PDF annotation contents use \r, sometimes \r\n, for their own line breaks.
+_ANNOTATION_BREAK = re.compile(r"\r\n?|\n")
+
 
 @dataclass(frozen=True)
 class Line:
@@ -64,6 +67,41 @@ class Line:
                 cells[-1][1].append(text)
             previous_x1 = x1
         return [(x0, " ".join(parts).strip()) for x0, parts in cells]
+
+
+#: Annotation subtypes that carry authored text a reader is meant to read.
+#:
+#: `FreeText` is the "Markup" callout -- the box someone types into when annotating a form in
+#: Preview or Acrobat. `Text` is the sticky note. Deliberately NOT `Widget`: those are form
+#: fields, whose values are already drawn onto the page and would come back twice.
+_TEXT_ANNOTATION_SUBTYPES = frozenset({"FreeText", "Text"})
+
+#: Prefix marking a line as annotation rather than printed page text.
+#:
+#: It has to be visible in the output, not just in metadata. An instruction someone drew onto
+#: a form ("select the appropriate FISCAL YEAR") reads as though the document says it, and
+#: downstream this text will be retrieved and cited with no access to the PDF. The difference
+#: between what a form prints and what a colleague annotated onto it is exactly the kind of
+#: thing a citation has to preserve.
+ANNOTATION_PREFIX = "> **Annotation:** "
+
+
+@dataclass(frozen=True)
+class Annotation:
+    """Authored text attached to a page rather than printed on it."""
+
+    top: float
+    x0: float
+    text: str
+
+    def render(self) -> str:
+        # Multi-line annotation contents carry \r from the PDF; each line needs the
+        # blockquote marker or markdown ends the quote at the first one.
+        lines = [line.strip() for line in _ANNOTATION_BREAK.split(self.text) if line.strip()]
+        if not lines:
+            return ""
+        first, *rest = lines
+        return "\n".join([ANNOTATION_PREFIX + first] + [f"> {line}" for line in rest])
 
 
 @dataclass(frozen=True)
@@ -245,6 +283,49 @@ def _heading_level(size: float, body: float, heading_sizes: list[float]) -> int 
     return 3
 
 
+def extract_annotations(page, page_text: str) -> list[Annotation]:
+    """Text annotations on one page, minus any whose text the page already prints.
+
+    The de-duplication is not theoretical. An annotation that has been *flattened* into the
+    page -- which is what "Print to PDF" or a Save As Flattened does -- leaves both the
+    drawn text and the annotation object behind, and emitting both would make the document
+    say everything twice.
+
+    Fails soft on a malformed annotation dictionary: a PDF whose annotations cannot be read
+    still converts, it just converts without them. A hard failure here would take out the
+    document's printed text too, which is a strictly worse outcome.
+    """
+    annotations: list[Annotation] = []
+    try:
+        raw_annotations = page.annots or []
+    except Exception:  # noqa: BLE001 - a broken annot table must not lose the page
+        return []
+
+    printed = _normalise(page_text)
+    for annotation in raw_annotations:
+        try:
+            subtype = annotation.get("data", {}).get("Subtype")
+            name = getattr(subtype, "name", None) or str(subtype or "")
+            if name not in _TEXT_ANNOTATION_SUBTYPES:
+                continue
+            contents = annotation.get("contents")
+            if isinstance(contents, bytes):
+                contents = contents.decode("utf-8", "replace")
+            text = (contents or "").strip()
+            if not text or _normalise(text) in printed:
+                continue
+            annotations.append(
+                Annotation(
+                    top=float(annotation.get("top") or 0.0),
+                    x0=float(annotation.get("x0") or 0.0),
+                    text=text,
+                )
+            )
+        except Exception:  # noqa: BLE001 - skip the annotation, keep the page
+            continue
+    return annotations
+
+
 def analyse(path: Path, config: Config) -> list[PageAnalysis]:
     """Per-page geometry facts, for deciding whether this document needs more than geometry."""
     import pdfplumber  # noqa: PLC0415 - lazy: keeps `report` fast when it is not needed
@@ -291,6 +372,11 @@ def to_markdown(path: Path, config: Config) -> str:
                 "tables": _table_regions(page),
                 "width": float(page.width),
                 "height": float(page.height),
+                "annotations": (
+                    extract_annotations(page, page.extract_text() or "")
+                    if config.pdf_annotations
+                    else []
+                ),
             }
             for page in pdf.pages
         ]
@@ -353,9 +439,16 @@ def _render_page(
         elements.append(line_group)
     for box, rows in page["tables"]:
         elements.append((float(box[1]), render_table(rows)))
+    for annotation in page.get("annotations", ()):
+        rendered = annotation.render()
+        if rendered:
+            elements.append((annotation.top, rendered))
 
     # Two-column pages are already in reading order; re-sorting by `top` would interleave
-    # the columns again, which is the failure this whole branch exists to avoid.
+    # the columns again, which is the failure this whole branch exists to avoid. Tables and
+    # annotations therefore land after the prose on those pages rather than at their own
+    # vertical position -- the same trade the table path has always made, and preferable to
+    # shuffling the columns back together.
     if columns == 1:
         elements.sort(key=lambda item: item[0])
     return [text for _, text in elements]

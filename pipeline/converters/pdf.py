@@ -69,7 +69,7 @@ def build_pipeline_options(config: Config):
     return options
 
 
-def needs_ocr_stub(path: Path) -> tuple[str, str]:
+def needs_ocr_stub(path: Path, config: Config) -> tuple[str, str]:
     """Body for a PDF with no usable text layer.
 
     Emits the visible INCOMPLETE callout plus whatever text *was* extractable, so the file
@@ -87,7 +87,37 @@ def needs_ocr_stub(path: Path) -> tuple[str, str]:
         parts.append(salvaged)
     else:
         parts.append("No text whatsoever could be extracted from this document.")
+
+    # Annotations survive the stub path too, and the case is not hypothetical: a scanned
+    # form that someone then marked up electronically has no usable text layer and a full
+    # set of typed callouts. Those callouts are the only machine-readable text in the file,
+    # so dropping them here would throw away the one thing that was never lost.
+    annotations = _annotation_block(path, config)
+    if annotations:
+        parts.append("## Annotations (not printed on the page)")
+        parts.append(annotations)
     return "\n\n".join(parts), CONVERTER_STUB
+
+
+def _annotation_block(path: Path, config: Config) -> str:
+    """Rendered text annotations for a document taking the stub path, or ""."""
+    if not config.pdf_annotations:
+        return ""
+    try:
+        import pdfplumber  # noqa: PLC0415 - lazy, and only on this path
+
+        rendered: list[str] = []
+        with pdfplumber.open(path) as pdf:
+            for page in pdf.pages:
+                for annotation in pdf_geometry.extract_annotations(
+                    page, page.extract_text() or ""
+                ):
+                    text = annotation.render()
+                    if text:
+                        rendered.append(text)
+    except Exception:  # noqa: BLE001 - the stub is a best-effort salvage, never a failure
+        return ""
+    return "\n\n".join(rendered)
 
 
 def missing_pages_note(low_pages: list[int] | tuple[int, ...]) -> str:

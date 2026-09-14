@@ -21,6 +21,7 @@ GOLDEN_BY_FIXTURE = {
     "reference_table.csv": "reference_table.md",
     "born_digital.pdf": "born_digital.md",
     "mixed.pdf": "mixed.md",
+    "annotated_form.pdf": "annotated_form.md",
     "simple.docx": "simple.md",
 }
 

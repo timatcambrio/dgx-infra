@@ -291,6 +291,41 @@ runtime at all**, nothing is fetched at runtime (so an air-gap is a non-issue fo
 output is byte-identical across machines, and a client can audit the extraction logic by
 reading it — which is not true of model weights.
 
+### Annotations are extracted, because nothing else sees them
+
+A "Markup" callout -- the box someone types into when annotating a form in Preview or
+Acrobat -- is a PDF **annotation object, not page content**. No text-layer extraction sees
+it, which means a document whose instructions were added that way converts into a blank
+form with the instructions silently gone.
+
+This is not a corner case in this corpus. One funding-request tutorial carries **18** such
+callouts -- `select the appropriate FISCAL YEAR`, `don't forget to attach a copy of the
+draft SOW`, `TOTAL SUM ON IGCE MATCHES AMOUNT IN FUNDING REQUEST` -- and **none** of them are
+in its text layer. They are the entire reason the file is a tutorial rather than a form.
+
+`FreeText` and `Text` annotations are therefore read from pdfplumber (already the conversion
+dependency -- no new package, no model, no licence question), placed at their own vertical
+position so each sits beside the field it describes, and prefixed:
+
+```markdown
+### Overview  Requester  Jane Doe
+
+> **Annotation:** YOUR NAME
+```
+
+The prefix is load-bearing. Downstream this text gets retrieved and cited with no access to
+the original PDF, and "what the form prints" versus "what a colleague annotated onto it" is
+exactly the distinction a citation has to keep.
+
+`Widget` annotations -- form fields -- are deliberately excluded: their values are already
+drawn on the page and would come back twice. Annotations whose text the page also prints
+(the result of flattening) are dropped for the same reason. `PDF_ANNOTATIONS=false` turns
+the feature off, which exists for engine comparisons rather than as a sensible default.
+
+Annotations survive the `needs_ocr` stub path too: a scanned form that was later marked up
+electronically has no usable text layer and a full set of typed callouts, which are then the
+only machine-readable text in the file.
+
 ### Where geometry is weak, and how you find out
 
 `triage` records the two things that decide whether a document needs more, and `report`

@@ -164,7 +164,7 @@ def _dispatch(
 
     if source_format == "pdf":
         if text_class == TEXT_CLASS_NEEDS_OCR:
-            body, converter = pdf.needs_ocr_stub(source_path)
+            body, converter = pdf.needs_ocr_stub(source_path, config)
             return body, converter, STATUS_STUB
         if text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL):
             triage = entry.get("triage") or {}

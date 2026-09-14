@@ -181,6 +181,47 @@ def mojibake(path: Path) -> None:
     canvas.save()
 
 
+def annotated_form(path: Path) -> None:
+    """A form carrying FreeText annotations, as if someone marked it up in Preview.
+
+    This is the real shape of an institutional "how to fill this in" document: a blank form
+    plus callouts drawn on top telling you what goes where. The callouts are annotation
+    objects, NOT page content, so no text-layer extraction sees them -- which is exactly the
+    regression this fixture exists to catch. Note the annotations are deliberately placed out
+    of source order (the last one added sits highest on the page) so the golden proves they
+    are emitted by position rather than by the order the PDF happens to store them in.
+    """
+    canvas = _canvas(path)
+
+    y = _draw_heading(canvas, "Funding Request Form", 720)
+    y = _draw_paragraph(canvas, BODY_TEXT, y - 6)
+    canvas.setFont("Helvetica", 11)
+    for label, offset in (("Requester:", 40), ("Fiscal year:", 70), ("Amount:", 100)):
+        canvas.drawString(72, y - offset, label)
+    canvas.line(150, y - 44, 400, y - 44)
+    canvas.line(150, y - 74, 400, y - 74)
+    canvas.line(150, y - 104, 400, y - 104)
+
+    # Added bottom-up on purpose: source order is the reverse of reading order.
+    canvas.freeTextAnnotation(
+        Rect=(410, y - 112, 560, y - 92),
+        contents="enter the TOTAL REQUEST AMOUNT",
+        DA="/Helv 9 Tf 0 g",
+    )
+    canvas.freeTextAnnotation(
+        Rect=(410, y - 82, 560, y - 62),
+        contents="select the appropriate FISCAL YEAR",
+        DA="/Helv 9 Tf 0 g",
+    )
+    canvas.freeTextAnnotation(
+        Rect=(410, y - 52, 560, y - 32),
+        contents="YOUR NAME\rnot your supervisor's",
+        DA="/Helv 9 Tf 0 g",
+    )
+    canvas.showPage()
+    canvas.save()
+
+
 def simple_docx(path: Path) -> None:
     """Headings, a list, and a table."""
     from docx import Document
@@ -263,6 +304,7 @@ GENERATORS = {
     "simple.docx": simple_docx,
     "reference_table.csv": reference_table_csv,
     "too_big.csv": too_big_csv,
+    "annotated_form.pdf": annotated_form,
 }
 
 

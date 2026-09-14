@@ -69,6 +69,24 @@ def load_dotenv(path: Path | str | None = None) -> None:
             os.environ[key] = value
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    """Parse a boolean environment variable, rejecting anything ambiguous.
+
+    An unrecognised value is an error rather than a silent `False`: `PDF_ANNOTATIONS=no`
+    quietly meaning "on" would be discovered only by noticing absent output, which is the
+    hardest kind of bug to see in a converted document.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ConfigError(f"{name} must be a boolean (true/false), got {raw!r}")
+
+
 def _env_int(name: str, default: int) -> int:
     try:
         return int(os.environ.get(name, default))
@@ -97,6 +115,7 @@ class Config:
     csv_max_cols: int
     docling_ocr_engine: str
     pdf_engine: str
+    pdf_annotations: bool
     pdf_heading_size_ratio: float
     pdf_margin_fraction: float
     pdf_repeat_page_fraction: float
@@ -172,6 +191,11 @@ def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = 
         csv_max_cols=_env_int("CSV_MAX_COLS", 12),
         docling_ocr_engine=os.environ.get("DOCLING_OCR_ENGINE", DOCLING_OCR_ENGINE),
         pdf_engine=os.environ.get("PDF_ENGINE", PDF_ENGINE_GEOMETRY),
+        # Text annotations (Markup callouts, sticky notes) are page content that is not
+        # printed on the page. On an annotated form they are frequently the only instructions
+        # the document carries, so they are ON by default; the switch exists to isolate them
+        # when comparing engines, not because leaving them out is ever the better default.
+        pdf_annotations=_env_bool("PDF_ANNOTATIONS", True),
         # Geometric PDF extraction. These describe page geometry, not document semantics,
         # which is why they can be constants at all -- a heading is bigger than body text and
         # a running header sits in the margin on most pages, in any typeset document.
