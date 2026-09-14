@@ -116,6 +116,8 @@ class Config:
     docling_ocr_engine: str
     pdf_engine: str
     pdf_annotations: bool
+    pdf_annotation_linking: bool
+    pdf_annotation_link_tolerance: float
     pdf_heading_size_ratio: float
     pdf_margin_fraction: float
     pdf_repeat_page_fraction: float
@@ -197,6 +199,16 @@ def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = 
         # the document carries, so they are ON by default; the switch exists to isolate them
         # when comparing engines, not because leaving them out is ever the better default.
         pdf_annotations=_env_bool("PDF_ANNOTATIONS", True),
+        # Binding each annotation to the field it describes. On by default for the
+        # same reason the annotations themselves are: an instruction whose field is
+        # unknown is a good deal less useful than one whose field is named, and the
+        # binding degrades to today's behaviour when the file says nothing.
+        pdf_annotation_linking=_env_bool("PDF_ANNOTATION_LINKING", True),
+        # Vertical slack, in points, when testing whether an annotation and a candidate
+        # target sit on the same row. A callout is typed at its own size and rarely
+        # shares a baseline with the label it describes, so exact overlap is too strict;
+        # much more than half a line and a dense form starts matching its neighbours.
+        pdf_annotation_link_tolerance=_env_float("PDF_ANNOTATION_LINK_TOLERANCE", 6.0),
         # Geometric PDF extraction. These describe page geometry, not document semantics,
         # which is why they can be constants at all -- a heading is bigger than body text and
         # a running header sits in the margin on most pages, in any typeset document.

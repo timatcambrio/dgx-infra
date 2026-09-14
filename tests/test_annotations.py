@@ -322,3 +322,9 @@ def test_a_document_with_no_widgets_or_callouts_is_unaffected(config, fixtures_d
     """Linking must not put labels on a document that never had fields."""
     body = pdf_geometry.to_markdown(fixtures_dir / "born_digital.pdf", config)
     assert "[field:" not in body and "[near:" not in body
+
+
+def test_the_needs_ocr_stub_can_still_name_fields(config, fixtures_dir):
+    """A scanned form has no labels to read, so its widgets are the only source of names."""
+    body, _ = pdf.needs_ocr_stub(fixtures_dir / LINKED, config)
+    assert "[field: TypeOfSubmission]: Use Application for the first submission attempt." in body

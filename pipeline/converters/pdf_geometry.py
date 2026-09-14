@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -89,6 +89,21 @@ class Line:
 #: fields, whose values are already drawn onto the page and would come back twice.
 _TEXT_ANNOTATION_SUBTYPES = frozenset({"FreeText", "Text"})
 
+#: An AcroForm field. Not authored text -- a Widget's value is already drawn on the page,
+#: which is why `_TEXT_ANNOTATION_SUBTYPES` excludes it -- but its rectangle and its `/T`
+#: field name are usually exactly what a callout is pointing at.
+_WIDGET_SUBTYPE = "Widget"
+
+#: A line that opens like a numbered form field: `1.`, `4)`, `*7.`.
+#:
+#: Deliberately loose. It only ever *ranks* candidates that geometry has already found, so a
+#: false positive costs a slightly worse label and never a wrong binding.
+_FIELD_ANCHOR = re.compile(r"^\*?\s*\d{1,2}[.)]")
+
+#: Longest a target label may be before it is elided. A label is an anchor, not a quotation;
+#: past this it stops being scannable in the margin of a converted page.
+_LABEL_MAX_CHARS = 60
+
 #: Prefix marking a line as annotation rather than printed page text.
 #:
 #: It has to be visible in the output, not just in metadata. An instruction someone drew onto
@@ -100,12 +115,59 @@ ANNOTATION_PREFIX = "> **Annotation:** "
 
 
 @dataclass(frozen=True)
+class Widget:
+    """A form field: a rectangle on the page and the name the form gives it."""
+
+    top: float
+    bottom: float
+    x0: float
+    x1: float
+    name: str
+
+
+@dataclass(frozen=True)
+class Target:
+    """What an annotation was found to be about.
+
+    `exact` separates a link the file states from one this module inferred. The distinction
+    has to survive into the output: downstream sees the rendered text and nothing else, and
+    a guess that renders like a fact is worse than no guess at all -- on a budget form it is
+    an instruction filed against the wrong line, with nothing to mark it as doubtful.
+    """
+
+    label: str
+    exact: bool
+    top: float
+
+
+@dataclass(frozen=True)
 class Annotation:
     """Authored text attached to a page rather than printed on it."""
 
     top: float
     x0: float
     text: str
+    bottom: float = 0.0
+    x1: float = 0.0
+    #: Tip of the annotation's callout line (`/CL`), in pdfplumber coordinates, if it has one.
+    callout: tuple[float, float] | None = None
+    #: The field this annotation describes, once resolved.
+    target: Target | None = None
+
+    @property
+    def anchor(self) -> float:
+        """Vertical position to emit at: the target's, if it has one, else its own."""
+        if self.target is None:
+            return self.top
+        # Just past the target so the note lands under the line it belongs to rather than
+        # in place of it. Any epsilon does; page coordinates are points, not counts.
+        return self.target.top + 0.01
+
+    def _prefix(self) -> str:
+        if self.target is None:
+            return ANNOTATION_PREFIX
+        kind = "field" if self.target.exact else "near"
+        return f"> **Annotation** [{kind}: {self.target.label}]: "
 
     def render(self) -> str:
         # Multi-line annotation contents carry \r from the PDF; each line needs the
@@ -114,7 +176,7 @@ class Annotation:
         if not lines:
             return ""
         first, *rest = lines
-        return "\n".join([ANNOTATION_PREFIX + first] + [f"> {line}" for line in rest])
+        return "\n".join([self._prefix() + first] + [f"> {line}" for line in rest])
 
 
 @dataclass(frozen=True)
@@ -349,6 +411,97 @@ def _list_item(text: str) -> tuple[str, str] | None:
     return marker, text[match.end():].strip()
 
 
+def _subtype_name(data: dict) -> str:
+    subtype = (data or {}).get("Subtype")
+    return getattr(subtype, "name", None) or str(subtype or "")
+
+
+def _pdf_text(value: Any) -> str:
+    """A PDF string as text. Field names arrive as bytes far more often than as str."""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace").strip()
+    return str(value or "").strip()
+
+
+def _callout_tip(annotation: dict) -> tuple[float, float] | None:
+    """The point an annotation's callout line indicates, or `None`.
+
+    `/CL` is 4 or 6 numbers -- an optional knee, then the tip -- and the tip is the last
+    pair. This is the annotator's own statement of what the note is about, which makes it
+    the one link in the file that needs no inference at all.
+
+    The array is in PDF user space, whose y grows upward from the page bottom, while
+    everything else here uses pdfplumber's downward `top`. The conversion needs the page
+    height, which is not on the annotation, so the y is returned unconverted and
+    `resolve_targets` flips it once the page is in scope.
+    """
+    raw = (annotation.get("data") or {}).get("CL")
+    if not isinstance(raw, (list, tuple)) or len(raw) not in (4, 6):
+        return None
+    try:
+        return float(raw[-2]), float(raw[-1])
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_widgets(page) -> list[Widget]:
+    """Form fields on one page, as targets an annotation can be bound to.
+
+    A Widget is still not an annotation and is still never emitted as text -- its value is
+    already drawn on the page. What it contributes is identity: `/T` is the name the form
+    itself gives the field, which beats any label this module could read off the page.
+
+    Fails soft for the same reason `extract_annotations` does: a form whose fields cannot be
+    read should convert without field names, not fail to convert.
+    """
+    widgets: list[Widget] = []
+    try:
+        raw_annotations = page.annots or []
+    except Exception:  # noqa: BLE001 - a broken annot table must not lose the page
+        return []
+
+    for annotation in raw_annotations:
+        try:
+            data = annotation.get("data") or {}
+            if _subtype_name(data) != _WIDGET_SUBTYPE:
+                continue
+            name = _pdf_text(_field_name(data))
+            if not name:
+                continue
+            widgets.append(
+                Widget(
+                    top=float(annotation.get("top") or 0.0),
+                    bottom=float(annotation.get("bottom") or 0.0),
+                    x0=float(annotation.get("x0") or 0.0),
+                    x1=float(annotation.get("x1") or 0.0),
+                    name=name,
+                )
+            )
+        except Exception:  # noqa: BLE001 - skip the widget, keep the page
+            continue
+    return widgets
+
+
+def _field_name(data: dict) -> Any:
+    """`/T` from the widget, or from its parent field.
+
+    A field split across several widgets (a radio group, a field continued on another page)
+    carries its name once, on the shared parent, and leaves the kids unnamed.
+    """
+    if data.get("T") is not None:
+        return data["T"]
+    parent = data.get("Parent")
+    resolve = getattr(parent, "resolve", None)
+    if resolve is not None:
+        try:
+            parent = resolve()
+        except Exception:  # noqa: BLE001 - an unresolvable parent is simply no name
+            return None
+    if isinstance(parent, dict):
+        return parent.get("T")
+    return None
+
+
 def extract_annotations(page, page_text: str) -> list[Annotation]:
     """Text annotations on one page, minus any whose text the page already prints.
 
@@ -370,9 +523,7 @@ def extract_annotations(page, page_text: str) -> list[Annotation]:
     printed = _normalise(page_text)
     for annotation in raw_annotations:
         try:
-            subtype = annotation.get("data", {}).get("Subtype")
-            name = getattr(subtype, "name", None) or str(subtype or "")
-            if name not in _TEXT_ANNOTATION_SUBTYPES:
+            if _subtype_name(annotation.get("data") or {}) not in _TEXT_ANNOTATION_SUBTYPES:
                 continue
             contents = annotation.get("contents")
             if isinstance(contents, bytes):
@@ -384,12 +535,149 @@ def extract_annotations(page, page_text: str) -> list[Annotation]:
                 Annotation(
                     top=float(annotation.get("top") or 0.0),
                     x0=float(annotation.get("x0") or 0.0),
+                    bottom=float(annotation.get("bottom") or 0.0),
+                    x1=float(annotation.get("x1") or 0.0),
                     text=text,
+                    callout=_callout_tip(annotation),
                 )
             )
         except Exception:  # noqa: BLE001 - skip the annotation, keep the page
             continue
     return annotations
+
+
+# --------------------------------------------------------------------------------------
+# Binding annotations to fields
+# --------------------------------------------------------------------------------------
+
+
+def _label(text: str) -> str:
+    """A target's text reduced to something that reads as an anchor."""
+    collapsed = _WHITESPACE.sub(" ", text).strip()
+    if len(collapsed) <= _LABEL_MAX_CHARS:
+        return collapsed
+    return collapsed[: _LABEL_MAX_CHARS - 1].rstrip() + "\u2026"
+
+
+def _overlaps(
+    top: float, bottom: float, other_top: float, other_bottom: float, tolerance: float
+) -> bool:
+    """Whether two vertical spans share a row, within `tolerance` points of slack."""
+    return not (bottom < other_top - tolerance or top > other_bottom + tolerance)
+
+
+def _within(
+    x: float, y: float, box: tuple[float, float, float, float], tolerance: float
+) -> bool:
+    """Whether a point falls inside `(x0, top, x1, bottom)`, with slack on every side."""
+    x0, top, x1, bottom = box
+    return x0 - tolerance <= x <= x1 + tolerance and top - tolerance <= y <= bottom + tolerance
+
+
+def _line_x1(line: Line) -> float:
+    return max((x1 for _, x1, _ in line.words), default=line.x0)
+
+
+def _widget_target(widget: Widget, lines: list[Line], tolerance: float) -> Target:
+    """A form field as a target: the form's name for it, positioned on its printed row.
+
+    Name and position come from different places on purpose. `/T` is the field's identity
+    and beats any label read off the page; the widget's *rectangle*, though, is the input
+    box, which is typically set a little above the label beside it -- so anchoring to the
+    rectangle would emit the note just before the row it belongs to. The row's own text is
+    the right place to put it.
+    """
+    row = [
+        line.top
+        for line in lines
+        if line.text and _overlaps(widget.top, widget.bottom, line.top, line.bottom, tolerance)
+    ]
+    return Target(label=widget.name, exact=True, top=max([widget.top, *row]))
+
+
+def _target_at(
+    point: tuple[float, float], widgets: list[Widget], lines: list[Line], tolerance: float
+) -> Target | None:
+    """What sits under a point: a form field by preference, else a printed line."""
+    x, y = point
+    for widget in widgets:
+        if _within(x, y, (widget.x0, widget.top, widget.x1, widget.bottom), tolerance):
+            return _widget_target(widget, lines, tolerance)
+    for line in lines:
+        if line.text and _within(
+            x, y, (line.x0, line.top, _line_x1(line), line.bottom), tolerance
+        ):
+            return Target(label=_label(line.text), exact=True, top=line.top)
+    return None
+
+
+def _target_beside(
+    annotation: Annotation, widgets: list[Widget], lines: list[Line], tolerance: float
+) -> Target | None:
+    """The field on the same row as a callout that carries no line of its own.
+
+    A widget wins over a printed label even though both are found the same way, because the
+    widget names the field and the label only describes it. The label result is marked
+    inexact: sharing a row is evidence, not a statement, and on a two-column form it is
+    evidence that can be wrong.
+    """
+    for widget in widgets:
+        if _overlaps(
+            annotation.top, annotation.bottom, widget.top, widget.bottom, tolerance
+        ):
+            return _widget_target(widget, lines, tolerance)
+
+    candidates = [
+        line
+        for line in lines
+        if line.text
+        and _overlaps(annotation.top, annotation.bottom, line.top, line.bottom, tolerance)
+        # Only what lies back towards the body of the page: a callout describes the form it
+        # sits beside, never the callout stacked under it in the same margin column.
+        and _line_x1(line) <= annotation.x0
+    ]
+    if not candidates:
+        return None
+    # A numbered line is the field label; anything else on that row is incidental.
+    anchored = [line for line in candidates if _FIELD_ANCHOR.match(line.text)]
+    chosen = min(
+        anchored or candidates, key=lambda line: annotation.x0 - _line_x1(line)
+    )
+    return Target(label=_label(chosen.text), exact=False, top=chosen.top)
+
+
+def resolve_targets(
+    annotations: list[Annotation],
+    widgets: list[Widget],
+    lines: list[Line],
+    page_height: float,
+    config: Config,
+) -> list[Annotation]:
+    """Bind each annotation to the field it describes, where the page allows it.
+
+    Three rules, tried strongest first, and all three are measurement rather than guesswork
+    about meaning:
+
+    1. the annotation's own callout line, which is the annotator pointing at the field;
+    2. a form field sharing its row, which contributes the form's name for that field;
+    3. a printed label sharing its row, which is an inference and is marked as one.
+
+    An annotation that matches none of them keeps no target and renders exactly as it did
+    before any of this existed. That is the intended outcome, not a failure: on a page where
+    nothing can be established, a plausible anchor is worse than none, because nothing
+    downstream can tell the plausible one from the real ones.
+    """
+    tolerance = config.pdf_annotation_link_tolerance
+    resolved: list[Annotation] = []
+    for annotation in annotations:
+        target = None
+        if annotation.callout is not None:
+            x, y = annotation.callout
+            target = _target_at((x, page_height - y), widgets, lines, tolerance)
+        if target is None:
+            target = _target_beside(annotation, widgets, lines, tolerance)
+        resolved.append(replace(annotation, target=target) if target else annotation)
+    return resolved
 
 
 def analyse(path: Path, config: Config) -> list[PageAnalysis]:
@@ -443,6 +731,11 @@ def to_markdown(path: Path, config: Config) -> str:
                     if config.pdf_annotations
                     else []
                 ),
+                "widgets": (
+                    extract_widgets(page)
+                    if config.pdf_annotations and config.pdf_annotation_linking
+                    else []
+                ),
             }
             for page in pdf.pages
         ]
@@ -452,6 +745,14 @@ def to_markdown(path: Path, config: Config) -> str:
             page["words"], [box for box, _ in page["tables"]]
         )
         page["lines"] = _group_words_into_lines(page["body_words"], config)
+        if config.pdf_annotation_linking and page["annotations"]:
+            page["annotations"] = resolve_targets(
+                page["annotations"],
+                page["widgets"],
+                page["lines"],
+                page["height"],
+                config,
+            )
 
     repeated = find_repeated_margin_lines(
         [page["lines"] for page in pages], [page["height"] for page in pages], config
@@ -506,7 +807,10 @@ def _render_page(
     for annotation in page.get("annotations", ()):
         rendered = annotation.render()
         if rendered:
-            elements.append((annotation.top, rendered))
+            # A bound annotation is emitted at its *target's* position, not its own. That is
+            # the whole point of binding: in a margin column the notes' vertical order is
+            # not the fields' order, so leaving them at their own y is what scattered them.
+            elements.append((annotation.anchor, rendered))
 
     # Two-column pages are already in reading order; re-sorting by `top` would interleave
     # the columns again, which is the failure this whole branch exists to avoid. Tables and

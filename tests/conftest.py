@@ -26,6 +26,14 @@ PIPELINE_ENV_VARS = (
     "CSV_MAX_ROWS",
     "CSV_MAX_COLS",
     "DOCLING_OCR_ENGINE",
+    # The PDF switches matter here for the same reason the rest do: these are read from the
+    # real environment, which the .env stub below does not cover, so an exported
+    # PDF_ANNOTATIONS=false on a developer's shell would turn a whole feature off and the
+    # suite would still report green.
+    "PDF_ENGINE",
+    "PDF_ANNOTATIONS",
+    "PDF_ANNOTATION_LINKING",
+    "PDF_ANNOTATION_LINK_TOLERANCE",
 )
 
 

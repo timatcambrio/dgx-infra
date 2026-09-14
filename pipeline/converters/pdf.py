@@ -109,9 +109,23 @@ def _annotation_block(path: Path, config: Config) -> str:
         rendered: list[str] = []
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
-                for annotation in pdf_geometry.extract_annotations(
+                annotations = pdf_geometry.extract_annotations(
                     page, page.extract_text() or ""
-                ):
+                )
+                # Field binding still applies on this path, and is worth more here than
+                # anywhere else: a scanned form has no text layer to read labels off, so a
+                # callout's field name is recoverable only from the form's own widgets. No
+                # lines are passed because there are none — the label rule cannot fire, and
+                # an annotation that matches no widget simply stays unbound.
+                if config.pdf_annotation_linking:
+                    annotations = pdf_geometry.resolve_targets(
+                        annotations,
+                        pdf_geometry.extract_widgets(page),
+                        [],
+                        float(page.height),
+                        config,
+                    )
+                for annotation in annotations:
                     text = annotation.render()
                     if text:
                         rendered.append(text)
