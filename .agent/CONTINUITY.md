@@ -34,7 +34,20 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
-- 2026-09-14 Investigation complete; implementation not yet started.
+- 2026-09-14 [MILESTONE] Done, on branch `claude/serene-mclaren-cb7901`, three commits in
+  the order the task required: `53d83d5` failing tests + `callout_notes.pdf` fixture,
+  `2dbafb8` the fix, `ac42309` the golden and its registration (nothing else).
 
 ## [OUTCOMES]
-- UNCONFIRMED
+- 2026-09-14 [TOOL] `make license-gate` and `make test` pass (226 tests). The model gate was
+  run as `uv run python scripts/model_gate.py --cache-dir <scratch>` rather than via
+  `make clean-work`, deliberately: clean-work would have deleted the user's Marker
+  evaluation weights. It passes against an empty cache.
+- 2026-09-14 [TOOL] `make fixtures` is a no-op against the committed bytes, so fixture
+  generation stayed deterministic.
+- 2026-09-14 [TOOL] On the real `OTA PR_MIPR Request Tutorial.pdf` the heading count falls
+  from 44 to 16, the NOTES box renders as a nested markdown list, and "S ubmit" is "Submit".
+- 2026-09-14 [TOOL] No existing golden changed. Follow-up, out of scope and pre-existing:
+  glyph-only lines (FontAwesome private-use characters) still emit an empty `## ` block, and
+  numbers inside pdfplumber-extracted ruled tables can still split ("$ 8 ,500,000.00") --
+  that path does not go through `_build_line`.
