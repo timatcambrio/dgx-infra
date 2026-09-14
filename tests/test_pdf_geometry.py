@@ -263,3 +263,163 @@ def test_mixed_fixture_declares_its_scanned_page(fixtures_dir, config, entry_for
 
     assert "INCOMPLETE" in text
     assert "page 3" in text
+
+
+# --------------------------------------------------------- headings, lists, split words
+
+
+def word(text: str, x0: float, x1: float, *, size: float = 12.0, font: str = "Helvetica") -> dict:
+    return {
+        "text": text,
+        "x0": x0,
+        "x1": x1,
+        "top": 100.0,
+        "bottom": 100.0 + size,
+        "size": size,
+        "fontname": font,
+    }
+
+
+def paragraphs(lines: list[Line], body: float, heading_sizes: list[float], config):
+    """`_paragraphs` output as plain blocks, dropping the vertical positions."""
+    return [text for _, text in pdf_geometry._paragraphs(lines, body, heading_sizes, config)]
+
+
+def callout(fixtures_dir, config) -> str:
+    return pdf_geometry.to_markdown(fixtures_dir / "callout_notes.pdf", config)
+
+
+def test_a_line_barely_larger_than_body_is_not_a_heading(fixtures_dir, config):
+    """Being bigger than body text is evidence of emphasis, not of a section title.
+
+    The fixture's subhead is set 1.10x body -- under `PDF_HEADING_SIZE_RATIO`. On a form
+    tutorial, where body text is the smallest type on the page, treating every larger line
+    as a heading turns the whole document into headings and leaves nothing under them.
+    """
+    text = callout(fixtures_dir, config)
+
+    assert "Request for contracting action" in text
+    assert "# Request for contracting action" not in text
+
+
+def test_a_bulleted_callout_stays_a_list(fixtures_dir, config):
+    text = callout(fixtures_dir, config)
+
+    assert "- Submit SEPARATE FUNDING REQUESTS for EACH VENDOR" in text
+    for line in text.splitlines():
+        assert not (line.startswith("#") and "SEPARATE FUNDING REQUESTS" in line)
+
+
+def test_a_wrapped_bullet_continues_its_own_item(fixtures_dir, config):
+    """The continuation line starts at the marker's own x, so only spacing can tell."""
+    text = callout(fixtures_dir, config)
+
+    assert (
+        "- INCLUDE SOW, CONTRACT, SIGNED IGCE, 7600A (if applicable), "
+        "MIPR INSTRUCTIONS (if applicable)"
+    ) in text
+
+
+def test_an_indented_sub_bullet_nests(fixtures_dir, config):
+    text = callout(fixtures_dir, config)
+
+    assert (
+        "  - 7600A required for Reimbursable MIPRs, and if the receiving office "
+        "requires one"
+    ) in text
+
+
+def test_a_wrapped_run_of_sentences_is_a_paragraph_not_a_heading(fixtures_dir, config):
+    """Three short lines that are each heading-sized are still a paragraph together."""
+    text = callout(fixtures_dir, config)
+
+    assert (
+        "This callout is a wrapped run of ordinary sentences, set two points larger than "
+        "the body text around it, which makes it emphasis rather than a section heading."
+    ) in text
+    for line in text.splitlines():
+        assert not (line.startswith("#") and "wrapped run of ordinary sentences" in line)
+
+
+def test_a_list_ends_where_body_text_resumes(fixtures_dir, config):
+    """A list that does not know how to end swallows the paragraph after it."""
+    text = callout(fixtures_dir, config)
+
+    assert "- see page 5 for info going into 7600A\n" in text
+    assert "- Travel costs are reimbursed" not in text
+
+
+def test_the_real_headings_survive(fixtures_dir, config):
+    """The guards must not cost the document the one heading it really has."""
+    assert "# OTA Funding Request Tutorial" in callout(fixtures_dir, config)
+    assert "## NOTES:" in callout(fixtures_dir, config)
+
+
+def test_a_word_split_across_font_subsets_is_rejoined(fixtures_dir, config):
+    """"Submit" set as "S" + "ubmit" in two subsets of one face must come back whole."""
+    text = callout(fixtures_dir, config)
+
+    assert "Submit" in text
+    assert "S ubmit" not in text
+
+
+def test_fragments_with_no_gap_are_one_word(config):
+    """A zero gap is never a space, whatever pdfplumber's absolute tolerance says."""
+    words = [word("S", 72.0, 80.0, font="Helvetica-Oblique"), word("ubmit", 80.0, 109.3)]
+
+    assert pdf_geometry._group_words_into_lines(words, config)[0].text == "Submit"
+
+
+def test_a_real_space_still_separates_two_words(config):
+    """The join must be narrower than a space at that type size, or words run together."""
+    words = [word("EACH", 72.0, 100.0), word("VENDOR", 103.4, 145.0)]
+
+    assert pdf_geometry._group_words_into_lines(words, config)[0].text == "EACH VENDOR"
+
+
+def test_a_long_line_is_not_a_heading_however_large_the_type(config):
+    long_text = (
+        "Every funding request has to name a single vendor and a single programme "
+        "element, which is why these are always submitted separately."
+    )
+    lines = [line(long_text, size=20.0)]
+
+    assert paragraphs(lines, body=10.0, heading_sizes=[20.0], config=config) == [long_text]
+
+
+def test_a_short_large_line_is_still_a_heading(config):
+    lines = [line("Allowable Expenses", size=20.0)]
+
+    assert paragraphs(lines, body=10.0, heading_sizes=[20.0], config=config) == [
+        "# Allowable Expenses"
+    ]
+
+
+def test_a_bullet_glyph_line_is_a_list_item_not_a_heading(config):
+    lines = [
+        line("• Check with the office receiving funding", top=100, size=12.0),
+        line("• Some offices publish their own instructions", top=116, size=12.0),
+    ]
+
+    assert paragraphs(lines, body=9.45, heading_sizes=[12.0], config=config) == [
+        "- Check with the office receiving funding\n"
+        "- Some offices publish their own instructions"
+    ]
+
+
+def test_a_numbered_item_keeps_its_number(config):
+    lines = [
+        line("1. Attach the signed IGCE", top=100, size=12.0),
+        line("2. Attach the MIPR instructions", top=116, size=12.0),
+    ]
+
+    assert paragraphs(lines, body=9.45, heading_sizes=[12.0], config=config) == [
+        "1. Attach the signed IGCE\n2. Attach the MIPR instructions"
+    ]
+
+
+def test_a_double_hyphen_is_not_a_list_marker(config):
+    """`-- None --` is what an unfilled form field prints, not a bullet."""
+    lines = [line("-- None --", size=12.0)]
+
+    assert paragraphs(lines, body=9.45, heading_sizes=[12.0], config=config) == ["-- None --"]

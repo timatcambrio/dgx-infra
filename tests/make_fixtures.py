@@ -64,8 +64,8 @@ def _draw_heading(canvas, text: str, y: int) -> int:
     return y - 28
 
 
-def _draw_paragraph(canvas, text: str, y: int, width: int = 78) -> int:
-    canvas.setFont("Helvetica", 11)
+def _draw_paragraph(canvas, text: str, y: int, width: int = 78, size: float = 11) -> int:
+    canvas.setFont("Helvetica", size)
     words = text.split()
     line: list[str] = []
     for word in words:
@@ -222,6 +222,110 @@ def annotated_form(path: Path) -> None:
     canvas.save()
 
 
+#: `callout_notes.pdf` geometry. The callout sits at one x for markers *and* for the
+#: unmarked lines that continue them, exactly as the real document does -- so indentation
+#: cannot be what tells a continuation from a new block.
+CALLOUT_X = 108
+CALLOUT_INDENT = 28
+CALLOUT_SIZE = 12
+CALLOUT_LEADING = 16
+CALLOUT_BODY_SIZE = 9.5
+
+#: The subhead is set 1.10x body: larger than body text, and still not a heading.
+SUBHEAD_SIZE = 10.5
+
+#: Lines of the "NOTES:" callout as `(indent, [(font, text), ...])`.
+#:
+#: Two things are deliberate. The sub-bullet is indented while its own continuation line is
+#: not, so a list has to be reconstructed from markers and spacing rather than from x alone.
+#: And "Submit" is drawn as "S" in one font followed by "ubmit" in another, with no gap
+#: between them -- which is what a subset-font split looks like in a real PDF, and what
+#: makes `extract_words` report one word as two.
+CALLOUT_LINES: list[tuple[int, list[tuple[str, str]]]] = [
+    (0, [("Helvetica", "NOTES:")]),
+    (
+        0,
+        [
+            ("Helvetica", "- "),
+            ("Helvetica-Oblique", "S"),
+            ("Helvetica", "ubmit SEPARATE FUNDING REQUESTS for EACH VENDOR"),
+        ],
+    ),
+    (0, [("Helvetica", "- INCLUDE SOW, CONTRACT, SIGNED IGCE, 7600A (if")]),
+    (0, [("Helvetica", "applicable), MIPR INSTRUCTIONS (if applicable)")]),
+    (CALLOUT_INDENT, [("Helvetica", "* 7600A required for Reimbursable MIPRs, and")]),
+    (CALLOUT_INDENT, [("Helvetica", "if the receiving office requires one")]),
+]
+
+#: Three wrapped sentences at callout size. Each line on its own is short enough to pass for
+#: a heading; together they are plainly a paragraph, which is the distinction the converter
+#: has to make.
+CALLOUT_PROSE = [
+    "This callout is a wrapped run of ordinary sentences, set two",
+    "points larger than the body text around it, which makes it",
+    "emphasis rather than a section heading.",
+]
+
+#: A second list, far enough below the prose that the gap alone ends the first one.
+CALLOUT_POINTERS = [
+    "- see page 4 for sample IGCEs",
+    "- see page 5 for info going into 7600A",
+]
+
+
+def _draw_segments(canvas, x: float, y: float, segments, size: float) -> None:
+    """Draw `(font, text)` runs end to end, advancing x by each run's measured width."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    for font, text in segments:
+        canvas.setFont(font, size)
+        canvas.drawString(x, y, text)
+        x += stringWidth(text, font, size)
+
+
+def callout_notes(path: Path) -> None:
+    """A page whose emphasis is all set larger than body text, with a bulleted callout.
+
+    This is the shape of a form tutorial, and it is the one geometry gets wrong by default:
+    body text is the smallest type on the page, so a label, a callout and a bullet are all
+    "bigger than body" and all read as headings. The fixture exists to pin down that being
+    bigger than body text is not on its own enough to make a line a heading, that a bulleted
+    block stays a list, and that a word split across two font subsets comes back as one word.
+    """
+    canvas = _canvas(path)
+
+    y = _draw_heading(canvas, "OTA Funding Request Tutorial", 720)
+    canvas.setFont("Helvetica", SUBHEAD_SIZE)
+    canvas.drawString(72, y, "Request for contracting action")
+
+    y = _draw_paragraph(canvas, BODY_TEXT, y - 34, size=CALLOUT_BODY_SIZE)
+
+    y -= 20
+    for indent, segments in CALLOUT_LINES:
+        _draw_segments(canvas, CALLOUT_X + indent, y, segments, CALLOUT_SIZE)
+        y -= CALLOUT_LEADING
+
+    y -= 24
+    for text in CALLOUT_PROSE:
+        _draw_segments(canvas, CALLOUT_X, y, [("Helvetica", text)], CALLOUT_SIZE)
+        y -= CALLOUT_LEADING
+
+    y -= 24
+    for text in CALLOUT_POINTERS:
+        _draw_segments(canvas, CALLOUT_X, y, [("Helvetica", text)], CALLOUT_SIZE)
+        y -= CALLOUT_LEADING
+
+    # Body text has to be the most-set size on the page or it is not the body: without this
+    # second paragraph the callout outweighs it and the callout becomes the baseline, which
+    # would make the fixture prove the opposite of what it is for. It also puts ordinary
+    # prose directly after the last bullet, where a list that does not know how to end
+    # would swallow it.
+    _draw_paragraph(canvas, BODY_TEXT, y - 24, size=CALLOUT_BODY_SIZE)
+
+    canvas.showPage()
+    canvas.save()
+
+
 def simple_docx(path: Path) -> None:
     """Headings, a list, and a table."""
     from docx import Document
@@ -305,6 +409,7 @@ GENERATORS = {
     "reference_table.csv": reference_table_csv,
     "too_big.csv": too_big_csv,
     "annotated_form.pdf": annotated_form,
+    "callout_notes.pdf": callout_notes,
 }
 
 
