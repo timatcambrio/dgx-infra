@@ -20,6 +20,7 @@ from pipeline.convert import convert_entry
 GOLDEN_BY_FIXTURE = {
     "reference_table.csv": "reference_table.md",
     "born_digital.pdf": "born_digital.md",
+    "callout_notes.pdf": "callout_notes.md",
     "mixed.pdf": "mixed.md",
     "annotated_form.pdf": "annotated_form.md",
     "simple.docx": "simple.md",
