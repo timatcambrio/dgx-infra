@@ -181,6 +181,98 @@ def mojibake(path: Path) -> None:
     canvas.save()
 
 
+#: `linked_form.pdf` geometry, in ReportLab's bottom-up user space.
+#:
+#: The four rows exist to produce one of each resolution outcome, so that a change in the
+#: cascade shows up as a change in *which* rule fired rather than as a vague diff. Rows 1
+#: and 3 carry a form widget; rows 2 and 4 are label-and-rule only.
+LINKED_ROWS: list[tuple[str, int, str | None]] = [
+    ("1. TYPE OF SUBMISSION", 650, "TypeOfSubmission"),
+    ("2. DATE SUBMITTED", 610, None),
+    ("3. APPLICANT NAME", 570, "ApplicantName"),
+    ("4. PROJECT TITLE", 530, None),
+]
+
+#: Left edge of the callout column, clear of the widest field label.
+LINKED_CALLOUT_X = 410
+
+
+def _callout_annotation_class():
+    """`FreeTextAnnotation` that permits `/CL`.
+
+    ReportLab validates annotation keys against an allow-list that predates callout lines,
+    so the key has to be permitted explicitly. Everything else about the annotation is
+    ReportLab's own.
+    """
+    from reportlab.pdfbase import pdfdoc
+
+    class CalloutFreeTextAnnotation(pdfdoc.FreeTextAnnotation):
+        permitted = pdfdoc.FreeTextAnnotation.permitted + ("CL",)
+
+    return CalloutFreeTextAnnotation
+
+
+def linked_form(path: Path) -> None:
+    """A form whose callouts can be bound to the fields they describe.
+
+    Position alone cannot say which field a margin callout belongs to once a page is dense:
+    on a real form the callouts stack up in one column and the fields they point at do not.
+    This fixture carries the three things that can say it, plus the case where nothing can:
+
+    * a callout line (`/CL`) whose tip lands inside a form widget -- the annotator's own
+      statement of the link, and exact,
+    * a callout line whose tip lands on a printed label instead,
+    * a callout with no line at all, level with a widget,
+    * a callout with no line, level with a label that has no widget,
+    * a callout sitting in empty space, which must stay unbound rather than acquire a
+      plausible-looking neighbour.
+    """
+    from reportlab.pdfbase import pdfdoc
+
+    canvas = _canvas(path)
+    callout_annotation = _callout_annotation_class()
+
+    def callout(contents: str, y: int, tip: tuple[int, int] | None = None) -> None:
+        extra = {}
+        if tip is not None:
+            # Knee then tip: the elbow sits at the annotation's own left edge.
+            extra["CL"] = pdfdoc.PDFArray(
+                [LINKED_CALLOUT_X, y + 9, (LINKED_CALLOUT_X + tip[0]) // 2, tip[1], *tip]
+            )
+        canvas._addAnnotation(
+            callout_annotation(
+                (LINKED_CALLOUT_X, y, LINKED_CALLOUT_X + 150, y + 18),
+                contents,
+                "/Helv 9 Tf 0 g",
+                **extra,
+            ),
+            None,
+            1,
+        )
+
+    _draw_heading(canvas, "Grant Application Cover Page", 720)
+    canvas.setFont("Helvetica", 11)
+    for label, y, field in LINKED_ROWS:
+        canvas.drawString(72, y, label)
+        if field is None:
+            canvas.line(230, y - 4, 350, y - 4)
+        else:
+            canvas.acroForm.textfield(
+                name=field, x=230, y=y - 6, width=120, height=18,
+                borderStyle="solid", forceBorder=True, fontName="Helvetica", fontSize=9,
+            )
+
+    # Added bottom-up, as in `annotated_form`: source order must not be reading order.
+    callout("General guidance is in the programme announcement.", 200)
+    callout("Limited to 200 characters.", 524, tip=(120, 533))
+    callout("Must match the name registered with the agency.", 566)
+    callout("Format: MM/DD/YYYY.", 606)
+    callout("Use Application for the first submission attempt.", 646, tip=(290, 653))
+
+    canvas.showPage()
+    canvas.save()
+
+
 def annotated_form(path: Path) -> None:
     """A form carrying FreeText annotations, as if someone marked it up in Preview.
 
@@ -409,6 +501,7 @@ GENERATORS = {
     "reference_table.csv": reference_table_csv,
     "too_big.csv": too_big_csv,
     "annotated_form.pdf": annotated_form,
+    "linked_form.pdf": linked_form,
     "callout_notes.pdf": callout_notes,
 }
 

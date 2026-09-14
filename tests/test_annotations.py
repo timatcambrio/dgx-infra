@@ -186,3 +186,139 @@ def test_documents_without_annotations_are_unchanged(config, fixtures_dir):
     """The feature must be invisible on the corpus it does not apply to."""
     body = pdf_geometry.to_markdown(fixtures_dir / "born_digital.pdf", config)
     assert ANNOTATION_PREFIX not in body
+
+
+# --------------------------------------------------------------------------------------
+# Binding an annotation to the field it describes
+# --------------------------------------------------------------------------------------
+#
+# Position alone answers "which field is this callout about?" only while a page is sparse.
+# On a real form the callouts stack up in one margin column and the fields they point at do
+# not, so ordering by vertical position emits a run of notes with nothing to say which is
+# which -- and a reader downstream, who has no access to the PDF, cannot recover it.
+#
+# Three things in the file can answer it, and they are tried in order of how much they are
+# really saying: a callout line, which is the annotator pointing at the field; a form
+# widget, which carries the field's own name; and failing both, overlap with a printed
+# label, which is an inference and is marked as one.
+
+
+LINKED = "linked_form.pdf"
+
+
+def widget(name, x0=230.0, top=130.0, x1=350.0, bottom=148.0):
+    data = {"Subtype": FakeSubtype("Widget"), "T": name}
+    return {"data": data, "contents": None, "top": top, "x0": x0,
+            "x1": x1, "bottom": bottom}
+
+
+def free_text(contents, top=100.0, x0=410.0, x1=560.0, bottom=118.0, callout=None):
+    data = {"Subtype": FakeSubtype("FreeText")}
+    if callout is not None:
+        data["CL"] = list(callout)
+    return {"data": data, "contents": contents, "top": top, "x0": x0,
+            "x1": x1, "bottom": bottom}
+
+
+def test_the_annotation_rectangle_is_kept_not_just_its_corner():
+    """Binding is rectangle-to-rectangle; a single corner cannot express overlap."""
+    page = FakePage([free_text("note", top=10.0, x0=20.0, x1=90.0, bottom=30.0)])
+    found = pdf_geometry.extract_annotations(page, "")
+    assert (found[0].x0, found[0].top, found[0].x1, found[0].bottom) == (20.0, 10.0, 90.0, 30.0)
+
+
+def test_a_callout_line_is_read_as_the_point_it_indicates():
+    """`/CL` is knee-then-tip; the tip is where the annotator aimed."""
+    page = FakePage([free_text("note", callout=(410, 653, 350, 653, 290, 653))])
+    found = pdf_geometry.extract_annotations(page, "")
+    assert found[0].callout == (290.0, 653.0)
+
+
+def test_an_absent_or_malformed_callout_line_is_simply_absent():
+    page = FakePage([free_text("no line"), free_text("junk", callout=("x", "y"))])
+    assert [a.callout for a in pdf_geometry.extract_annotations(page, "")] == [None, None]
+
+
+def test_widgets_are_collected_as_targets_with_their_field_names():
+    """A Widget is still not an annotation -- but its rect and `/T` name are what to aim at."""
+    page = FakePage([widget(b"TypeOfSubmission"), free_text("note")])
+    found = pdf_geometry.extract_widgets(page)
+    assert [(w.name, w.x0, w.top) for w in found] == [("TypeOfSubmission", 230.0, 130.0)]
+
+
+def test_a_widget_without_a_field_name_is_not_a_target():
+    """An unnamed widget could only ever produce an empty label."""
+    assert pdf_geometry.extract_widgets(FakePage([widget(None)])) == []
+
+
+# -- the cascade, end to end against the fixture ----------------------------------------
+
+
+def converted(config, fixtures_dir):
+    return pdf_geometry.to_markdown(fixtures_dir / LINKED, config)
+
+
+def test_a_callout_line_binds_to_the_widget_it_points_into(config, fixtures_dir):
+    """The strongest link in the file: the annotator drew the arrow themselves."""
+    assert "[field: TypeOfSubmission]: Use Application for the first submission attempt." \
+        in converted(config, fixtures_dir)
+
+
+def test_a_callout_line_binds_to_a_printed_label_when_there_is_no_widget(config, fixtures_dir):
+    assert "[field: 4. PROJECT TITLE]: Limited to 200 characters." \
+        in converted(config, fixtures_dir)
+
+
+def test_without_a_callout_line_an_overlapping_widget_still_names_the_field(config, fixtures_dir):
+    assert "[field: ApplicantName]: Must match the name registered with the agency." \
+        in converted(config, fixtures_dir)
+
+
+def test_overlap_with_a_label_is_marked_as_inferred_not_as_exact(config, fixtures_dir):
+    """A guess must never render in the same shape as a link the file actually states."""
+    body = converted(config, fixtures_dir)
+    assert "[near: 2. DATE SUBMITTED]: Format: MM/DD/YYYY." in body
+    assert "[field: 2. DATE SUBMITTED]" not in body
+
+
+def test_an_annotation_pointing_at_nothing_stays_unbound(config, fixtures_dir):
+    """Better no anchor than a plausible one: a wrong field is unrecoverable downstream."""
+    body = converted(config, fixtures_dir)
+    assert f"{ANNOTATION_PREFIX}General guidance is in the programme announcement." in body
+
+
+def test_a_bound_annotation_is_emitted_beside_its_target(config, fixtures_dir):
+    """The point of binding: the note travels to its field instead of to its own margin y.
+
+    In the fixture the callouts are stacked in one column whose vertical order differs from
+    the fields', so sorting by the annotation's own position cannot produce this.
+    """
+    body = converted(config, fixtures_dir)
+    for label, note in (
+        ("1. TYPE OF SUBMISSION", "Use Application"),
+        ("2. DATE SUBMITTED", "Format: MM/DD/YYYY."),
+        ("3. APPLICANT NAME", "Must match the name"),
+        ("4. PROJECT TITLE", "Limited to 200 characters."),
+    ):
+        assert body.index(label) < body.index(note), f"{note!r} drifted from {label!r}"
+
+
+def test_linking_can_be_switched_off_without_losing_the_annotations(config, fixtures_dir,
+                                                                    monkeypatch):
+    monkeypatch.setenv("PDF_ANNOTATION_LINKING", "false")
+    disabled = config_module.load(source_dir=fixtures_dir)
+    body = pdf_geometry.to_markdown(fixtures_dir / LINKED, disabled)
+    assert "[field:" not in body and "[near:" not in body
+    assert "Use Application for the first submission attempt." in body
+
+
+def test_an_unparseable_linking_switch_is_an_error(fixtures_dir, monkeypatch):
+    monkeypatch.setenv("PDF_ANNOTATION_LINKING", "maybe")
+    with pytest.raises(config_module.ConfigError, match="PDF_ANNOTATION_LINKING"):
+        config_module.load(source_dir=fixtures_dir)
+
+
+def test_a_document_with_no_widgets_or_callouts_is_unaffected(config, fixtures_dir):
+    """Linking must not put labels on a document that never had fields."""
+    body = pdf_geometry.to_markdown(fixtures_dir / "born_digital.pdf", config)
+    assert "[field:" not in body and "[near:" not in body
