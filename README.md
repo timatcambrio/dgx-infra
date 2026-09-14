@@ -304,8 +304,7 @@ draft SOW`, `TOTAL SUM ON IGCE MATCHES AMOUNT IN FUNDING REQUEST` -- and **none*
 in its text layer. They are the entire reason the file is a tutorial rather than a form.
 
 `FreeText` and `Text` annotations are therefore read from pdfplumber (already the conversion
-dependency -- no new package, no model, no licence question), placed at their own vertical
-position so each sits beside the field it describes, and prefixed:
+dependency -- no new package, no model, no licence question) and prefixed:
 
 ```markdown
 ### Overview
@@ -319,14 +318,54 @@ The prefix is load-bearing. Downstream this text gets retrieved and cited with n
 the original PDF, and "what the form prints" versus "what a colleague annotated onto it" is
 exactly the distinction a citation has to keep.
 
-`Widget` annotations -- form fields -- are deliberately excluded: their values are already
-drawn on the page and would come back twice. Annotations whose text the page also prints
-(the result of flattening) are dropped for the same reason. `PDF_ANNOTATIONS=false` turns
+Annotations whose text the page also prints (the result of flattening) are dropped, since
+emitting both would make the document say everything twice. `PDF_ANNOTATIONS=false` turns
 the feature off, which exists for engine comparisons rather than as a sensible default.
 
 Annotations survive the `needs_ocr` stub path too: a scanned form that was later marked up
 electronically has no usable text layer and a full set of typed callouts, which are then the
 only machine-readable text in the file.
+
+### Which field an annotation is about
+
+Extracting a callout is half the job. "Use *Application* for the first submission attempt"
+is only actionable if you know which box it means, and position alone answers that only
+while a page is sparse. On a real form the callouts stack into a single margin column and
+the fields they describe do not, so emitting each note at its own vertical position produces
+a run of instructions with nothing to say which belongs to which -- and nothing downstream
+can recover it, because the PDF is no longer there to look at.
+
+Three things in the file can answer it, tried strongest first:
+
+| Evidence | Renders as | What it is |
+| --- | --- | --- |
+| Callout line (`/CL`) | `[field: ...]` | The annotator drew an arrow at the field. Exact. |
+| Form widget on the same row | `[field: ...]` | `/T` is the form's own name for that field. |
+| Printed label on the same row | `[near: ...]` | Shared row. Evidence, not a statement. |
+
+```markdown
+1. TYPE OF SUBMISSION
+
+> **Annotation** [field: TypeOfSubmission]: Use Application for the first submission attempt.
+
+2. DATE SUBMITTED
+
+> **Annotation** [near: 2. DATE SUBMITTED]: Format: MM/DD/YYYY.
+```
+
+The two forms are distinct on purpose. An inference that renders like a stated fact is an
+instruction filed against the wrong line with nothing to mark it as doubtful, which on a
+budget form is worse than no anchor at all -- so an annotation matching none of the three
+rules keeps no anchor and renders exactly as it did before any of this existed.
+
+A bound annotation is emitted at its *target's* position rather than its own, which is what
+moves each note back to the field it belongs to. `PDF_ANNOTATION_LINKING=false` turns
+binding off while leaving the annotations themselves in place.
+
+`Widget` annotations are used as targets but are still never emitted as text: their values
+are already drawn on the page and would come back twice. Binding applies on the `needs_ocr`
+stub path too, and matters more there than anywhere else -- a scanned form has no text layer
+to read labels from, so its widgets are the only possible source of a field name.
 
 ### What makes a line a heading
 
