@@ -23,6 +23,7 @@ GOLDEN_BY_FIXTURE = {
     "callout_notes.pdf": "callout_notes.md",
     "mixed.pdf": "mixed.md",
     "annotated_form.pdf": "annotated_form.md",
+    "linked_form.pdf": "linked_form.md",
     "simple.docx": "simple.md",
 }
 
