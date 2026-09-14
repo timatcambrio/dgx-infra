@@ -420,6 +420,6 @@ def test_a_numbered_item_keeps_its_number(config):
 
 def test_a_double_hyphen_is_not_a_list_marker(config):
     """`-- None --` is what an unfilled form field prints, not a bullet."""
-    lines = [line("-- None --", size=12.0)]
+    lines = [line("-- None --", size=9.45)]
 
     assert paragraphs(lines, body=9.45, heading_sizes=[12.0], config=config) == ["-- None --"]

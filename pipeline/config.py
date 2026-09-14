@@ -120,6 +120,7 @@ class Config:
     pdf_margin_fraction: float
     pdf_repeat_page_fraction: float
     pdf_line_tolerance: float
+    pdf_space_width_ratio: float
     pdf_paragraph_gap_ratio: float
     pdf_column_gap_fraction: float
     pdf_cell_gap_ratio: float
@@ -203,6 +204,13 @@ def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = 
         pdf_margin_fraction=_env_float("PDF_MARGIN_FRACTION", 0.08),
         pdf_repeat_page_fraction=_env_float("PDF_REPEAT_PAGE_FRACTION", 0.5),
         pdf_line_tolerance=_env_float("PDF_LINE_TOLERANCE", 3.0),
+        # Narrowest gap that can be a word space, as a fraction of the type size.
+        # pdfplumber splits words on an *absolute* tolerance and additionally wherever a
+        # font or size changes, so a word set in two subsets of one face comes back split
+        # with no gap at all. Measured across a real handbook the two populations do not
+        # overlap: intra-word splits sit at 0.00-0.01 of the type size, real spaces at 0.20
+        # and up. 0.10 is the middle of that empty band.
+        pdf_space_width_ratio=_env_float("PDF_SPACE_WIDTH_RATIO", 0.10),
         pdf_paragraph_gap_ratio=_env_float("PDF_PARAGRAPH_GAP_RATIO", 1.6),
         pdf_column_gap_fraction=_env_float("PDF_COLUMN_GAP_FRACTION", 0.06),
         # Borderless-table recovery. Strict on purpose: inventing a table inside prose

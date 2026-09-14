@@ -35,6 +35,19 @@ _DIGITS = re.compile(r"\d+")
 
 _WHITESPACE = re.compile(r"\s+")
 
+#: Longest a heading can be. Past this a line is a sentence, whatever size it is set in.
+#:
+#: Applied to the *whole* heading, wrapped continuation lines included, because the failure
+#: it prevents is a run of emphasised prose collapsing onto one `###` line and swallowing
+#: everything that should have been under it.
+_MAX_HEADING_CHARS = 90
+
+#: A leading bullet or number. Requires whitespace and then something after it, so `--`
+#: (which is what an unfilled form field prints) and a lone dash are not list markers.
+_LIST_MARKER = re.compile(
+    r"^(?P<marker>[-\u2013\u2014\u2022\u2023\u25aa\u25cf\u25e6\u00b7*]|\(?\d{1,2}[.)])\s+(?=\S)"
+)
+
 #: PDF annotation contents use \r, sometimes \r\n, for their own line breaks.
 _ANNOTATION_BREAK = re.compile(r"\r\n?|\n")
 
@@ -118,7 +131,7 @@ def _normalise(text: str) -> str:
     return _DIGITS.sub("#", _WHITESPACE.sub(" ", text).strip().lower())
 
 
-def _group_words_into_lines(words: list[dict], tolerance: float) -> list[Line]:
+def _group_words_into_lines(words: list[dict], config: Config) -> list[Line]:
     """Cluster words sharing a baseline into lines, left to right."""
     if not words:
         return []
@@ -126,16 +139,44 @@ def _group_words_into_lines(words: list[dict], tolerance: float) -> list[Line]:
     lines: list[Line] = []
     current: list[dict] = []
     for word in sorted(words, key=lambda w: (round(w["top"], 1), w["x0"])):
-        if current and abs(word["top"] - current[0]["top"]) > tolerance:
-            lines.append(_build_line(current))
+        if current and abs(word["top"] - current[0]["top"]) > config.pdf_line_tolerance:
+            lines.append(_build_line(current, config))
             current = []
         current.append(word)
     if current:
-        lines.append(_build_line(current))
+        lines.append(_build_line(current, config))
     return lines
 
 
-def _build_line(words: list[dict]) -> Line:
+def _rejoin_fragments(
+    ordered: list[dict], space_ratio: float
+) -> list[tuple[float, float, str]]:
+    """Merge adjacent words separated by a gap too narrow to be a space.
+
+    `extract_words` ends a word at an absolute x-tolerance *or* wherever one of the extra
+    attributes changes -- and heading detection needs `size` and `fontname`, so it asks for
+    both. A word typeset in two subsets of the same face ("S" in one, "ubmit" in the other,
+    which is ordinary in PDFs produced by Office) is therefore returned as two words with a
+    gap of exactly zero, and joining words with a space renders it "S ubmit".
+
+    Gap alone separates the two cases cleanly, as long as it is measured against the type
+    size rather than in absolute points: a space is a glyph with a width, an intra-word
+    split has no glyph between the fragments at all.
+    """
+    merged: list[list] = []
+    for word in ordered:
+        x0, x1 = float(word["x0"]), float(word["x1"])
+        text = str(word["text"])
+        threshold = max(float(word.get("size") or 0.0), 1.0) * space_ratio
+        if merged and x0 - merged[-1][1] < threshold:
+            merged[-1][1] = max(merged[-1][1], x1)
+            merged[-1][2] += text
+        else:
+            merged.append([x0, x1, text])
+    return [(x0, x1, text) for x0, x1, text in merged]
+
+
+def _build_line(words: list[dict], config: Config) -> Line:
     ordered = sorted(words, key=lambda w: w["x0"])
     sizes = [float(word.get("size") or 0.0) for word in ordered]
 
@@ -150,16 +191,15 @@ def _build_line(words: list[dict]) -> Line:
         )
     )
     total_chars = sum(len(str(word["text"])) for word in ordered) or 1
+    rejoined = _rejoin_fragments(ordered, config.pdf_space_width_ratio)
     return Line(
         top=min(float(word["top"]) for word in ordered),
         bottom=max(float(word["bottom"]) for word in ordered),
         x0=min(float(word["x0"]) for word in ordered),
         size=round(max(sizes), 2) if sizes else 0.0,
         bold=bold_chars / total_chars >= 0.8,
-        text=" ".join(str(word["text"]) for word in ordered).strip(),
-        words=tuple(
-            (float(word["x0"]), float(word["x1"]), str(word["text"])) for word in ordered
-        ),
+        text=" ".join(text for _, _, text in rejoined).strip(),
+        words=tuple(rejoined),
     )
 
 
@@ -273,14 +313,40 @@ def _body_size(pages_lines: list[list[Line]]) -> float:
     return max(weights.items(), key=lambda item: (item[1], -item[0]))[0]
 
 
-def _heading_level(size: float, body: float, heading_sizes: list[float]) -> int | None:
-    if body <= 0 or size <= body * 1.001:
+def _heading_level(
+    size: float, body: float, heading_sizes: list[float], ratio: float
+) -> int | None:
+    """Heading depth from type size alone, or `None` if this size is not a heading size.
+
+    `ratio` is the same `PDF_HEADING_SIZE_RATIO` that `to_markdown` uses to decide which
+    sizes count as heading sizes at all. It used to be 1.001 here -- anything even a
+    hair larger than body text was a heading -- which is fine on a report whose headings
+    are half again the body size and catastrophic on a form tutorial, where body text is
+    the smallest type on the page and every field label, note and caption sits a point or
+    two above it. Those documents came out as a wall of `###` with no body under them.
+    """
+    if body <= 0 or size <= body * ratio:
         return None
     if heading_sizes:
         for index, candidate in enumerate(heading_sizes[:3]):
             if abs(size - candidate) < 0.01:
                 return index + 1
     return 3
+
+
+def _list_item(text: str) -> tuple[str, str] | None:
+    """`(marker, text)` if the line opens with a list marker, else `None`.
+
+    Bullets all normalise to `-`; a number keeps its number, because the order is the
+    content. `(1)` becomes `1.` so that the result is a list in markdown rather than a
+    paragraph that happens to start with a bracket.
+    """
+    match = _LIST_MARKER.match(text)
+    if match is None:
+        return None
+    raw = match.group("marker")
+    marker = f"{raw.strip('().')}." if raw[-1] in ".)" else "-"
+    return marker, text[match.end():].strip()
 
 
 def extract_annotations(page, page_text: str) -> list[Annotation]:
@@ -385,9 +451,7 @@ def to_markdown(path: Path, config: Config) -> str:
         page["body_words"] = _outside_regions(
             page["words"], [box for box, _ in page["tables"]]
         )
-        page["lines"] = _group_words_into_lines(
-            page["body_words"], config.pdf_line_tolerance
-        )
+        page["lines"] = _group_words_into_lines(page["body_words"], config)
 
     repeated = find_repeated_margin_lines(
         [page["lines"] for page in pages], [page["height"] for page in pages], config
@@ -511,14 +575,78 @@ def _table_from_lines(lines: list[Line], config: Config) -> str:
     return render_table([row + [""] * (width - len(row)) for row in rows])
 
 
+def _render_list(items: list[tuple[float, str, list[str]]], tolerance: float) -> str:
+    """Render collected list items, nesting by how far their markers are indented.
+
+    Depth comes from the marker's x, grouped within the same tolerance the table code uses
+    for column alignment. Absolute indent is meaningless across documents; the *order* of
+    the distinct indents on one list is not.
+    """
+    columns: list[float] = []
+    for x0, _, _ in sorted(items, key=lambda item: item[0]):
+        if not columns or x0 - columns[-1] > tolerance:
+            columns.append(x0)
+
+    lines = []
+    for x0, marker, parts in items:
+        depth = max(index for index, column in enumerate(columns) if x0 >= column - tolerance)
+        lines.append(f"{'  ' * depth}{marker} {' '.join(parts).strip()}")
+    return "\n".join(lines)
+
+
+def _heading_run(
+    lines: list[Line],
+    start: int,
+    in_table: dict[int, tuple[int, int]],
+    body: float,
+    heading_sizes: list[float],
+    wrap_limit: float,
+    config: Config,
+) -> tuple[int, int]:
+    """`(end_index, level)` for the run starting at `start`; level 0 means "not a heading".
+
+    A heading that wraps is one heading, so the run extends over following lines set the
+    same way and spaced as a wrap rather than as a new block. The run is then accepted only
+    if the whole thing is short: a wrapped *title* is a heading, a wrapped *paragraph* that
+    happens to be set larger than body text is not, and before this the two were
+    indistinguishable -- which is how a bulleted notes box became a single `###` line.
+
+    `end_index` is returned for a rejected run too, and the caller must consume all of it.
+    Rejecting only the first line would let the tail re-form into a run short enough to
+    pass, so the last line of a paragraph would come back as a heading.
+    """
+    first = lines[start]
+    level = _heading_level(first.size, body, heading_sizes, config.pdf_heading_size_ratio)
+    if level is None:
+        if not (first.bold and body > 0 and first.size >= body):
+            return start + 1, 0
+        level = 3
+
+    end = start + 1
+    while (
+        end < len(lines)
+        and end not in in_table
+        and abs(lines[end].size - first.size) < 0.01
+        and lines[end].bold == first.bold
+        and _list_item(lines[end].text) is None
+        and lines[end].top - lines[end - 1].bottom <= wrap_limit
+    ):
+        end += 1
+
+    combined = " ".join(line.text for line in lines[start:end])
+    if len(combined) >= _MAX_HEADING_CHARS:
+        return end, 0
+    return end, level
+
+
 def _paragraphs(
     lines: list[Line], body: float, heading_sizes: list[float], config: Config
 ) -> list[tuple[float, str]]:
-    """Group lines into headings, paragraphs and borderless tables."""
+    """Group lines into headings, paragraphs, lists and borderless tables."""
     if not lines:
         return []
 
-    in_table = {}
+    in_table: dict[int, tuple[int, int]] = {}
     for start, end in find_aligned_table_runs(lines, config):
         for index in range(start, end):
             in_table[index] = (start, end)
@@ -526,10 +654,14 @@ def _paragraphs(
     heights = [line.bottom - line.top for line in lines if line.bottom > line.top]
     line_height = statistics.median(heights) if heights else 0.0
     gap_limit = line_height * config.pdf_paragraph_gap_ratio
+    wrap_limit = max(line_height * 1.4, 1.0)
 
     output: list[tuple[float, str]] = []
     buffer: list[Line] = []
-    previous_bottom = float("-inf")
+    # (marker x0, marker, text parts) per item of the list currently being collected.
+    items: list[tuple[float, str, list[str]]] = []
+    list_top = 0.0
+    list_size = 0.0
 
     def flush() -> None:
         if not buffer:
@@ -539,40 +671,64 @@ def _paragraphs(
             output.append((buffer[0].top, text))
         buffer.clear()
 
-    for index, line in enumerate(lines):
+    def flush_list() -> None:
+        nonlocal items
+        if items:
+            output.append((list_top, _render_list(items, config.pdf_column_align_tolerance)))
+            items = []
+
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+
         if index in in_table:
             start, end = in_table[index]
-            if index == start:
-                flush()
-                output.append((line.top, _table_from_lines(lines[start:end], config)))
+            flush()
+            flush_list()
+            output.append((lines[start].top, _table_from_lines(lines[start:end], config)))
+            index = end
             continue
 
-        level = _heading_level(line.size, body, heading_sizes)
-        is_heading = level is not None or (
-            line.bold and body > 0 and len(line.text) < 90 and line.size >= body
+        item = _list_item(line.text)
+        broken = index > 0 and line.top - lines[index - 1].bottom > gap_limit
+
+        if item is not None:
+            flush()
+            if items and (broken or abs(line.size - list_size) >= 0.01):
+                flush_list()
+            if not items:
+                list_top, list_size = line.top, line.size
+            marker, text = item
+            items.append((line.x0, marker, [text]))
+            index += 1
+            continue
+
+        # An unmarked line hard against the item above it, set the same way, is that
+        # item wrapping. It cannot be told from indentation: in real documents a wrapped
+        # bullet starts at the marker's own x, not at the text's.
+        if items and not broken and abs(line.size - list_size) < 0.01:
+            items[-1][2].append(line.text)
+            index += 1
+            continue
+
+        flush_list()
+
+        end, level = _heading_run(
+            lines, index, in_table, body, heading_sizes, wrap_limit, config
         )
-
-        if is_heading:
+        if level:
             flush()
-            marker = "#" * (level or 3)
-            # A heading that wraps is one heading. Continuing the previous line rather than
-            # emitting a second one keeps a long title intact instead of splitting it
-            # mid-phrase, which reads as two unrelated sections downstream.
-            if (
-                output
-                and output[-1][1].startswith(f"{marker} ")
-                and line.top - previous_bottom <= max(line_height * 1.4, 1.0)
-            ):
-                output[-1] = (output[-1][0], f"{output[-1][1]} {line.text}")
-            else:
-                output.append((line.top, f"{marker} {line.text}"))
-            previous_bottom = line.bottom
+            text = " ".join(heading.text for heading in lines[index:end])
+            output.append((line.top, f"{'#' * level} {text}"))
+            index = end
             continue
 
-        if buffer and line.top - buffer[-1].bottom > gap_limit:
-            flush()
-        buffer.append(line)
-        previous_bottom = line.bottom
+        for candidate in lines[index:end]:
+            if buffer and candidate.top - buffer[-1].bottom > gap_limit:
+                flush()
+            buffer.append(candidate)
+        index = end
 
     flush()
+    flush_list()
     return output

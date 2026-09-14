@@ -308,7 +308,9 @@ dependency -- no new package, no model, no licence question), placed at their ow
 position so each sits beside the field it describes, and prefixed:
 
 ```markdown
-### Overview  Requester  Jane Doe
+### Overview
+
+ Requester  Jane Doe
 
 > **Annotation:** YOUR NAME
 ```
@@ -325,6 +327,38 @@ the feature off, which exists for engine comparisons rather than as a sensible d
 Annotations survive the `needs_ocr` stub path too: a scanned form that was later marked up
 electronically has no usable text layer and a full set of typed callouts, which are then the
 only machine-readable text in the file.
+
+### What makes a line a heading
+
+Type size is the only evidence geometry has, and on its own it is not enough. The documents
+that break are form tutorials, where body text is the *smallest* type on the page: every
+field label, note and callout sits a point or two above it, and a rule of "larger than body
+text" turns the whole document into headings with nothing underneath them. Three conditions
+now have to hold together:
+
+- **Size**, against the same `PDF_HEADING_SIZE_RATIO` that decides which sizes are heading
+  sizes at all. It used to be a separate, far looser 1.001 here, which is what let a 1.1x
+  label through.
+- **Length.** A heading is short. The limit applies to the whole heading, wrapped lines
+  included: a wrapped *title* is one heading, a wrapped *paragraph* set larger than body
+  text is not, and telling them apart is what stops a notes box collapsing onto one `###`
+  line and swallowing everything that belonged under it.
+- **No list marker.** A bullet is a bullet at any size.
+
+Bulleted blocks render as markdown lists, nested by how far their markers are indented. A
+line with no marker, hard against the item above it and set the same way, continues that
+item — indentation cannot be the test, because in real documents a wrapped bullet starts at
+the *marker's* x, not the text's.
+
+### Words split across font subsets are rejoined
+
+`extract_words` ends a word at an absolute x-tolerance or wherever the font or size changes,
+and heading detection needs both attributes. So a word typeset in two subsets of one face —
+ordinary in PDFs out of Office — comes back as two words with a gap of exactly zero, and
+`Submit` renders as `S ubmit`. Fragments are rejoined when the gap between them is too
+narrow to be a space *at that type size* (`PDF_SPACE_WIDTH_RATIO`). Measured across a real
+handbook the two populations do not overlap at all: intra-word splits sit at 0.00–0.01 of
+the type size, real spaces at 0.20 and up.
 
 ### Where geometry is weak, and how you find out
 
