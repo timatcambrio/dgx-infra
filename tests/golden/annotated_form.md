@@ -18,13 +18,13 @@ Travel costs are reimbursed at the rates in effect on the date the travel began.
 
 Requester:
 
-> **Annotation** [near: Requester:]: YOUR NAME
+> **Annotation** [beside: Requester:]: YOUR NAME
 > not your supervisor's
 
 Fiscal year:
 
-> **Annotation** [near: Fiscal year:]: select the appropriate FISCAL YEAR
+> **Annotation** [beside: Fiscal year:]: select the appropriate FISCAL YEAR
 
 Amount:
 
-> **Annotation** [near: Amount:]: enter the TOTAL REQUEST AMOUNT
+> **Annotation** [beside: Amount:]: enter the TOTAL REQUEST AMOUNT
