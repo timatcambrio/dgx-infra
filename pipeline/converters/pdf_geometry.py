@@ -126,6 +126,24 @@ class Widget:
 
 
 @dataclass(frozen=True)
+class Cell:
+    """One cell of a ruled table, kept as a target a callout can point into.
+
+    `row_label` is the first cell in the same row that carries text. A blank form field is
+    an empty cell, and the row it sits in is what names it.
+    """
+
+    top: float
+    bottom: float
+    x0: float
+    x1: float
+    text: str
+    row_label: str
+    #: Top of the table this cell belongs to, so a note can be placed after the whole table.
+    table_top: float
+
+
+@dataclass(frozen=True)
 class Target:
     """What an annotation was found to be about.
 
@@ -317,6 +335,48 @@ def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[l
         if len(rows) >= 2 and len(rows[0]) >= 2:
             regions.append((table.bbox, rows))
     return regions
+
+
+def _table_cells(page) -> list[Cell]:
+    """Every cell of every ruled table on the page, with the text it contains.
+
+    Built from the same `find_tables` call that `_table_regions` filters for rendering, but
+    without the filtering: a row that is empty of text is dropped from the rendered table and
+    is still somewhere a callout can point, and an empty *cell* is the normal case on a blank
+    form. Row and cell geometry come from pdfplumber directly rather than being reconstructed
+    from the rendered rows, so the two cannot drift apart.
+    """
+    cells: list[Cell] = []
+    try:
+        tables = page.find_tables()
+    except Exception:  # noqa: BLE001 - a page whose tables cannot be read still converts
+        return []
+
+    for table in tables:
+        try:
+            extracted = table.extract()
+        except Exception:  # noqa: BLE001 - skip this table, keep the rest of the page
+            continue
+        table_top = float(table.bbox[1])
+        for row, texts in zip(table.rows, extracted):
+            row_texts = [(text or "").strip() for text in texts]
+            row_label = next((text for text in row_texts if text), "")
+            for box, text in zip(row.cells, row_texts):
+                if box is None:
+                    continue
+                x0, top, x1, bottom = (float(value) for value in box)
+                cells.append(
+                    Cell(
+                        top=top,
+                        bottom=bottom,
+                        x0=x0,
+                        x1=x1,
+                        text=text,
+                        row_label=row_label,
+                        table_top=table_top,
+                    )
+                )
+    return cells
 
 
 def _outside_regions(words: list[dict], boxes: Iterable[tuple]) -> list[dict]:
@@ -595,14 +655,50 @@ def _widget_target(widget: Widget, lines: list[Line], tolerance: float) -> Targe
     return Target(label=widget.name, exact=True, top=max([widget.top, *row]))
 
 
+def _cell_target(cell: Cell) -> Target | None:
+    """A table cell as a target: its own text, or failing that, its row's.
+
+    Both are the table's own structure rather than a reading of what the note means -- the
+    ruling states which cell the tip landed in, and the row states what that cell is called.
+    A cell with neither is not a target; there is nothing there to name.
+
+    Position is the table's top, not the cell's: a table converts to a single block, so a
+    note about one of its cells belongs after the whole thing. Cells keep their own vertical
+    order within that by the fractional offset, so several notes on one table come out in row
+    order rather than in the order the PDF happened to store them.
+    """
+    label = cell.text or cell.row_label
+    if not label:
+        return None
+    return Target(label=_label(label), exact=True, top=cell.table_top + cell.top / 1e6)
+
+
 def _target_at(
-    point: tuple[float, float], widgets: list[Widget], lines: list[Line], tolerance: float
+    point: tuple[float, float],
+    widgets: list[Widget],
+    cells: list[Cell],
+    lines: list[Line],
+    tolerance: float,
 ) -> Target | None:
-    """What sits under a point: a form field by preference, else a printed line."""
+    """What sits under a point: a form field, then a table cell, then a printed line.
+
+    Cells are tried before lines because a ruled table's words are not in `lines` at all --
+    they belong to the table block instead -- so on a form, which is mostly table, the line
+    pass has nothing to match against.
+    """
     x, y = point
     for widget in widgets:
         if _within(x, y, (widget.x0, widget.top, widget.x1, widget.bottom), tolerance):
             return _widget_target(widget, lines, tolerance)
+    for cell in cells:
+        # No tolerance here, unlike widgets and lines. Cells tile the table with no gaps
+        # between them, so slack cannot bridge a gap -- there is none -- and can only pull a
+        # tip that missed the table entirely into whichever edge cell happens to be nearest,
+        # then report that as exact. A point is inside a cell or it is not.
+        if _within(x, y, (cell.x0, cell.top, cell.x1, cell.bottom), 0.0):
+            target = _cell_target(cell)
+            if target is not None:
+                return target
     for line in lines:
         if line.text and _within(
             x, y, (line.x0, line.top, _line_x1(line), line.bottom), tolerance
@@ -652,13 +748,15 @@ def resolve_targets(
     lines: list[Line],
     page_height: float,
     config: Config,
+    cells: list[Cell] | None = None,
 ) -> list[Annotation]:
     """Bind each annotation to the field it describes, where the page allows it.
 
     Three rules, tried strongest first, and all three are measurement rather than guesswork
     about meaning:
 
-    1. the annotation's own callout line, which is the annotator pointing at the field;
+    1. the annotation's own callout line, which is the annotator pointing at the field --
+       resolved against form fields, ruled table cells and printed lines, in that order;
     2. a form field sharing its row, which contributes the form's name for that field;
     3. a printed label sharing its row, which is an inference and is marked as one.
 
@@ -673,7 +771,9 @@ def resolve_targets(
         target = None
         if annotation.callout is not None:
             x, y = annotation.callout
-            target = _target_at((x, page_height - y), widgets, lines, tolerance)
+            target = _target_at(
+                (x, page_height - y), widgets, cells or [], lines, tolerance
+            )
         if target is None:
             target = _target_beside(annotation, widgets, lines, tolerance)
         resolved.append(replace(annotation, target=target) if target else annotation)
@@ -724,6 +824,11 @@ def to_markdown(path: Path, config: Config) -> str:
             {
                 "words": page.extract_words(extra_attrs=_WORD_ATTRS),
                 "tables": _table_regions(page),
+                "cells": (
+                    _table_cells(page)
+                    if config.pdf_annotations and config.pdf_annotation_linking
+                    else []
+                ),
                 "width": float(page.width),
                 "height": float(page.height),
                 "annotations": (
@@ -752,6 +857,7 @@ def to_markdown(path: Path, config: Config) -> str:
                 page["lines"],
                 page["height"],
                 config,
+                cells=page["cells"],
             )
 
     repeated = find_repeated_margin_lines(
