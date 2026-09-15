@@ -335,32 +335,44 @@ the fields they describe do not, so emitting each note at its own vertical posit
 a run of instructions with nothing to say which belongs to which -- and nothing downstream
 can recover it, because the PDF is no longer there to look at.
 
-Three things in the file can answer it, tried strongest first:
+The output does not answer it. It reports what was *measured*, in two kinds, and leaves the
+answer to the reader:
 
-| Evidence | Renders as | What it is |
+| Kind | Found by | What it states |
 | --- | --- | --- |
-| Callout line (`/CL`) | `[field: ...]` | The annotator drew an arrow at the field. Exact. |
-| Form widget on the same row | `[field: ...]` | `/T` is the form's own name for that field. |
-| Printed label on the same row | `[near: ...]` | Shared row. Evidence, not a statement. |
+| `[points to: X]` | The annotation's callout line (`/CL`), resolved against form fields, ruled table cells, then printed lines | The annotator's arrow lands on X |
+| `[beside: X]` | Row overlap, preferring a form field's own `/T` name over a printed label | X shares a row with the note |
 
 ```markdown
 1. TYPE OF SUBMISSION
 
-> **Annotation** [field: TypeOfSubmission]: Use Application for the first submission attempt.
+> **Annotation** [points to: TypeOfSubmission]: Use Application for the first submission attempt.
 
 2. DATE SUBMITTED
 
-> **Annotation** [near: 2. DATE SUBMITTED]: Format: MM/DD/YYYY.
+> **Annotation** [beside: 2. DATE SUBMITTED]: Format: MM/DD/YYYY.
 ```
 
-The two forms are distinct on purpose. An inference that renders like a stated fact is an
-instruction filed against the wrong line with nothing to mark it as doubtful, which on a
-budget form is worse than no anchor at all -- so an annotation matching none of the three
-rules keeps no anchor and renders exactly as it did before any of this existed.
+**Neither kind claims to know which logical field a note is about**, and that restraint is
+deliberate rather than modest. A PDF's ruling is a layout grid, not a map of the form's
+fields: on a real annotated form, a note about a checkbox belonging to field 1 has its arrow
+tip genuinely inside a cell whose text names a different field. Where the tip landed is a
+fact. Which field the note concerns is a reading of the form, and the reader downstream has
+the whole form in front of it while this module has coordinates.
+
+An annotation matching neither rule keeps no anchor and renders exactly as it did before any
+of this existed. A plausible anchor is worse than none, because nothing downstream can tell
+a plausible one from a real one.
 
 A bound annotation is emitted at its *target's* position rather than its own, which is what
-moves each note back to the field it belongs to. `PDF_ANNOTATION_LINKING=false` turns
-binding off while leaving the annotations themselves in place.
+moves each note back to what it describes; notes on a ruled table follow the whole table, in
+row order. `PDF_ANNOTATION_LINKING=false` turns binding off while leaving the annotations
+themselves in place.
+
+Cell containment alone takes no positional tolerance. Cells tile a table with no gaps, so
+slack bridges nothing and can only pull a tip that missed the table into whichever edge cell
+is nearest -- which on a real form bound a callout two points outside the grid to the wrong
+row, and reported it as a stated fact.
 
 `Widget` annotations are used as targets but are still never emitted as text: their values
 are already drawn on the page and would come back twice. Binding applies on the `needs_ocr`
