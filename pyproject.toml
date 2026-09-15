@@ -30,15 +30,18 @@ dependencies = [
 [project.optional-dependencies]
 # The PDF conversion path, deliberately NOT installed by default.
 #
-# Everything heavy in this project is here: `format-pdf-docling` pulls torch, and markitdown
-# pulls magika, which pulls onnxruntime. Behind an extra, the DOCX + CSV + triage install
-# stays small and carries no ML runtime at all -- which matters for an on-prem federal
-# deployment, where every megabyte is something the client fetches and audits.
+# Everything heavy in this project is here: `format-pdf-docling` pulls torch. Behind an
+# extra, the DOCX + CSV + triage install stays small and carries no ML runtime at all --
+# which matters for an on-prem federal deployment, where every megabyte is something the
+# client fetches and audits.
+#
+# `markitdown` was listed here as a per-file fallback and was never called. It pulled magika,
+# which pulls onnxruntime, so an unused dependency was dragging a second ML runtime into the
+# one extra that exists to keep ML runtimes out. Removed; add it back with a call site.
 #
 # Install with:  uv sync --extra pdf
 pdf = [
     "docling-slim[format-pdf-docling]>=2.126.0,<3",  # MIT - layout + TableFormer
-    "markitdown>=0.1.3,<0.2",                        # MIT - per-file fallback only
     # torch 2.2.2 is the last release with a macOS x86_64 wheel (README "Platform
     # constraint") and was built against NumPy 1.x; with NumPy 2 its array bridge fails to
     # initialise. transformers 5.x separately disables its torch backend below torch 2.4,

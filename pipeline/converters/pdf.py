@@ -20,8 +20,6 @@ from . import pdf_geometry
 
 CONVERTER_GEOMETRIC = "pdfplumber-geometry (model-free)"
 CONVERTER_DOCLING = "docling (do_ocr=False)"
-CONVERTER_DOCLING_PDFPLUMBER = "docling+pdfplumber"
-CONVERTER_MARKITDOWN = "markitdown (fallback)"
 CONVERTER_STUB = "none (no usable text layer)"
 
 INCOMPLETE_CALLOUT = (
