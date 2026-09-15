@@ -454,6 +454,42 @@ even offer — one of the two above carries 205 annotations and no form fields, 
 form fields and no annotations — so a document type nobody has handled should surface as an
 unfamiliar profile rather than as a quiet degradation.
 
+### Answerability: the check a golden cannot make
+
+Goldens compare converted output byte for byte, which catches *change*. They cannot catch
+output that is byte-stable and useless — and every silent loss found in this pipeline has
+been exactly that: a budget grid flattened into prose, a callout stranded from the field it
+describes. Both would have passed a golden comparison indefinitely.
+
+`tests/answerability/` holds questions with known answers, each naming the document it is
+asked of and the text that must survive conversion for the answer to be recoverable:
+
+```yaml
+cases:
+  - id: submission-type-first-attempt
+    question: Which box do I check for the first submission attempt?
+    document: linked-form.md
+    expect:
+      - "[points to: TypeOfSubmission]: Use Application for the first submission attempt."
+    forbid:
+      - "[beside: TypeOfSubmission]"   # the arrow states its target; row overlap is a downgrade
+```
+
+They run in the test suite against the committed fixtures, and against a real corpus with
+`make answerability` or `pipeline answerability --cases PATH`, which reads only `kb/` and so
+needs neither the source documents nor `SOURCE_DIR`. It exits non-zero on failure, so it can
+gate a release.
+
+There is deliberately **no model in the loop**. Cases are literal substring assertions, which
+makes them offline, deterministic, free, and reviewable by someone who can disagree with a
+case. What they measure is whether the evidence needed to answer survived conversion — not
+whether a given model answers correctly, which is a different question and not one the
+converter controls.
+
+Write `expect` as the smallest string that makes the answer findable, and `forbid` for a
+wrong answer some earlier version actually produced. A regression that really happened is
+worth more as a test than one imagined.
+
 ### Escalating a document to Docling
 
 Set `PDF_ENGINE=docling`. It is not wired up yet and will say so: it needs
