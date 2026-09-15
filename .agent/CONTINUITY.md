@@ -41,6 +41,15 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   at a scratch directory first.
 
 ## [DECISIONS]
+- 2026-09-15 [DECISION] Image-dominant pages are REPORTED, never reclassified. A page that is
+  a third diagram is not broken, and telling a diagram from a screenshot of a form is exactly
+  the inference this pipeline declines to make. Threshold `IMAGE_PAGE_COVERAGE` (default
+  0.15) is configurable and the coverage fraction is recorded beside it, so the threshold can
+  be argued with.
+- 2026-09-15 [DECISION] Notes are suppressed where they would misattribute a cause: a page
+  already named as low-text is not named again as image; and "form fields but no ruled
+  tables" is withheld from a document with image pages, because that note means the converter
+  failed to reconstruct a grid and here no vector grid ever existed.
 - 2026-09-15 [DECISION] The answerability eval has NO model in the loop. Cases are literal
   substring assertions over converted markdown: offline, deterministic, free, reviewable, and
   they measure whether the evidence needed to answer survived conversion -- not whether a
@@ -87,6 +96,19 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `tests/fixtures/callout_notes.pdf` is added via `tests/make_fixtures.py`.
 
 ## [DISCOVERIES]
+- 2026-09-15 [TOOL] CORRECTION, supersedes the 2026-09-15 assessment that table-grid recovery
+  was the highest-value work. The NIFA document has NO vector grid. Each of its 3 pages
+  carries a raster screenshot of the form (1188x816 px, 35-37% of the page area); `lines`=0
+  on every page; the 8-10 `rects` are the callout bubbles, one per widget, not a grid. The
+  ~400 chars/page of real text are the typed callouts. `find_tables` returning 1 is not a
+  failure -- there is nothing there. The grid was never flattened by the converter; it was
+  never extractable. Item 4 as originally scoped rested on a wrong premise.
+- 2026-09-15 [TOOL] The real defect on that document: triage called it `clean`. A form
+  supplied as a screenshot with typed callouts beside it defeats every metric at once and
+  none of them is wrong -- healthy chars/page (callouts are text), perfect alpha ratio, no
+  page below the low-text threshold, no ruled tables because there is no vector content.
+  Image coverage is the one measurement that separates it: NIH form 3% max, NIFA 35-37% on
+  every page.
 - 2026-09-15 [TOOL] Table-cell binding on the NIH form: exact 10 -> 32, inferred 87 -> 84,
   unbound 108 -> 89. The original retrieval question is now answered by the markdown itself:
   `[field: 1.TYPE OF SUBMISSION]: Use Application for first submission attempt for due date.`
@@ -160,6 +182,13 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-15 [TOOL] Item 4 REDEFINED and the real part delivered on branch
+  `image-dominant-pages`, unmerged: image-dominant page detection and reporting. 285 tests
+  pass, both gates pass. The originally-scoped half of item 4 (table-grid recovery) is NOT
+  done and is not justified by either sample: the NIFA form has no grid to recover, and the
+  NIH form's grids are already found (14 ruled tables over 25 pages). What the NIH form has
+  instead is COARSE table quality -- cells merged, many empty columns -- which is a different
+  problem and remains undecided. Item 5 (tag flattened callouts) still open.
 - 2026-09-15 [TOOL] Items 1 and 3 merged to main. Item 2 (evidence profile) and the
   answerability eval done on branch `answerability-eval` (branched off `evidence-profile`),
   unmerged. 272 tests pass; both gates pass. Remaining: item 4 (table-grid recovery for ruled
