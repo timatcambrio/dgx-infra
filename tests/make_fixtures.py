@@ -380,6 +380,74 @@ def screenshot_form(path: Path) -> None:
     canvas.save()
 
 
+#: `boxed_notes.pdf`. Three boxes side by side on one baseline, which is the arrangement that
+#: destroys a page: line grouping merges them into a single run-on line, interleaved word by
+#: word, and the result is unreadable and unsearchable.
+BOXED_ROW = (
+    (72, "Federal funds carry over"),
+    (232, "Matching funds carry over"),
+    (392, "Amount from Appendix A"),
+)
+
+
+def boxed_notes(path: Path) -> None:
+    """Text set in drawn boxes, as a marked-up form does it.
+
+    The specimen: a form screenshot with commentary typed into filled, stroked boxes placed
+    around and over it. Three things go wrong at once without special handling. The boxes'
+    text is indistinguishable from the form's own words, so a reader cannot tell commentary
+    from content. Boxes sharing a baseline merge into one interleaved line. And a box's text
+    is set apart visually in a way nothing in the markdown records.
+
+    The ruled table at the bottom is the false positive to avoid: a shaded header cell is a
+    filled rect containing text, and it is not commentary.
+    """
+    canvas = _canvas(path)
+
+    y = _draw_heading(canvas, "Capacity Budget - Annotated", 740)
+    y = _draw_paragraph(canvas, BODY_TEXT, y - 6)
+
+    def box(x: int, top: int, width: int, height: int, lines: list[str]) -> None:
+        canvas.setStrokeColorRGB(0.2, 0.3, 0.7)
+        canvas.setFillColorRGB(0.93, 0.95, 1.0)
+        canvas.rect(x, top - height, width, height, stroke=1, fill=1)
+        canvas.setFillColorRGB(0, 0, 0)
+        canvas.setFont("Helvetica", 8)
+        for index, text in enumerate(lines):
+            canvas.drawString(x + 4, top - 12 - index * 10, text)
+
+    row_top = y - 40
+    for x, text in BOXED_ROW:
+        box(x, row_top, 148, 24, [text])
+
+    box(72, row_top - 50, 300, 34, ["Required match - note, this amount", "accounts for a waiver."])
+
+    canvas.setFillColorRGB(0, 0, 0)
+    canvas.setFont("Helvetica", 10)
+    canvas.drawString(72, row_top - 110, "Continue with the instructions on the next page.")
+
+    # A ruled table whose header cell is shaded: a filled rect with text in it that is not a
+    # note. Boxes inside a table must stay part of the table.
+    table_top, table_bottom = row_top - 140, row_top - 200
+    columns = (72, 190, 310)
+    canvas.setFillColorRGB(0.88, 0.88, 0.88)
+    canvas.rect(72, table_top - 20, 358, 20, stroke=0, fill=1)
+    canvas.setFillColorRGB(0, 0, 0)
+    for x in (*columns, 430):
+        canvas.line(x, table_bottom, x, table_top)
+    for row_y in (table_top, table_top - 20, table_top - 40, table_bottom):
+        canvas.line(72, row_y, 430, row_y)
+    canvas.setFont("Helvetica", 9)
+    for row_index, row in enumerate((("Category", "Federal", "Match"),
+                                     ("Personnel", "250,000", "125,000"),
+                                     ("Travel", "12,000", "6,000"))):
+        for x, cell in zip(columns, row):
+            canvas.drawString(x + 4, table_top - 14 - row_index * 20, cell)
+
+    canvas.showPage()
+    canvas.save()
+
+
 def annotated_form(path: Path) -> None:
     """A form carrying FreeText annotations, as if someone marked it up in Preview.
 
@@ -611,6 +679,7 @@ GENERATORS = {
     "linked_form.pdf": linked_form,
     "ruled_form.pdf": ruled_form,
     "screenshot_form.pdf": screenshot_form,
+    "boxed_notes.pdf": boxed_notes,
     "callout_notes.pdf": callout_notes,
 }
 
