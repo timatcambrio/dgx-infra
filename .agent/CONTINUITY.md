@@ -3,6 +3,21 @@
 Canonical briefing for the PDF-geometry output-quality task. Facts only.
 
 ## [PLANS]
+- 2026-09-15 [ASSESSMENT] Work so far has been driven by whichever evidence class happened to
+  be present in the document examined first. The structural fix is to stop treating documents
+  by identity and start treating them by the evidence they offer: extend `analyse()` into a
+  per-document evidence profile (annotations, callout lines, named widgets, ruled vs
+  borderless tables, columns), emitted for every file, so an unhandled document type surfaces
+  as an unfamiliar profile rather than as a silent degradation. This is also the only sound
+  response to the corpus-representativeness problem: do not tune thresholds on two samples;
+  build the instrument that reports the distribution when the real corpus arrives.
+- 2026-09-15 [ASSESSMENT] Proposed order, NOT yet approved by USER: (1) evidence profile in
+  `analyse()` + report; (2) fix the table-blindness defect; (3) replace `[near:]` inference
+  with emitted evidence; (4) table-grid recovery for ruled forms, designed only after real
+  corpus profiles exist; (5) tag flattened callouts via widget rects.
+- 2026-09-15 [ASSESSMENT] Build a fixed answerability eval -- "which cell / which box / what
+  is the limit" questions with known answers, run against converted output. It is what tells
+  us whether a converter change helped, and the defence against tuning to two samples.
 - 2026-09-14 [USER] Bind extracted PDF annotations to the form field each describes.
   Motivated by a retrieval test the converted output failed: asked which cell takes federal
   funds carry over, the NIFA budget markdown could not answer, because its annotations are
@@ -26,6 +41,20 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   at a scratch directory first.
 
 ## [DECISIONS]
+- 2026-09-15 [USER] OBJECTIVE, governs all conversion work: the goal is NOT markdown that
+  mirrors the source document. It is that a frontier model (Opus/Sonnet class) can answer
+  questions about the document from the markdown, or from embeddings over it. Fidelity is
+  instrumental; answerability is the acceptance test.
+- 2026-09-15 [DECISION] Consequence of the objective: the converter preserves evidence and
+  does not resolve it. Inference at conversion time is lossy, irreversible, and performed by
+  a worse judge than the model that reads the output. Emit the fact (which cell a callout
+  tip lands in); do not emit the guess (which label it probably means). Supersedes the
+  `[near: LABEL]` inference shipped in 8f5e725, which should be replaced rather than tuned.
+- 2026-09-15 [ASSUMPTION] Retrieval design, not yet decided by USER: markdown canonical and
+  the source of truth; embeddings derived and disposable; retrieval at document/section
+  granularity with embeddings as a router rather than chunk-level RAG. Rationale: these
+  documents are small (3-25pp) and chunking destroys the field/annotation and table-grid
+  structure the conversion work exists to preserve. Revisit if the client corpus is large.
 - 2026-09-14 [DECISION] Annotation->field resolution is a three-rule cascade, strongest
   evidence first: (1) the annotation's callout line `/CL`, tip = the point the annotator
   aimed at; (2) an AcroForm `/Widget` sharing the annotation's row, contributing `/T`;
@@ -42,6 +71,27 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `tests/fixtures/callout_notes.pdf` is added via `tests/make_fixtures.py`.
 
 ## [DISCOVERIES]
+- 2026-09-15 [TOOL] Sample documents at `dgx-deployment/sample-data` (USER-provided, in
+  scope; internet-sourced approximations of the client corpus, representativeness UNCONFIRMED).
+  The two are structurally opposite:
+  * NIH `Annotated_Forms_SmallBus_FORMS-f.pdf` (25pp): 205 FreeText annotations, 71 with
+    `/CL`, ZERO named widgets. 14 ruled tables, 13 borderless candidates.
+  * NIFA `NIFA-19-011-g-Budget-pilot-Research-sample-budget-annotated.pdf` (3pp): ZERO text
+    annotations, 13 named widgets. 1 ruled table found on a 3-page ruled budget grid.
+- 2026-09-15 [TOOL] CORRECTION to the 2026-09-14 premise: the NIFA document's callouts are
+  NOT annotation objects. They are flattened into page content, which is why they render as
+  `###` headings. Field binding emits zero annotations for it and cannot help it. Its widget
+  `/T` names are auto-derived echoes of drawn text; 6 of 13 still match, the rest degraded
+  into values (`774464`, `NOT APPLICABLE_2`).
+- 2026-09-15 [TOOL] Field binding measured on the NIH form: 10 exact, 87 inferred, 108
+  unbound. Of the 71 callout tips: 10 hit a body line, 20 land inside a ruled table, 41 point
+  at empty space (a blank box). The 20 are a DEFECT -- `_outside_regions` strips table words
+  from `lines` before `resolve_targets` sees them, so on a form the targets are removed from
+  the resolver's view. The 41 are a design gap: on a blank form the arrow points at the empty
+  box, so "what text is under the tip" is the wrong question.
+- 2026-09-15 [ASSESSMENT] Highest answerability payoff is table-grid recovery for ruled
+  forms, not annotation binding. The NIFA budget grid collapsing to one table is what made
+  the original retrieval question unanswerable; that document has no annotations at all.
 - 2026-09-14 [CODE] `extract_annotations` was narrowing each annotation to `(top, x0)` at
   construction and discarding the raw annot dictionary. pdfplumber supplies the full rect
   (`x0/x1/top/bottom`) plus `data`, so `/CL`, `/T` and `/Parent` were reachable all along.
