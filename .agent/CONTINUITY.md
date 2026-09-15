@@ -3,6 +3,14 @@
 Canonical briefing for the PDF-geometry output-quality task. Facts only.
 
 ## [PLANS]
+- 2026-09-15 [USER] DELIVERY MODEL, supersedes any assumption that we convert the client
+  corpus ourselves: the deliverable is `dgx-infra`, the pipeline. The client stands up their
+  own `dgx-knowledge` from their own internal documents, which we never see. The 6 documents
+  in `diu-internal-docs/temp-holding` are restricted -- they cannot be shared or committed,
+  nor can their converted markdown -- and no further documents are expected. Acceptance is
+  therefore that the pipeline behaves defensibly on unseen documents and reports honestly
+  when it cannot, not that any particular corpus converts well. Full reasoning, the proxy
+  corpus it requires, and its sources: `.agent/PROXY-CORPUS.md`.
 - 2026-09-15 [ASSESSMENT] Work so far has been driven by whichever evidence class happened to
   be present in the document examined first. The structural fix is to stop treating documents
   by identity and start treating them by the evidence they offer: extend `analyse()` into a
@@ -41,6 +49,19 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   at a scratch directory first.
 
 ## [DECISIONS]
+- 2026-09-15 [DECISION] The released sample is RELEASE-FILTERED and is a biased estimator of
+  the corpus on exactly the axes the evidence profile measures. `annot=0, w/CL=0, fields=0`
+  on all four released PDFs is NOT evidence that annotation and widget handling is dead
+  weight: documents carrying reviewer annotations, filled fields, tracked changes and
+  redactions are systematically less likely to clear release review, so their absence from
+  the sample is close to uninformative. Keep the machinery. What the sample does transfer
+  unbiased is register, authoring toolchain, the dominance of borderless over ruled tables,
+  and image-dominant pages as routine.
+- 2026-09-15 [DECISION] Proxy selection targets coverage of the plausible population, not
+  resemblance to the released six. Matching the sample's profile would propagate the release
+  filter into the test corpus and leave the highest-risk regions -- annotated, filled forms,
+  scanned, redacted, tracked-changes docx -- untested. Supersedes the earlier suggestion of
+  screening candidates for a close match to the released deck's profile row.
 - 2026-09-15 [DECISION] Flattened callouts render as `> **Boxed text:**`, NOT
   `> **Annotation:**`. They are page text in a rectangle and carry none of an annotation
   object's provenance; the measurement supports only "the page sets this apart in a box".
@@ -103,6 +124,73 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `tests/fixtures/callout_notes.pdf` is added via `tests/make_fixtures.py`.
 
 ## [DISCOVERIES]
+- 2026-09-15 [TOOL] Measured, geometry vs raw text extraction (`pypdfium2` textpage) on
+  committed fixtures and two throwaway probes. The geometry step's value is NOT uniform, and
+  the split is sharper than assumed:
+  * DECISIVE on annotations and widgets. On `linked_form.pdf` raw extraction returns the four
+    field labels and NOTHING else; all five annotations are absent. Annotation objects are not
+    in the text layer, so no reading model recovers them -- the tokens never arrive. Same for
+    named widgets and for image coverage, which is not text in any form.
+  * REAL on multi-column reading order. A 2-column probe: raw extraction fused sentences
+    across the gutter line by line (`Awards are made on a rolling basis. Protests must be
+    filed in five days.`); geometry kept the columns separate. It rendered them as a TABLE,
+    which is a misclassification -- prose in two columns is not a table -- but the separation
+    survives and is recoverable. This is the `Bridge` borderless-precision risk reproducing
+    on a synthetic case.
+  * MODEST on boxed text, correcting an assumption. Raw extraction did NOT shred the
+    side-by-side callouts in `boxed_notes.pdf`: pdfium's own layout analysis kept them in
+    order and `Federal funds carry over` survives intact and searchable. Geometry adds block
+    separation and the `> **Boxed text:**` provenance marking, not information recovery. The
+    word-by-word interleaving recorded earlier was created by `_group_words_into_lines`
+    regrouping on baselines; pdfium does not do that.
+  * MARGINAL against the objective: heading levels and markdown table pipes. A frontier model
+    reads a whitespace-aligned table; `##` vs `###` changes nothing it can answer.
+- 2026-09-15 [ASSESSMENT] Principle the above suggests: the reading model is robust to messy
+  text, the EMBEDDING INDEX is not, and retrieval decides whether the model ever sees the
+  page. So geometry earns its keep where it changes the TOKEN STREAM (annotations, widgets,
+  image markers, column order) and is close to dead weight where it only changes the
+  RENDERING (heading levels, table pipes). How much the latter matters still depends on the
+  undecided retrieval design -- at document/section granularity it matters less than at
+  chunk level.
+- 2026-09-15 [ASSESSMENT] Cheapest decisive experiment, PROPOSED not approved: register a
+  raw-text baseline engine (~20 lines around `pypdfium2`, already a base dependency) beside
+  `geometry` and `docling`, and run the existing answerability cases against both. It
+  measures the geometry step's contribution in the currency of the acceptance test, with no
+  model in the loop. A small delta on non-annotated documents argues for a simpler default
+  and less code for the client to audit; a large delta justifies the complexity with numbers.
+- 2026-09-15 [CODE] DOCLING INVENTORY. Docling has exactly ONE live call site: DOCX
+  conversion in `converters/office.py`, driving `MsWordDocumentBackend` directly (not
+  `DocumentConverter`, which would import the PDF backend unconditionally). It fetches no
+  model. That is why `docling-slim[format-docx]` is a BASE dependency with no ML runtime.
+  The PDF escalation `_convert_with_docling` raises `NotImplementedError`: it needs
+  `uv sync --extra pdf` plus a decision on `docling-layout-heron`. So of the three nominal
+  PDF engines, one is real (geometry), one is DOCX-only, and one is a stub.
+- 2026-09-15 [ASSESSMENT] The Docling PDF escalation is aimed at borderless tables and
+  unusual reading order -- which is exactly what the real corpus is made of (68/76, 41/56,
+  9/14, 4/10 pages). The dominant failure mode is the one path not built. Two cheap unblocks,
+  both recorded in `models.yaml`: `docling-models` (TableFormer v1, the actual default that
+  `PdfPipelineOptions` resolves to) has NO known blocker and sits in `pending_review` only
+  because this phase fetches nothing; `docling-layout-heron` is narrowed to a single
+  question -- which ResNet-50 weights seeded the backbone -- assessed as "probably clears"
+  and worth one question to the Docling maintainers. Against that: the PDF extra costs torch,
+  a model download, per-platform output variance and provenance review, and forfeits the
+  deterministic/model-free/no-network property that makes this shippable on-prem.
+- 2026-09-15 [TOOL] Redaction collides with the boxed-text path. Verified with a throwaway
+  synthetic probe (not committed): `_is_note_box` asks only that a rect be filled-or-stroked
+  and under `PDF_BOXED_MAX_AREA` (0.25) of the page, so a redaction rectangle is
+  indistinguishable from a note box. Proper redaction (text removed from the content stream)
+  is handled correctly -- the box holds no words and is skipped. IMPROPER redaction (an
+  opaque rect painted over text that is still in the content stream) is not: the hidden text
+  is extracted, removed from the body pool, and PROMOTED to its own `> **Boxed text:**`
+  block, leaving the visible remainder of the sentence as a dangling fragment (`The awardee
+  is`). Size is not a defence -- a 500x150pt block is 15.5% of a letter page and passed. No
+  existing fixture carries a rect over live text, so nothing in the suite sees this. For a
+  defence client this is a disclosure concern, not only a conversion defect. Remedy
+  UNDECIDED and needs the client's call; options in `.agent/PROXY-CORPUS.md`.
+- 2026-09-15 [CODE] `scripts/profile_corpus.py` takes only `--source-dir` and `--width`;
+  there is no `--anonymize`. Its output is already content-free by test (counts and geometry
+  only), so filenames are the sole obstacle to the client sharing profiles of a corpus they
+  cannot share documents from.
 - 2026-09-15 [TOOL] Item 5 root cause, and it explains the session's original symptom. The
   NIFA callouts are page text inside drawn rects -- 27 rects over 3 pages, each holding
   exactly one callout. The garbled header in the first converted markdown
@@ -204,6 +292,15 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-15 [CODE] Dead weight removed on USER instruction: `CONVERTER_DOCLING_PDFPLUMBER`
+  and `CONVERTER_MARKITDOWN` in `converters/pdf.py` were defined and referenced nowhere, and
+  `markitdown` was a declared dependency of the `pdf` extra with ZERO call sites -- it pulls
+  magika, which pulls onnxruntime, so an unused dependency was dragging a second ML runtime
+  into the one extra that exists to keep ML runtimes out. All three removed. `uv lock` run by
+  USER: 80 -> 67 packages, 171 deletions and ZERO additions, so nothing else in the closure
+  moved. The 13 removed are markitdown's whole subtree -- magika, onnxruntime, sympy, mpmath,
+  protobuf, flatbuffers, coloredlogs, humanfriendly, pyreadline3, markdownify,
+  beautifulsoup4, soupsieve. 304 tests and both gates pass after.
 - 2026-09-15 [USER] The NIFA document was REMOVED from `sample-data`; USER is unsure how
   representative it is and does not want more time spent on it. Consequence: the image-page
   and boxed-text work it motivated stays (both are general failure modes, and both are
