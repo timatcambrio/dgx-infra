@@ -328,3 +328,50 @@ def test_the_needs_ocr_stub_can_still_name_fields(config, fixtures_dir):
     """A scanned form has no labels to read, so its widgets are the only source of names."""
     body, _ = pdf.needs_ocr_stub(fixtures_dir / LINKED, config)
     assert "[field: TypeOfSubmission]: Use Application for the first submission attempt." in body
+
+
+# --------------------------------------------------------------------------------------
+# Callouts that point into a ruled table
+# --------------------------------------------------------------------------------------
+#
+# On a real form the fields *are* table cells, so this is where most callouts point. Words
+# inside a ruled table are handed to the table renderer and removed from the page's body
+# lines, which left the resolver looking at a page with its targets deleted: measured over a
+# 25-page annotated form, 20 of 71 callout tips landed inside a ruled table and resolved to
+# nothing.
+
+
+RULED = "ruled_form.pdf"
+
+
+def test_a_callout_into_a_cell_binds_to_that_cell(config, fixtures_dir):
+    body = pdf_geometry.to_markdown(fixtures_dir / RULED, config)
+    assert "[field: 1. TYPE OF SUBMISSION]: Use Application for the first submission attempt." \
+        in body
+
+
+def test_a_callout_into_an_empty_cell_binds_to_its_row(config, fixtures_dir):
+    """A blank form field is an empty cell. The row it sits in is what identifies it.
+
+    This is still the table's own structure rather than an inference about meaning -- the
+    ruling says which row the tip landed in, and the row says what it is called.
+    """
+    body = pdf_geometry.to_markdown(fixtures_dir / RULED, config)
+    assert "[field: 2. DATE SUBMITTED]: Format: MM/DD/YYYY." in body
+
+
+def test_a_cell_bound_annotation_is_emitted_after_its_table(config, fixtures_dir):
+    """A table converts to one block, so its notes belong after it, in row order."""
+    body = pdf_geometry.to_markdown(fixtures_dir / RULED, config)
+    table_end = body.index("| 2. DATE SUBMITTED |")
+    first = body.index("Use Application for the first submission attempt.")
+    second = body.index("Format: MM/DD/YYYY.")
+    assert table_end < first < second
+
+
+def test_cell_targets_need_no_widgets(config, fixtures_dir):
+    """The ruled grid alone carries the structure; this fixture has no form fields at all."""
+    import pdfplumber
+
+    with pdfplumber.open(fixtures_dir / RULED) as pdf:
+        assert pdf_geometry.extract_widgets(pdf.pages[0]) == []

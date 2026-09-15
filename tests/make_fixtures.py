@@ -273,6 +273,68 @@ def linked_form(path: Path) -> None:
     canvas.save()
 
 
+#: `ruled_form.pdf` geometry, in ReportLab's bottom-up user space. A three-column grid with
+#: a header row and two field rows, ruled on every edge so pdfplumber finds it as a table.
+RULED_COLUMNS = (72, 200, 300, 420)
+RULED_ROW_LINES = (700, 670, 640, 610)
+RULED_CELLS: list[list[str]] = [
+    ["Field", "Value", "Notes"],
+    ["1. TYPE OF SUBMISSION", "", ""],
+    ["2. DATE SUBMITTED", "", ""],
+]
+
+
+def ruled_form(path: Path) -> None:
+    """A ruled form whose callouts point into table cells.
+
+    The case the linking cascade could not see. Words inside a ruled table are handed to the
+    table renderer and removed from the page's body lines, so a callout aimed at a form field
+    -- which on a real form is a table cell -- found nothing under its tip and fell through
+    to an inference or to nothing at all.
+
+    Both cells that get pointed at here are the two shapes that matter: one carrying the
+    field label, and one *empty*, which is what a blank form field actually is.
+    """
+    from reportlab.pdfbase import pdfdoc
+
+    canvas = _canvas(path)
+    callout_annotation = _callout_annotation_class()
+
+    _draw_heading(canvas, "Ruled Application Form", 730)
+
+    top, bottom = RULED_ROW_LINES[0], RULED_ROW_LINES[-1]
+    for x in RULED_COLUMNS:
+        canvas.line(x, bottom, x, top)
+    for y in RULED_ROW_LINES:
+        canvas.line(RULED_COLUMNS[0], y, RULED_COLUMNS[-1], y)
+
+    canvas.setFont("Helvetica", 9)
+    for row_index, row in enumerate(RULED_CELLS):
+        baseline = RULED_ROW_LINES[row_index + 1] + 10
+        for column_index, text in enumerate(row):
+            if text:
+                canvas.drawString(RULED_COLUMNS[column_index] + 4, baseline, text)
+
+    def callout(contents: str, y: int, tip: tuple[int, int]) -> None:
+        canvas._addAnnotation(
+            callout_annotation(
+                (450, y, 600, y + 18),
+                contents,
+                "/Helv 9 Tf 0 g",
+                CL=pdfdoc.PDFArray([450, y + 9, (450 + tip[0]) // 2, tip[1], *tip]),
+            ),
+            None,
+            1,
+        )
+
+    # Into the cell that carries the label, and into an empty cell two rows down.
+    callout("Use Application for the first submission attempt.", 646, tip=(130, 655))
+    callout("Format: MM/DD/YYYY.", 616, tip=(250, 625))
+
+    canvas.showPage()
+    canvas.save()
+
+
 def annotated_form(path: Path) -> None:
     """A form carrying FreeText annotations, as if someone marked it up in Preview.
 
@@ -502,6 +564,7 @@ GENERATORS = {
     "too_big.csv": too_big_csv,
     "annotated_form.pdf": annotated_form,
     "linked_form.pdf": linked_form,
+    "ruled_form.pdf": ruled_form,
     "callout_notes.pdf": callout_notes,
 }
 
