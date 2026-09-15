@@ -20,6 +20,7 @@ import typer
 from . import StopAndAsk
 from . import config as config_module
 from . import manifest as manifest_module
+from . import answerability as answerability_module
 from . import report as report_module
 from .config import SUPPORTED_EXTENSIONS, Config, ConfigError
 from .convert import SourceDigestMismatch, convert_entry
@@ -258,6 +259,35 @@ def report(
 
     if built["stop_and_ask"] and output_format == "table":
         sys.exit(EXIT_STOP_AND_ASK)
+
+
+@app.command()
+def answerability(
+    cases: Path = typer.Option(
+        ..., "--cases", help="YAML file of questions with known answers.", metavar="PATH"
+    ),
+    source_dir: Optional[Path] = SOURCE_DIR_OPTION,
+) -> None:
+    """Check that converted markdown can still answer a fixed set of known questions.
+
+    Goldens catch change. They cannot catch output that is byte-stable and useless, which is
+    what every silent loss in this pipeline has looked like: a grid flattened into prose, a
+    callout stranded from its field. This asks the converted files real questions instead.
+
+    Reads only `kb/`, so it needs neither the source documents nor SOURCE_DIR. Exits non-zero
+    on any failure, so it can gate a release.
+    """
+    config = _load_config(source_dir)
+    try:
+        loaded = answerability_module.load_cases(cases)
+    except answerability_module.SpecError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+    results = answerability_module.run(loaded, config.kb_dir)
+    typer.echo(answerability_module.render(results))
+    if any(not result.passed for result in results):
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,69 @@
+# Answerability cases over the committed fixtures.
+#
+# Each case is a question someone would actually ask the document, plus the text that has to
+# survive conversion for the answer to be recoverable. These run in the test suite, so they
+# guard every converter change; the same format works against a real corpus via
+# `pipeline answerability --cases <file>`.
+#
+# Write `expect` as the smallest string that makes the answer findable, and `forbid` for a
+# wrong answer a previous version actually produced -- a regression that once happened is
+# worth more than one imagined.
+
+cases:
+  - id: submission-type-first-attempt
+    question: >
+      Which box do I check for the first submission attempt, and how do I know
+      the instruction belongs to that field rather than a neighbouring one?
+    document: linked-form.md
+    expect:
+      - "1. TYPE OF SUBMISSION"
+      - "[points to: TypeOfSubmission]: Use Application for the first submission attempt."
+    forbid:
+      # The arrow states its target here. Reporting mere row overlap would be a downgrade.
+      - "[beside: TypeOfSubmission]"
+
+  - id: date-format-is-attributed-but-not-claimed
+    question: What format does the date field take, and how strong is that attribution?
+    document: linked-form.md
+    expect:
+      - "[beside: 2. DATE SUBMITTED]: Format: MM/DD/YYYY."
+    forbid:
+      # Row overlap is not the annotator pointing at anything.
+      - "[points to: 2. DATE SUBMITTED]"
+
+  - id: unanchored-notes-stay-unanchored
+    question: Is there guidance that belongs to no particular field?
+    document: linked-form.md
+    expect:
+      - "> **Annotation:** General guidance is in the programme announcement."
+
+  - id: ruled-form-cells-are-answerable
+    question: Which cell of the ruled form does each instruction belong to?
+    document: ruled-form.md
+    expect:
+      - "| 1. TYPE OF SUBMISSION |"
+      - "[points to: 1. TYPE OF SUBMISSION]: Use Application for the first submission attempt."
+      - "[points to: 2. DATE SUBMITTED]: Format: MM/DD/YYYY."
+    forbid:
+      # A layout grid is not a map of the form's logical fields; the output must not say it is.
+      - "[field:"
+
+  - id: ruled-grid-survives-as-a-grid
+    question: What are the columns of the form's table?
+    document: ruled-form.md
+    expect:
+      - "| Field | Value | Notes |"
+
+  - id: annotations-are-distinguishable-from-the-form
+    question: Which words are the form's own, and which did someone add on top of it?
+    document: annotated-form.md
+    expect:
+      - "Requester:"
+      - "[beside: Requester:]: YOUR NAME"
+
+  - id: rates-table-is-still-a-table
+    question: What is the nightly lodging limit?
+    document: born-digital.md
+    expect:
+      - "Lodging"
+      - "$180 / night"

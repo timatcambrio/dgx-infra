@@ -9,7 +9,7 @@ PYTHON := $(UV) run python
 .DEFAULT_GOAL := help
 
 .PHONY: help sync check test gates license-gate model-gate fixtures \
-        inventory triage convert report report-json clean-work
+        inventory triage convert report report-json answerability clean-work
 
 help:  ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) \
@@ -49,6 +49,9 @@ report:  ## Print the coverage report
 
 report-json:  ## Print the coverage report as JSON
 	$(UV) run pipeline report --format json
+
+answerability:  ## Ask the converted kb/ a fixed set of questions with known answers
+	$(UV) run pipeline answerability --cases tests/answerability/fixtures.yaml
 
 clean-work:  ## Delete WORK_DIR. Costs time to rebuild, never information.
 	$(PYTHON) -c "import shutil; from pipeline.config import load; \
