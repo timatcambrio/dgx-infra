@@ -56,6 +56,9 @@ def build(manifest: dict[str, Any], config: Config) -> dict[str, Any]:
                 "max_columns": triage.get("max_columns"),
                 "ruled_tables": triage.get("ruled_tables"),
                 "borderless_table_pages": triage.get("borderless_table_pages"),
+                "annotations": triage.get("annotations"),
+                "annotations_with_callout": triage.get("annotations_with_callout"),
+                "form_fields": triage.get("form_fields"),
                 "text_class": "MISSING" if missing else triage.get("text_class"),
                 "error": triage.get("error"),
                 "converter": (entry.get("conversion") or {}).get("converter"),
@@ -231,6 +234,32 @@ def render_table(report: dict[str, Any]) -> str:
             lines.append(
                 f"  {row['source_file']}: {row['borderless_table_pages']} page(s) with "
                 "borderless tables -- recovered by column alignment, worth spot-checking"
+            )
+
+    # What each document *offered*, next to what was recovered from it. This is the section
+    # that makes a silent loss loud: a form whose fields are present and whose ruled tables
+    # are not has had its grid dropped, and every other signal -- text class, page count,
+    # character coverage -- will call that conversion clean.
+    annotated = [row for row in report["documents"] if row.get("annotations")]
+    formlike = [
+        row
+        for row in report["documents"]
+        if (row.get("form_fields") or 0) > 0
+        and (row.get("form_fields") or 0) > (row.get("ruled_tables") or 0)
+    ]
+    if annotated or formlike:
+        lines += ["", "EVIDENCE NOTES (what the document carries beyond its text layer)"]
+        for row in sorted(annotated, key=lambda item: item["source_file"] or ""):
+            with_callout = row.get("annotations_with_callout") or 0
+            lines.append(
+                f"  {row['source_file']}: {row['annotations']} annotation(s) carrying text "
+                f"no text-layer extraction sees, {with_callout} stating their own target"
+            )
+        for row in sorted(formlike, key=lambda item: item["source_file"] or ""):
+            lines.append(
+                f"  {row['source_file']}: {row['form_fields']} form field(s) but "
+                f"{row.get('ruled_tables') or 0} ruled table(s) recovered -- a form whose "
+                "grid is mostly not being reconstructed"
             )
 
     # A document can be `clean` overall and still hold individual pages with no usable text.

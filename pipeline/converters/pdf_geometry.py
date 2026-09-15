@@ -215,6 +215,12 @@ class PageAnalysis:
     columns: int
     ruled_tables: int
     candidate_text_tables: int
+    #: Text annotations: content attached to the page that no text-layer extraction sees.
+    annotations: int = 0
+    #: Of those, how many carry a callout line -- the subset whose target the file states.
+    callout_lines: int = 0
+    #: Named AcroForm fields. A document with these is a form, whatever else it looks like.
+    form_fields: int = 0
 
 
 def _normalise(text: str) -> str:
@@ -814,6 +820,7 @@ def analyse(path: Path, config: Config) -> list[PageAnalysis]:
                     )
                 except Exception:  # noqa: BLE001 - diagnostic only, never fails a run
                     text_tables = 0
+            annotations = extract_annotations(page, page.extract_text() or "")
             results.append(
                 PageAnalysis(
                     page_number=number,
@@ -822,6 +829,11 @@ def analyse(path: Path, config: Config) -> list[PageAnalysis]:
                     ),
                     ruled_tables=ruled,
                     candidate_text_tables=text_tables,
+                    annotations=len(annotations),
+                    callout_lines=sum(
+                        1 for item in annotations if item.callout is not None
+                    ),
+                    form_fields=len(extract_widgets(page)),
                 )
             )
     return results

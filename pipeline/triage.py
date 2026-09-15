@@ -58,6 +58,15 @@ class TriageResult:
     #: Pages where no ruled table was found but the text looks column-aligned -- i.e. probable
     #: borderless tables, the weakest spot for model-free extraction.
     borderless_table_pages: int = 0
+    #: Text annotations across the document -- callouts and sticky notes, which are attached
+    #: to a page rather than printed on it and which no text-layer extraction sees. A document
+    #: with many of these keeps its instructions outside its text.
+    annotations: int = 0
+    #: Of those, how many carry a callout line, i.e. how many state their own target.
+    annotations_with_callout: int = 0
+    #: Named AcroForm fields. Their presence says the document is a form, which is what makes
+    #: a low `ruled_tables` count on the same document worth looking at.
+    form_fields: int = 0
     #: 1-based page numbers yielding under MIN_CHARS_PER_PAGE.
     #:
     #: A document can be `clean` overall and still contain individual pages with no usable
@@ -210,6 +219,9 @@ def _layout_facts(path: Path, config: Config) -> dict:
         "borderless_table_pages": sum(
             1 for page in pages if not page.ruled_tables and page.candidate_text_tables
         ),
+        "annotations": sum(page.annotations for page in pages),
+        "annotations_with_callout": sum(page.callout_lines for page in pages),
+        "form_fields": sum(page.form_fields for page in pages),
     }
 
 
