@@ -71,6 +71,21 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `tests/fixtures/callout_notes.pdf` is added via `tests/make_fixtures.py`.
 
 ## [DISCOVERIES]
+- 2026-09-15 [TOOL] Table-cell binding on the NIH form: exact 10 -> 32, inferred 87 -> 84,
+  unbound 108 -> 89. The original retrieval question is now answered by the markdown itself:
+  `[field: 1.TYPE OF SUBMISSION]: Use Application for first submission attempt for due date.`
+- 2026-09-15 [CODE] Cell containment must use ZERO tolerance. Cells tile a table with no gaps,
+  so slack bridges nothing and instead snaps a tip that missed the table into the nearest edge
+  cell, reported as exact. Caught on the real form: a callout 2pt left of the table bound to
+  the wrong row with full confidence. Widgets and lines keep their tolerance -- they are
+  discrete boxes with real gaps between them.
+- 2026-09-15 [TOOL] LIMIT, not a bug, and the main input to plan step 3: a PDF's ruling is a
+  layout grid, not a semantic field map, so the cell a tip lands in need not be the logical
+  field. Confirmed case on the NIH form -- a note about the Changed/Corrected checkbox (part
+  of field 1) has its arrow tip genuinely inside a cell whose text is `Applicant Identifier`,
+  and now renders `[field: Applicant Identifier]`. The tip location is a fact; calling the
+  containing cell "the field" is an assertion the file does not support. Argues that a cell
+  hit should render as evidence (which cell was pointed at) rather than as a field claim.
 - 2026-09-15 [TOOL] Sample documents at `dgx-deployment/sample-data` (USER-provided, in
   scope; internet-sourced approximations of the client corpus, representativeness UNCONFIRMED).
   The two are structurally opposite:
