@@ -41,6 +41,14 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   at a scratch directory first.
 
 ## [DECISIONS]
+- 2026-09-15 [DECISION] Annotation anchors render as one of exactly TWO kinds, each naming a
+  measurement rather than a conclusion: `[points to: X]` (the annotation's callout line lands
+  on X) and `[beside: X]` (X shares a row with the note). Neither claims which logical field
+  a note is about. Supersedes the `[field:]`/`[near:]` exact/inferred pair, which conflated
+  how a link was found with where its label came from -- a widget contributes the form's own
+  name whether an arrow points at it or it merely shares a row, and that never made the
+  second case a stated fact. Plan item 3 is CLOSED by this; it absorbed the ruling-vs-field
+  limit rather than that becoming a separate item 6.
 - 2026-09-15 [USER] OBJECTIVE, governs all conversion work: the goal is NOT markdown that
   mirrors the source document. It is that a frontier model (Opus/Sonnet class) can answer
   questions about the document from the markdown, or from embeddings over it. Fidelity is
@@ -144,6 +152,10 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-15 [TOOL] Plan item 1 (table-cell targets) merged to main at `a32c267`. Item 3
+  (evidence vocabulary) on branch `annotation-evidence-vocabulary`, unmerged, 5 commits
+  `a778445`..`dc5f3e0`. 249 tests pass. Remaining: item 2 (evidence profile in the report),
+  item 4 (table-grid recovery), item 5 (tag flattened callouts), plus the answerability eval.
 - 2026-09-14 [TOOL] Annotation field binding done on branch `pdf-annotation-field-linking`,
   four commits in the repo's established order: `b32e39e` failing tests + `linked_form.pdf`
   fixture, `8f5e725` the implementation, `143c4a9` goldens only, `8ecfb99` docs.
@@ -152,6 +164,14 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `2dbafb8` the fix, `ac42309` the golden and its registration (nothing else).
 
 ## [OUTCOMES]
+- 2026-09-15 [TOOL] On the NIH form after items 1 and 3: 32 `points to`, 84 `beside`, 89
+  unanchored, of 205 annotations. The session's original retrieval question is answered by
+  the markdown itself -- `[points to: 1.TYPE OF SUBMISSION]: Use Application for first
+  submission attempt for due date.`
+- 2026-09-15 [CODE] `ruled_form.pdf` initially carried too little text and triaged
+  `needs_ocr`, so its golden recorded the stub path rather than the geometry path it exists
+  to cover. Caught only by registering the golden; the unit tests call `to_markdown` directly
+  and never saw it. General hazard: a sparse fixture silently tests a different code path.
 - 2026-09-14 [TOOL] 242 tests pass; both gates pass (model gate run with
   `--cache-dir $(mktemp -d)`, not `make clean-work`, to preserve the Marker eval weights).
   `make fixtures` is a no-op against committed bytes.
