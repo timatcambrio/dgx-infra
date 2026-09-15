@@ -185,7 +185,7 @@ def convert(
         return
 
     stop_and_ask: list[str] = []
-    not_implemented: list[str] = []
+    unavailable: list[str] = []
 
     for entry in entries:
         if entry.get("status") == STATUS_MISSING:
@@ -198,8 +198,8 @@ def convert(
             typer.secho(f"    {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(1) from exc
         except NotImplementedError as exc:
-            not_implemented.append(f"{entry['source_file']}: {exc}")
-            typer.echo(f"  NOT-YET (M2)   {entry['source_file']}")
+            unavailable.append(f"{entry['source_file']}: {exc}")
+            typer.echo(f"  UNAVAILABLE    {entry['source_file']}")
             continue
         except StopAndAsk as exc:
             stop_and_ask.append(f"{entry['source_file']}: {exc}")
@@ -214,9 +214,9 @@ def convert(
 
     manifest_module.save(manifest, config.manifest_path)
 
-    if not_implemented:
-        typer.echo("\nDeferred to M2:")
-        for item in not_implemented:
+    if unavailable:
+        typer.echo("\nNot converted -- the requested converter is unavailable:")
+        for item in unavailable:
             typer.echo(f"  * {item}")
 
     if stop_and_ask:

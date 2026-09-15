@@ -226,6 +226,6 @@ def _convert_with_docling(path: Path, config: Config) -> tuple[str, str]:
         "The Docling PDF escalation is not wired up. It needs two things first: "
         "`uv sync --extra pdf` to install the ML runtime, and a decision on "
         "docling-project/docling-layout-heron's base-weight provenance, which models.yaml "
-        "still lists under pending_review. Use the default geometric engine, or resolve "
-        "those. See README 'Open questions'."
+        "still lists under pending_review with what is known about it. Use the default "
+        "geometric engine, or resolve those."
     )

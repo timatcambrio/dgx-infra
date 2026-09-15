@@ -1,549 +1,253 @@
-# dgx-infra — Stage 1 document conversion
+# dgx-infra — document conversion
 
-Takes a directory of institutional documents (PDF, DOCX, legacy DOC, CSV) and produces
-clean markdown with metadata frontmatter, plus a **coverage report** measuring how much of
-the corpus carries a usable text layer.
+Point this at a folder of institutional documents (PDF, DOCX, legacy DOC, CSV) and it
+produces clean markdown with metadata, plus a report telling you which documents converted
+completely and which did not.
 
-**This phase is deliberately model-free for text: no OCR, no VLM, no LLM.** The point is to
-find out how far plain text-layer extraction gets on the real document mix *before* anyone
-commits to an OCR model. The coverage report is a decision gate, not a warm-up.
+**Nothing here uses a model.** No OCR, no LLM, no ML runtime, and nothing is downloaded at
+run time. PDFs are reconstructed from character geometry — word positions, type sizes,
+ruling lines. That means conversion works offline, produces identical output every time, and
+you can read the extraction logic rather than trusting weights.
 
-Companion repo: `dgx-knowledge/` (clone side by side). It holds the manifest `corpus.yaml`,
-the converted markdown in `kb/`, and the disposable `work/` directory.
+It also means some things cannot be recovered — a page that is a scan has no text to
+extract. **The pipeline's job is to be honest about that**, so the sections below on reading
+the report and the markers in the output are the important ones.
 
 ---
 
-## Quickstart — three commands to a coverage report
+## Setup
+
+You need [uv](https://docs.astral.sh/uv/). It installs the right Python (3.12) and every
+dependency itself — there is nothing else to install and no virtualenv to create by hand.
 
 ```bash
-conda activate dgx-infra          # python 3.12 + uv only; uv owns everything else
-uv sync                           # creates .venv from the locked dependency set
-cp .env.example .env              # then edit SOURCE_DIR to point at your documents
+uv sync
+cp .env.example .env
 ```
 
-Then:
+Then open `.env` and set one line:
 
 ```bash
-make inventory                    # scan SOURCE_DIR, populate corpus.yaml
-make triage                       # measure text-layer coverage per PDF
-make report                       # print the coverage table + corpus totals
+SOURCE_DIR=/absolute/path/to/your/documents
 ```
 
-`make check` runs the test suite plus both policy gates and is what CI should run.
+That is the only required setting. Everything else in `.env.example` is commented out with
+its default shown.
 
----
+**Legacy `.doc` / `.dot` files also need LibreOffice** — see [LibreOffice (subprocess
+only)](#libreoffice-subprocess-only). Every other format works with `uv sync` alone.
 
-## Source documents live OUTSIDE both repos
+### Where things go
 
-The source documents are **never** inside either repo, not even gitignored. They sit in a
-directory of your choosing elsewhere on disk, and the pipeline is pointed at it:
-
-```bash
-SOURCE_DIR=/path/to/documents     # in .env; overridable per-run with --source-dir
-```
-
-Every command accepts `--source-dir PATH`, falls back to `SOURCE_DIR` from the environment,
-and **errors clearly if neither is set**. It never defaults to a path inside the repo and
-never creates one.
-
-`SOURCE_DIR` is treated as **strictly read-only**. The pipeline does not write, move,
-rename, or clean up anything under it. Conversion intermediates (for example the
-LibreOffice `.doc` → `.docx` step) go to `WORK_DIR`, which defaults to `$KB_PATH/work/`,
-is gitignored, and is disposable — deleting it costs time, never information.
-
-Consequences that are designed for, not worked around:
-
-- **Manifest paths are relative to the source root**, never absolute. Two machines with the
-  same documents at different absolute paths produce the same `corpus.yaml`. The root's own
-  path appears nowhere in the committed manifest.
-- **A clone alone cannot reproduce a conversion.** That is expected. Each entry's `sha256`
-  is the record that a given `kb/` file came from a given source; a mismatch on a later run
-  is a loud error, not a silent re-convert.
-- **Missing source files are a first-class case.** If a manifest entry's file is absent from
-  `SOURCE_DIR`, it is reported as `MISSING` and the run continues. The entry is never
-  deleted and the run never fails because of it.
-
-Because `kb/` is the same content as text, it is exactly as sensitive as the sources, so
-`kb/` is gitignored in `dgx-knowledge` for now. `corpus.yaml` **is** committed — check that
-the filenames themselves are not sensitive before pushing.
-
----
-
-## Prerequisites
-
-### Python
-
-Python **3.12** via a conda env containing nothing but `python` and `uv`; `uv` manages
-every package from there and writes a repo-local `.venv`. `uv.lock` is committed and
-pins the entire graph.
-
-```bash
-conda create -n dgx-infra python=3.12 uv
-```
-
-### LibreOffice (subprocess only — never imported)
-
-Legacy `.doc` / `.dot` files are converted to `.docx` by invoking the `soffice` binary as a
-subprocess:
-
-```bash
-soffice --headless --convert-to docx --outdir "$WORK_DIR/doc2docx/" <file>
-```
-
-LibreOffice is MPL/copyleft. Invoking it as a **separate program** is permitted under the
-call-style licence rule below; importing a copyleft library is not. If `soffice` is absent
-the pipeline fails with an error naming the binary and this section — it never falls back
-to a copyleft Python library.
-
-> **Pinned major version: UNCONFIRMED.** LibreOffice's `.doc` import filter output is not
-> byte-stable across releases, and determinism is a hard requirement, so the major version
-> must be pinned and matched between dev and the client. It is **not yet installed on the
-> dev machine**, so the `.doc`/`.dot` path is currently unexercised. Resolve against the
-> client's available version (open question 4) and record the pin here.
-
----
-
-## Platform constraint (read before upgrading dependencies)
-
-`pyproject.toml` declares `tool.uv.required-environments` for **linux-x86_64** (the DGX and
-client target) and **darwin-x86_64** (the current dev machine). Every locked dependency
-must have an installable wheel on both.
-
-This is not decorative. PyTorch — pulled in by Docling via `docling-ibm-models` — ships no
-macOS x86_64 wheel after **2.2.2**. Without that constraint `uv lock` produces a lock that
-resolves cleanly and then cannot be installed on the dev Mac at all. With it, uv resolves
-torch per-platform: **2.2.2 on darwin-x86_64, current on linux-x86_64.**
-
-If `uv lock` starts failing, a dependency has dropped one of those platforms. That failure
-is the intended signal — decide deliberately, do not silently drop a platform.
-
-**Consequence for golden files:** Docling runs against different torch versions on the two
-platforms, so byte-identical Docling output *across* platforms is not guaranteed. The hard
-determinism requirement is per-machine: the same input converted twice on the same machine
-must be byte-identical, and that is what `test_determinism.py` enforces. A golden-file
-mismatch after changing machines is a review item, not something to auto-accept.
-
----
-
-## Policy gates
-
-Both run under `make check`.
-
-### `scripts/license_gate.py` — call style, not licence string
-
-Obligations attach to *conveying* software, not to using it. The rule is therefore about
-**how a dependency is called**, not what its metadata string says:
-
-- Copyleft invoked as a **subprocess** is allowed (separate program, not a derivative work).
-  LibreOffice qualifies.
-- Copyleft **imported as a library** is banned. The conservative reading of linking makes
-  our own module a derivative work, and "the client downloads it themselves" does not cure
-  that.
-- **PyMuPDF / pymupdf4llm (AGPL) are import-only and therefore permanently banned — for
-  anything, including a "quick check".**
-- Never vendor a copyleft binary into the repo or into a published image.
-
-The gate walks installed dist-info metadata, classifies each distribution, and FAILS if a
-GPL/AGPL package is imported anywhere under `pipeline/`. False positives (dual-licensed or
-misdeclared metadata) go in `scripts/license_allowlist.yaml` with written justification.
-
-`test_gates.py` proves the gate fails on a planted `import fitz` — an unexercised gate is
-decorative.
-
-### `scripts/model_gate.py` — licence AND provenance
-
-Models must be permissively licensed **and** have non-Chinese base-weight provenance,
-judged on the base weights rather than the releasing organisation. A US company
-fine-tuning a Chinese base does not clear it.
-
-The gate looks in two places, because they fail differently:
-
-- **Model caches** — anything downloaded at runtime that is not on the allowlist.
-- **Installed packages** — model weights shipped *inside* a wheel. This is not hypothetical.
-  The `docling` meta-package is defined as `docling-slim[standard]`, which installs
-  `rapidocr` whether or not any OCR is used, and the rapidocr wheel bundles roughly 30MB of
-  Baidu PaddleOCR weights (`PP-OCRv6_det`, `PP-OCRv6_rec`, `ch_ppocr_mobile`) as ordinary
-  files. They never touch a cache, so a cache-only gate reports a clean run while banned
-  weights sit in site-packages. This project therefore depends on **`docling-slim` with
-  named extras**, never on `docling`.
-
-`models.yaml` is an explicit allowlist, and in this phase it is deliberately **empty**.
-Stage 1 is model-free for text, so nothing should ever be fetched; an empty allowlist plus
-the gate's cache scan therefore asserts something true and useful right now — that no model
-has been downloaded — and fails the moment one appears.
-
-Models Docling *would* fetch once M2 runs are listed under `pending_review` with what is
-known about each. The gate prints them on every run and fails if one is found in a cache, so
-M2 cannot quietly begin by downloading a model whose licence or provenance is still open.
-
-**Docling's OCR engine is pinned in `config.py` even though OCR is off.** Docling's OCR
-backends differ in provenance — RapidOCR wraps PaddleOCR (Baidu) models — so leaving engine
-selection on defaults could silently pull Chinese-trained weights into ingestion on a
-version bump. The pin is asserted in `test_gates.py`.
-
----
-
-## Triage thresholds
-
-Defaults live in `config.py` and are overridable by environment variable:
-
-| Setting | Default | Meaning |
-| --- | --- | --- |
-| `MIN_CHARS_PER_PAGE` | 100 | A page yielding fewer characters counts as "low". |
-| `MIN_ALPHA_RATIO` | 0.60 | Fraction of extracted characters that are alphanumeric, punctuation, or whitespace. |
-| `MAX_LOW_PAGE_FRACTION` | 0.20 | Above this fraction of low pages, a document is no longer `clean`. |
-
-`alpha_ratio` catches the failure mode a character count misses: a PDF with a broken
-font-to-Unicode map extracts plenty of characters and all of them are mojibake. A file can
-look text-rich and be unusable.
-
-Classification: `clean` (passes all three), `partial` (passes overall, meaningful minority
-of low pages — e.g. a handbook with scanned appendices), `needs_ocr` (fails median chars or
-alpha ratio). DOCX and CSV skip triage and are recorded as `clean` with
-`text_coverage: null`.
-
-**Do not tune these against a sample set to change the class distribution.** Report the
-numbers at the defaults. If a threshold looks wrong, say so here with evidence and leave
-the default alone.
-
----
-
-## Status
-
-| Milestone | State |
+| | |
 | --- | --- |
-| **M0** — skeleton, gates, fixtures | Done. `make check` green: both gates pass, 140 tests pass. |
-| **M1** — inventory, triage, report | Machinery done and exercised end to end. **The decision gate itself is still open** — see below. |
-| **M2** — conversion | **Done for PDF, DOCX and CSV**, with goldens for each. PDF uses a model-free geometric engine; the Docling escalation is still gated. |
-| **M3** — quality pass on real samples | Not started. Needs M2 and the real corpus. |
+| **Your documents** | `SOURCE_DIR` — **read-only**. Nothing is ever written, moved, renamed or deleted here. |
+| **Converted markdown** | `kb/` in the companion `dgx-knowledge` repo (clone it beside this one) |
+| **The record of what came from where** | `corpus.yaml`, also in `dgx-knowledge` |
+| **Scratch files** | `work/` — disposable; deleting it costs time, never information |
 
-### M1 has not actually run against a representative corpus
+Source documents deliberately live outside both repos. If `SOURCE_DIR` is unset, commands
+stop with an error rather than guessing.
 
-The pipeline was exercised against `synthetic-cso-data/`, which is a smoke test, **not the
-decision gate**. Those 7 PDFs (15 pages) all classify `clean` at 0.0% `needs_ocr`, with
-median 1089–2161 characters per page. That number means only that the tooling works: the
-files are uniformly born-digital and are explicitly not representative of the real,
-restricted corpus, whose PDFs may well have no text layer at all.
+---
 
-**The M1 deliverable is that same report run over the real documents.** Until then nobody
-should conclude anything about how large the OCR problem is.
+## Running it
 
-Test fixtures do carry the hard cases the real corpus might contain, and they classify
-correctly: `image_only.pdf` → `needs_ocr`, `mixed.pdf` → `partial`, and `mojibake.pdf` →
-`needs_ocr` at 2574 characters per page — text-rich by character count, unusable in fact,
-caught only by the alpha-ratio check.
+Four commands, in order:
 
-## Open questions and STOP-AND-ASK items
-
-Two of these block M2. None should be resolved by guessing.
-
-1. **The table-structure model is fine — no action needed.** Docling's default
-   `PdfPipelineOptions` resolves `table_structure_options` to `TableStructureOptions`
-   (kind `docling_tableformer`), which fetches `docling-project/docling-models` —
-   `apache-2.0` plus `cdla-permissive-2.0`, IBM's own TableFormer weights rather than a
-   fine-tune of anyone's base. The unlicensed `docling-project/TableFormerV2` is reachable
-   only by explicitly opting into `TableStructureV2Options`, which nothing here does. It
-   stays listed in `models.yaml` precisely so that opting in would trip the gate.
-
-2. **`docling-project/docling-layout-heron`'s base weights are undocumented.** The default
-   layout model is cleanly Apache-2.0 and trained by IBM Research, but its architecture is
-   RT-DETRv2 — which originated at Baidu — and neither the model card nor the abstract of
-   the accompanying paper (arXiv:2509.11720) says whether the weights were initialised from
-   a Baidu or PekingU RT-DETRv2 checkpoint, from an ImageNet-pretrained ResNet50 backbone,
-   or from scratch. Architecture alone does not fail the provenance rule; the same reasoning
-   already cleared Surya, which uses a Qwen-*style* architecture without Qwen weights. But an
-   RT-DETRv2 checkpoint as the starting point would fail it. Resolve from the paper's
-   methodology section or by asking the Docling maintainers.
-
-3. **LibreOffice's pinned major version is unknown**, and it is not installed on the dev
-   machine, so the `.doc`/`.dot` path is entirely unexercised. Needs the client's available
-   version.
-
-Logged, not blocking:
-
-4. Are the other CSVs (if any exist) reference tables or per-row records? Decides whether
-   `record` mode is ever built. The one sample in hand is a reference table.
-5. Is `kb/` markdown as sensitive as the source documents? Decides whether the content repo
-   can hold committed content at all. Currently assumed yes, so `kb/` is gitignored.
-6. Do any real samples carry a discoverable revision or effective date? If most come back
-   `UNCONFIRMED`, the citation requirement needs an answer other than "cite the doc date".
-
-For context on why the gate reports these on every run rather than filing them away: both
-`models.yaml` entries sit in `pending_review`, the allowlist is empty, and the model gate
-fails immediately if either model is ever actually downloaded.
-
-## How PDFs are converted
-
-**The default PDF engine is model-free.** `pdfplumber` reconstructs the document from
-character geometry — word positions, font sizes, ruling lines — and no model is involved at
-any point. Concretely it recovers reading order, heading levels from type size, ruled
-tables, borderless tables from column alignment, and strips running headers and footers by
-finding text that repeats in the same margin position across pages.
-
-This is the default because triage showed the corpus is uniformly born-digital. With a clean
-text layer on every page, a layout model buys borderless-table structure and unusual reading
-orders, and costs a torch runtime, a model download, per-platform output variance, and an
-unresolved base-weight provenance question. That is a poor default trade, and a reasonable
-one for the specific documents that turn out to need it.
-
-What it buys, beyond avoiding the provenance question: the default install carries **no ML
-runtime at all**, nothing is fetched at runtime (so an air-gap is a non-issue for Stage 1),
-output is byte-identical across machines, and a client can audit the extraction logic by
-reading it — which is not true of model weights.
-
-### Annotations are extracted, because nothing else sees them
-
-A "Markup" callout -- the box someone types into when annotating a form in Preview or
-Acrobat -- is a PDF **annotation object, not page content**. No text-layer extraction sees
-it, which means a document whose instructions were added that way converts into a blank
-form with the instructions silently gone.
-
-This is not a corner case in this corpus. One funding-request tutorial carries **18** such
-callouts -- `select the appropriate FISCAL YEAR`, `don't forget to attach a copy of the
-draft SOW`, `TOTAL SUM ON IGCE MATCHES AMOUNT IN FUNDING REQUEST` -- and **none** of them are
-in its text layer. They are the entire reason the file is a tutorial rather than a form.
-
-`FreeText` and `Text` annotations are therefore read from pdfplumber (already the conversion
-dependency -- no new package, no model, no licence question) and prefixed:
-
-```markdown
-### Overview
-
- Requester  Jane Doe
-
-> **Annotation:** YOUR NAME
+```bash
+make inventory    # find the documents and record them in corpus.yaml
+make triage       # measure how much readable text each PDF actually has
+make convert      # write the markdown into kb/
+make report       # print what happened
 ```
 
-The prefix is load-bearing. Downstream this text gets retrieved and cited with no access to
-the original PDF, and "what the form prints" versus "what a colleague annotated onto it" is
-exactly the distinction a citation has to keep.
+Each is re-runnable. `convert` skips documents that have not changed since last time; add
+`--force` to redo them anyway. To work on a single document, every command takes `--only
+SUBSTRING`, and `--source-dir PATH` overrides `.env` for one run.
 
-Annotations whose text the page also prints (the result of flattening) are dropped, since
-emitting both would make the document say everything twice. `PDF_ANNOTATIONS=false` turns
-the feature off, which exists for engine comparisons rather than as a sensible default.
+`make profile` is a useful extra: it prints a one-row-per-document summary straight from the
+PDFs, with no manifest and no conversion run, so you can see what a folder contains before
+committing to anything. It emits counts only — never document text — so it is safe to run on
+a corpus that cannot leave the machine it lives on, and to paste the result into a ticket.
 
-Annotations survive the `needs_ocr` stub path too: a scanned form that was later marked up
-electronically has no usable text layer and a full set of typed callouts, which are then the
-only machine-readable text in the file.
+---
 
-### Which field an annotation is about
+## Reading the report
 
-Extracting a callout is half the job. "Use *Application* for the first submission attempt"
-is only actionable if you know which box it means, and position alone answers that only
-while a page is sparse. On a real form the callouts stack into a single margin column and
-the fields they describe do not, so emitting each note at its own vertical position produces
-a run of instructions with nothing to say which belongs to which -- and nothing downstream
-can recover it, because the PDF is no longer there to look at.
+### The class on each document
 
-The output does not answer it. It reports what was *measured*, in two kinds, and leaves the
-answer to the reader:
+`triage` measures three things per PDF and combines them into a class:
 
-| Kind | Found by | What it states |
+| Class | Means |
+| --- | --- |
+| `clean` | Every page carries usable text. Convert and move on. |
+| `partial` | Usable overall, but a meaningful minority of pages yielded almost nothing — typically a handbook with scanned appendices. **Those pages will be missing from the markdown.** |
+| `needs_ocr` | Not enough readable text to convert. Needs OCR, which this pipeline does not do. |
+| `error` | The file could not be opened. Encrypted files report themselves specifically. |
+
+DOCX and CSV skip triage — their text is structural, not drawn on a page — and are recorded
+as `clean`.
+
+The three measurements behind the class:
+
+| Setting | Default | What it catches |
 | --- | --- | --- |
-| `[points to: X]` | The annotation's callout line (`/CL`), resolved against form fields, ruled table cells, then printed lines | The annotator's arrow lands on X |
-| `[beside: X]` | Row overlap, preferring a form field's own `/T` name over a printed label | X shares a row with the note |
+| `MIN_CHARS_PER_PAGE` | 100 | A page with less than this counts as "low". Median is used, not mean, so a few dense pages cannot mask a scanned majority. |
+| `MIN_ALPHA_RATIO` | 0.60 | A PDF with a broken font map extracts plenty of characters and every one is mojibake. Such a file looks text-rich and is unusable. Character count alone never catches it. |
+| `MAX_LOW_PAGE_FRACTION` | 0.20 | Above this share of low pages, a document is no longer `clean`. |
 
-```markdown
-1. TYPE OF SUBMISSION
+**Leave these alone.** They are set where they are on purpose; moving them to make a
+particular folder look better changes the labels without changing the documents.
 
-> **Annotation** [points to: TypeOfSubmission]: Use Application for the first submission attempt.
+### LOW-TEXT PAGES
 
-2. DATE SUBMITTED
+Page numbers, inside otherwise-usable documents, that yielded almost no text. Worth a
+glance: a cover page or a section divider is fine, a scanned figure is content that will be
+missing from `kb/`.
 
-> **Annotation** [beside: 2. DATE SUBMITTED]: Format: MM/DD/YYYY.
-```
+### LAYOUT NOTES
 
-**Neither kind claims to know which logical field a note is about**, and that restraint is
-deliberate rather than modest. A PDF's ruling is a layout grid, not a map of the form's
-fields: on a real annotated form, a note about a checkbox belonging to field 1 has its arrow
-tip genuinely inside a cell whose text names a different field. Where the tip landed is a
-fact. Which field the note concerns is a reading of the form, and the reader downstream has
-the whole form in front of it while this module has coordinates.
+Where the geometry is most likely to have struggled. Two kinds:
 
-An annotation matching neither rule keeps no anchor and renders exactly as it did before any
-of this existed. A plausible anchor is worse than none, because nothing downstream can tell
-a plausible one from a real one.
+- **Multi-column pages** — handled, but the likeliest place for reading order to go wrong.
+  Worth checking the converted output.
+- **Borderless tables** — tables with no ruling lines, recovered by noticing that several
+  consecutive lines split into aligned columns. Worth a spot-check. The pipeline is
+  deliberately reluctant here, because inventing a table destroys the paragraph it consumes,
+  so it would rather miss one than invent one.
 
-A bound annotation is emitted at its *target's* position rather than its own, which is what
-moves each note back to what it describes; notes on a ruled table follow the whole table, in
-row order. `PDF_ANNOTATION_LINKING=false` turns binding off while leaving the annotations
-themselves in place.
+### EVIDENCE NOTES
 
-Cell containment alone takes no positional tolerance. Cells tile a table with no gaps, so
-slack bridges nothing and can only pull a tip that missed the table into whichever edge cell
-is nearest -- which on a real form bound a callout two points outside the grid to the wrong
-row, and reported it as a stated fact.
+**This is the section that catches silent failure**, and it is the reason to read the report
+at all rather than glancing at the classes.
 
-`Widget` annotations are used as targets but are still never emitted as text: their values
-are already drawn on the page and would come back twice. Binding applies on the `needs_ocr`
-stub path too, and matters more there than anywhere else -- a scanned form has no text layer
-to read labels from, so its widgets are the only possible source of a field name.
-
-### What makes a line a heading
-
-Type size is the only evidence geometry has, and on its own it is not enough. The documents
-that break are form tutorials, where body text is the *smallest* type on the page: every
-field label, note and callout sits a point or two above it, and a rule of "larger than body
-text" turns the whole document into headings with nothing underneath them. Three conditions
-now have to hold together:
-
-- **Size**, against the same `PDF_HEADING_SIZE_RATIO` that decides which sizes are heading
-  sizes at all. It used to be a separate, far looser 1.001 here, which is what let a 1.1x
-  label through.
-- **Length.** A heading is short. The limit applies to the whole heading, wrapped lines
-  included: a wrapped *title* is one heading, a wrapped *paragraph* set larger than body
-  text is not, and telling them apart is what stops a notes box collapsing onto one `###`
-  line and swallowing everything that belonged under it.
-- **No list marker.** A bullet is a bullet at any size.
-
-Bulleted blocks render as markdown lists, nested by how far their markers are indented. A
-line with no marker, hard against the item above it and set the same way, continues that
-item — indentation cannot be the test, because in real documents a wrapped bullet starts at
-the *marker's* x, not the text's.
-
-### Words split across font subsets are rejoined
-
-`extract_words` ends a word at an absolute x-tolerance or wherever the font or size changes,
-and heading detection needs both attributes. So a word typeset in two subsets of one face —
-ordinary in PDFs out of Office — comes back as two words with a gap of exactly zero, and
-`Submit` renders as `S ubmit`. Fragments are rejoined when the gap between them is too
-narrow to be a space *at that type size* (`PDF_SPACE_WIDTH_RATIO`). Measured across a real
-handbook the two populations do not overlap at all: intra-word splits sit at 0.00–0.01 of
-the type size, real spaces at 0.20 and up.
-
-### Where geometry is weak, and how you find out
-
-`triage` records the two things that decide whether a document needs more, and `report`
-prints them under **LAYOUT NOTES**:
-
-- **Multi-column pages.** Handled, but it is the likeliest place for reading order to go
-  wrong. Detection is deliberately conservative — a gutter is only believed if it sits near
-  the page centre with real text on both sides, because treating an indent as a column
-  interleaves the page, which is far worse than treating a column as prose.
-- **Borderless tables.** Recovered by column alignment, but only when at least
-  `PDF_MIN_TABLE_ROWS` consecutive lines split into the same number of cells at aligned
-  positions. The bias is deliberate: a hallucinated table destroys the paragraph it
-  consumes, so a missed table beats an invented one.
-
-Pages that yielded no usable text are named in the converted file itself, with an
-`INCOMPLETE` callout listing the page numbers. A `partial` document otherwise omits its
-scanned pages silently, which downstream is indistinguishable from a document that never
-covered the topic.
-
-### Text the page draws in a box
-
-Not every note on a form is an annotation object. Type commentary into a box, flatten the
-file — or author it that way — and the note becomes ordinary page text inside an ordinary
-rectangle. Line grouping knows only about baselines, so boxes standing side by side
-interleave word by word. Six boxes across the top of a budget form converted to this:
-
-```markdown
-### Federal Matching Amount Corresponding Amount Total lines funds carry
-### Capacity CFDA from (c) – (f ) over over Appendix A
-```
-
-Which answers nothing, matches no search, and is not obviously broken enough for anyone to
-notice. They are six separate notes:
-
-```markdown
-> **Boxed text:** Federal funds carry over
-> **Boxed text:** Matching funds carry over
-> **Boxed text:** Corresponding CFDA
-```
-
-A box's words are removed from the body pool before lines are grouped — the same treatment
-ruled tables get, for the same reason. `PDF_BOXED_TEXT=false` turns it off, and the text is
-then unmarked and merged but never dropped.
-
-It says `Boxed text` and not `Annotation` because these carry none of an annotation object's
-provenance. What the measurement supports is that the page sets this text apart in a box, and
-that is all the prefix claims.
-
-The false positive to avoid is a shaded table header, which is also a filled rectangle
-holding text. Rectangles overlapping a ruled table are excluded outright: tearing a table
-apart is far worse than leaving a note unmarked — the same asymmetry that makes borderless
-tables a missed-rather-than-invented case. Rectangles larger than `PDF_BOXED_MAX_AREA` of the
-page are excluded as borders and background panels, and an empty box is left alone rather
-than carving its area out of the page for nothing.
-
-### When the document is a picture of a document
-
-The hardest failure in this corpus is not a hard one to convert — it is one that looks
-converted. A form supplied as a **screenshot**, with typed callouts beside it, defeats every
-coverage metric at once, and none of them is wrong:
-
-| Metric | Says | Because |
-| --- | --- | --- |
-| chars/page | healthy | the callouts are real text |
-| alpha ratio | perfect | that text is clean |
-| low-text pages | none | every page clears the threshold |
-| ruled tables | none found | the page has no vector content to rule |
-
-The document triages `clean`, converts without a warning, and omits the form it is about.
-Measuring how much of each page is raster image is what separates it from a document that is
-genuinely fine, so `triage` records the pages over `IMAGE_PAGE_COVERAGE` and the largest
-coverage seen, and the converted file opens with a marker naming them:
-
-```markdown
-> **INCOMPLETE — pages 1, 2, 3 are mostly image (up to 37% of the page), and that
-content is not in the text layer.** No OCR was attempted.
-```
-
-This is reporting, not reclassifying. A page that is a third diagram is not broken, and
-telling a diagram from a screenshot of a form is exactly the inference this pipeline
-declines to make — so it states the measurement, names the threshold, and leaves the
-judgement to a reader. Two notes are withheld where they would mislead: a page already named
-as having no usable text is not named twice, and "form fields but no ruled tables" is not
-said of a document whose pages are pictures, since that note means the converter failed to
-reconstruct a grid and here there was never a vector grid to reconstruct.
-
-`make profile` prints the same facts as a table, one row per document, straight from the
-PDFs — no manifest, no conversion run, nothing written:
-
-```
-document                     pages  class  ch/pg   cols  ruled  bordl  annot   w/CL fields  imgpg   img%
-<a 25-page annotated form>      25  clean   1247      1     14     13    205     71      0      0     3%
-```
-
-It emits counts and filenames and never document text, which is the point: a corpus that
-cannot leave the machine it lives on can still be profiled there and the result pasted into a
-ticket or handed to whoever is deciding what to build next. PDFs only — the geometry facts
-mean nothing for DOCX or CSV, which carry their text structurally.
-
-`report` also prints **EVIDENCE NOTES**: what each document carried beyond its text layer,
-set against what was recovered from it.
+It reports what a document carried *beyond* its text layer, set against what was recovered:
 
 ```
 EVIDENCE NOTES (what the document carries beyond its text layer)
   <a 25-page annotated form>: 205 annotation(s) carrying text no text-layer
     extraction sees, 71 stating their own target
   <a 3-page budget form>: 3 page(s) that are mostly image, up to 36.8% of the
-    page -- that content is not in the text layer and no table extraction
-    reaches it
+    page -- that content is not in the text layer and no table extraction reaches it
 ```
 
-The second line is why this section exists. That document converted with `text_class: clean`,
-full character coverage, no low-text pages and no warnings — and the entire budget form
-absent, because the form is a picture. Every signal the pipeline emitted called the
-conversion fine, and the only way anyone found out was by asking the document a question by
-hand. A document that declares form fields while yielding no ruled tables earns a line here
-too, when its pages are vector and the grid genuinely was not reconstructed.
+The second line is the case worth understanding. A form supplied as a **screenshot** with
+typed notes beside it defeats every coverage measurement at once, and none of them is wrong:
 
-It also guards against a subtler problem: tuning the converter to whichever evidence class
-happens to appear in the document someone looked at first. Documents differ in what they
-even offer — one of the two above carries 205 annotations and no form fields, the other 13
-form fields and no annotations — so a document type nobody has handled should surface as an
-unfamiliar profile rather than as a quiet degradation.
+| Measurement | Says | Because |
+| --- | --- | --- |
+| chars/page | healthy | the typed notes are real text |
+| alpha ratio | perfect | that text is clean |
+| low-text pages | none | every page clears the threshold |
+| ruled tables | none found | a picture has no vector lines to find |
 
-### Answerability: the check a golden cannot make
+Such a document classifies `clean`, converts without complaint, and **omits the entire form
+it is about**. Measuring how much of each page is raster image is the only thing that
+separates it from a document that is genuinely fine.
 
-Goldens compare converted output byte for byte, which catches *change*. They cannot catch
-output that is byte-stable and useless — and every silent loss found in this pipeline has
-been exactly that: a budget grid flattened into prose, a callout stranded from the field it
-describes. Both would have passed a golden comparison indefinitely.
+---
 
-`tests/answerability/` holds questions with known answers, each naming the document it is
-asked of and the text that must survive conversion for the answer to be recoverable:
+## Reading the converted markdown
+
+Every file opens with frontmatter recording where it came from, what converted it, and its
+text coverage — including `needs_ocr: true` where applicable, so a downstream consumer can
+tell a complete document from an incomplete one without re-deriving it.
+
+Then there are four markers you will see in the body.
+
+### `> **INCOMPLETE — ...**`
+
+Content that is not in the file, named explicitly:
+
+```markdown
+> **INCOMPLETE — pages 1, 2, 3 are mostly image (up to 37% of the page), and that
+content is not in the text layer.** No OCR was attempted.
+```
+
+A `partial` document would otherwise drop its scanned pages silently, which downstream is
+indistinguishable from a document that never covered the topic.
+
+This is reporting, not a verdict. A page that is one-third diagram is not broken — the
+pipeline states the measurement, names the threshold (`IMAGE_PAGE_COVERAGE`), and leaves the
+judgement to you.
+
+### `> **Annotation:**`
+
+A "Markup" callout or sticky note — the box someone types into when annotating a form in
+Preview or Acrobat. These are **attached to the page rather than printed on it**, so no
+ordinary text extraction sees them. On an annotated form they are frequently the only
+instructions the document carries; dropping them turns a tutorial back into a blank form.
+
+The prefix matters downstream: this text gets retrieved and cited with no access to the
+original PDF, and "what the form prints" versus "what a colleague annotated onto it" is
+exactly the distinction a citation has to keep.
+
+Where a note can be tied to something, the marker says **how it was found**:
+
+```markdown
+> **Annotation** [points to: TypeOfSubmission]: Use Application for the first submission attempt.
+
+> **Annotation** [beside: 2. DATE SUBMITTED]: Format: MM/DD/YYYY.
+```
+
+| Kind | Means |
+| --- | --- |
+| `[points to: X]` | The annotator's own arrow lands on X. Strong evidence. |
+| `[beside: X]` | X merely shares a row with the note. Weaker — treat with more caution. |
+| no marker | Nothing could be tied to it. Deliberate: a plausible guess is worse than none, because nothing downstream can tell a plausible guess from a real one. |
+
+**Neither kind claims to know which form field a note is about.** A PDF's ruling is a layout
+grid, not a map of the form's fields — on a real annotated form, a note about a checkbox in
+field 1 can have its arrow tip genuinely inside a cell naming a different field. Where the
+tip landed is a fact; which field the note concerns is a reading of the form, and you have
+the form in front of you while the converter has coordinates.
+
+### `> **Boxed text:**`
+
+Text the page draws inside a box — a note that was flattened into the document, or authored
+that way. It is ordinary page text, so it carries none of an annotation's provenance, which
+is why it is labelled differently. All the marker claims is that the page sets this text
+apart in a box.
+
+Marking these also keeps them readable: boxes standing side by side share a baseline, and
+without special handling their words interleave into a single unreadable line.
+
+### Tables
+
+Ruled tables come from their ruling lines. Borderless ones are recovered from column
+alignment and flagged in LAYOUT NOTES as worth a spot-check.
+
+---
+
+## When something looks wrong
+
+Start by looking at the converted markdown next to the original. Then:
+
+**Reading order scrambled on a two-column page.** Check LAYOUT NOTES to confirm columns were
+detected. `PDF_COLUMN_GAP_FRACTION` controls how wide a gutter must be to count.
+
+**A table came out as prose, or prose came out as a table.** `PDF_MIN_TABLE_ROWS` (how many
+aligned lines make a table) and `PDF_COLUMN_ALIGN_TOLERANCE` (how much horizontal drift is
+allowed) are the relevant knobs.
+
+**Too many headings, or too few.** `PDF_HEADING_SIZE_RATIO` — how much larger than body text
+a line must be set to count as a heading.
+
+**Running headers and footers left in.** `PDF_REPEAT_PAGE_FRACTION` and
+`PDF_MARGIN_FRACTION` control how repeated margin text is detected.
+
+Every knob is listed with its default and a one-line explanation in `.env.example`. They
+describe page geometry, not document meaning.
+
+### Checking the output can still answer questions
+
+Comparing output byte-for-byte catches *change*. It cannot catch output that is stable and
+useless — a budget grid flattened into prose, a note stranded from the field it describes.
+Both would pass a file comparison indefinitely.
+
+So you can write questions with known answers and assert that the text needed to answer them
+survived conversion:
 
 ```yaml
 cases:
@@ -552,33 +256,111 @@ cases:
     document: linked-form.md
     expect:
       - "[points to: TypeOfSubmission]: Use Application for the first submission attempt."
-    forbid:
-      - "[beside: TypeOfSubmission]"   # the arrow states its target; row overlap is a downgrade
 ```
 
-They run in the test suite against the committed fixtures, and against a real corpus with
-`make answerability` or `pipeline answerability --cases PATH`, which reads only `kb/` and so
-needs neither the source documents nor `SOURCE_DIR`. It exits non-zero on failure, so it can
-gate a release.
+```bash
+uv run pipeline answerability --cases /path/to/your/cases.yaml
+```
 
-There is deliberately **no model in the loop**. Cases are literal substring assertions, which
-makes them offline, deterministic, free, and reviewable by someone who can disagree with a
-case. What they measure is whether the evidence needed to answer survived conversion — not
-whether a given model answers correctly, which is a different question and not one the
-converter controls.
+This reads `kb/` only — it needs neither the source documents nor `SOURCE_DIR` — and exits
+non-zero on failure, so it can gate a release. There is **no model involved**: cases are
+literal substring checks, which makes them offline, deterministic, free, and reviewable by
+someone who wants to disagree with a case.
 
-Write `expect` as the smallest string that makes the answer findable, and `forbid` for a
-wrong answer some earlier version actually produced. A regression that really happened is
-worth more as a test than one imagined.
+Write `expect` as the smallest string that makes the answer findable.
 
-### Escalating a document to Docling
+### Escalating a stubborn document
 
-Set `PDF_ENGINE=docling`. It is not wired up yet and will say so: it needs
-`uv sync --extra pdf` for the ML runtime, and a decision on the layout model's base-weight
-provenance (open question 2). Escalation is meant to be per document and deliberate, decided
-by looking at converted output rather than assumed up front.
+`PDF_ENGINE=docling` switches to a layout model, which buys better borderless-table
+structure at the cost of a large ML runtime and a model download. It is meant to be a
+per-document decision made by looking at converted output — not a blanket setting.
 
-## Out of scope — do not build
+It is **not currently wired up** and will tell you so, naming what it needs.
 
-Chunking, embeddings, pgvector, retrieval, eval harness, any LLM call, OCR of any kind, web
-UI, serving. If `ollama` or a vector store appears in this repo, it has gone off-brief.
+---
+
+## Things that stop and ask
+
+Conversion halts on these rather than emitting something quietly wrong. Each names the file
+and the reason.
+
+- **A CSV beyond `CSV_MAX_ROWS` (300) or `CSV_MAX_COLS` (12).** How a large table should be
+  shaped for retrieval is a design decision, not a default.
+- **A source file that changed since it was recorded.** Each entry stores a checksum; a
+  mismatch is a loud error, never a silent re-convert.
+- **An encrypted or password-protected PDF.**
+- **A file listed in `corpus.yaml` but absent from `SOURCE_DIR`** is reported `MISSING` and
+  the run continues. The entry is never deleted and the run never fails because of it.
+
+---
+
+## What this does not do
+
+No OCR, no LLM calls, no chunking, no embeddings, no vector store, no retrieval, no serving.
+A document that needs OCR is *identified* here and handled elsewhere.
+
+---
+
+## Development
+
+```bash
+make check    # the test suite plus both policy gates — what CI runs
+make help     # every available target
+```
+
+### License policy
+
+The rule is about **how a dependency is called**, not what its licence string says.
+Copyleft invoked as a separate program (LibreOffice) is fine; copyleft *imported* as a
+library is not. PyMuPDF and pymupdf4llm (AGPL) are import-only and therefore permanently
+banned, including for a quick check.
+
+`make license-gate` enforces this by walking installed package metadata and failing if a
+GPL/AGPL package is imported anywhere under `pipeline/`. Genuine false positives go in
+`scripts/license_allowlist.yaml` with written justification.
+
+### Model policy
+
+Models must be permissively licensed **and** have non-Chinese base-weight provenance, judged
+on the base weights rather than on the releasing organisation.
+
+`make model-gate` checks two places, because they fail differently: model caches, and
+weights shipped *inside* an installed wheel. The second is not hypothetical — the `docling`
+meta-package installs `rapidocr`, whose wheel bundles roughly 30MB of Baidu PaddleOCR
+weights as ordinary files that never touch a cache. This project therefore depends on
+`docling-slim` with named extras, never on `docling`.
+
+`models.yaml` is the allowlist, and it is deliberately empty: nothing here should ever
+download a model, so an empty allowlist plus a cache scan asserts exactly that, and fails
+the moment it stops being true. Models that a future conversion path *would* fetch are
+recorded under `pending_review` with what is known about each.
+
+### LibreOffice (subprocess only)
+
+Legacy `.doc` / `.dot` conversion shells out to the `soffice` binary:
+
+```bash
+soffice --headless --convert-to docx --outdir "$WORK_DIR/doc2docx/" <file>
+```
+
+If `soffice` is absent the pipeline fails with an error naming it. There is no fallback to a
+copyleft Python library.
+
+> The major version should be pinned and matched between machines: LibreOffice's `.doc`
+> import filter is not byte-stable across releases, and byte-stable output is a hard
+> requirement here. The pin is not yet decided, so this path is currently unexercised.
+
+### Platform constraint
+
+`pyproject.toml` requires every locked dependency to have an installable wheel on both
+**linux-x86_64** and **darwin-x86_64**.
+
+This is not decorative. PyTorch ships no macOS x86_64 wheel after 2.2.2, and without the
+constraint `uv lock` produces a lockfile that resolves cleanly and then cannot be installed.
+If `uv lock` starts failing, a dependency has dropped one of those platforms — decide
+deliberately rather than silently dropping support.
+
+Because the two platforms can resolve different versions, byte-identical output *across*
+platforms is not guaranteed. The determinism requirement is per-machine: the same input
+converted twice on the same machine must be byte-identical, which `tests/test_determinism.py`
+enforces.

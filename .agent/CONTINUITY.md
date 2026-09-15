@@ -3,6 +3,26 @@
 Canonical briefing for the PDF-geometry output-quality task. Facts only.
 
 ## [PLANS]
+- 2026-09-15 [USER] README rewritten for a NEW USER of the repo, not for us: `uv` only (no
+  conda step), no milestone vocabulary (M0-M3), and organised around what someone has to do
+  and what the diagnostics mean. 584 lines -> 366. Design rationale was dropped from it
+  wholesale; most already lives in [DECISIONS] here, and what did not is recorded below.
+  Anything added to the README from now on should pass the same test: does a user of the
+  pipeline need it, rather than a maintainer of it.
+- 2026-09-15 [CODE] OPEN QUESTIONS carried over from the old README's "Open questions"
+  section, which was removed. Items 1 and 2 (TableFormer licence; docling-layout-heron
+  base-weight provenance) are recorded in full in `models.yaml` under `pending_review` and
+  summarised in [DISCOVERIES] above; these three were recorded NOWHERE else:
+  * LibreOffice's pinned major version is UNCONFIRMED and it is not installed on the dev
+    machine, so the `.doc`/`.dot` path is entirely unexercised. Its `.doc` import filter is
+    not byte-stable across releases and byte-stable output is a hard requirement, so the
+    version must be pinned and matched between dev and the client. Needs the client's
+    available version. A short form of this survives in the README as a blockquote.
+  * Are any other CSVs reference tables or per-row records? Decides whether a `record` mode
+    is ever built. The one sample in hand is a reference table. Not blocking.
+  * Do real samples carry a discoverable revision or effective date? `doc_date` falls back
+    to `UNCONFIRMED`, and if most come back that way the citation requirement needs an
+    answer other than "cite the document date". Not blocking.
 - 2026-09-15 [USER] DELIVERY MODEL, supersedes any assumption that we convert the client
   corpus ourselves: the deliverable is `dgx-infra`, the pipeline. The client stands up their
   own `dgx-knowledge` from their own internal documents, which we never see. The 6 documents
@@ -124,6 +144,29 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `tests/fixtures/callout_notes.pdf` is added via `tests/make_fixtures.py`.
 
 ## [DISCOVERIES]
+- 2026-09-15 [CODE] Removed from the README as STALE, recorded here so the claims are not
+  silently resurrected: (a) the M0-M3 milestone table, including "140 tests pass" -- the
+  count is now 304; (b) the assertion that "triage showed the corpus is uniformly
+  born-digital", which was measured on `synthetic-cso-data/` (7 PDFs, 15 pages, a smoke
+  test) and is FALSE of the real corpus -- 2 of 9 in one sample set triaged `partial`, and
+  image-dominant pages are routine; (c) the section warning that M1 had never run against a
+  representative corpus, now overtaken by the real profiles. The README's claim that the
+  model-free default was justified because "triage showed the corpus is uniformly
+  born-digital" was therefore resting on the smoke-test set; the default still looks right,
+  but on the grounds in [DISCOVERIES] above rather than on that measurement.
+- 2026-09-15 [CODE] Milestone vocabulary removed from `pipeline convert`'s OUTPUT, which was
+  the only place a user still met it: `NOT-YET (M2)` -> `UNAVAILABLE`, and `Deferred to M2:`
+  -> `Not converted -- the requested converter is unavailable:`. Verified by running the
+  command with `PDF_ENGINE=docling`, not only by the suite. The M1/M2 references remaining in
+  `report.py`, `triage.py` and `model_gate.py` are MODULE docstrings, never shown by `--help`
+  and read only by maintainers, so they were left; `report.py`'s "M1's actual deliverable" is
+  stale in the same way the removed README status table was.
+- 2026-09-15 [CODE] Three files name README sections in comments or error messages, so those
+  headings are load-bearing and must not be renamed casually: `pyproject.toml` -> "License
+  policy" and "Platform constraint"; `converters/office.py` -> "LibreOffice (subprocess
+  only)"; the Makefile header -> "Setup". A fourth, `converters/pdf.py`'s Docling
+  `NotImplementedError` -> "Open questions", was left dangling by the rewrite and now points
+  at `models.yaml` instead, which is where the record actually is.
 - 2026-09-15 [TOOL] Measured, geometry vs raw text extraction (`pypdfium2` textpage) on
   committed fixtures and two throwaway probes. The geometry step's value is NOT uniform, and
   the split is sharper than assumed:

@@ -1,7 +1,7 @@
-# Stage 1 document conversion.
+# Document conversion.
 #
-# Assumes the conda env is active (`conda activate dgx-infra`), which provides python 3.12
-# and uv; uv owns every package from there. See README "Prerequisites".
+# Needs `uv` on PATH and nothing else: it provisions Python 3.12 and every package itself.
+# Run `uv sync` once first. See README "Setup".
 
 UV ?= uv
 PYTHON := $(UV) run python
