@@ -430,6 +430,37 @@ Pages that yielded no usable text are named in the converted file itself, with a
 scanned pages silently, which downstream is indistinguishable from a document that never
 covered the topic.
 
+### When the document is a picture of a document
+
+The hardest failure in this corpus is not a hard one to convert — it is one that looks
+converted. A form supplied as a **screenshot**, with typed callouts beside it, defeats every
+coverage metric at once, and none of them is wrong:
+
+| Metric | Says | Because |
+| --- | --- | --- |
+| chars/page | healthy | the callouts are real text |
+| alpha ratio | perfect | that text is clean |
+| low-text pages | none | every page clears the threshold |
+| ruled tables | none found | the page has no vector content to rule |
+
+The document triages `clean`, converts without a warning, and omits the form it is about.
+Measuring how much of each page is raster image is what separates it from a document that is
+genuinely fine, so `triage` records the pages over `IMAGE_PAGE_COVERAGE` and the largest
+coverage seen, and the converted file opens with a marker naming them:
+
+```markdown
+> **INCOMPLETE — pages 1, 2, 3 are mostly image (up to 37% of the page), and that
+content is not in the text layer.** No OCR was attempted.
+```
+
+This is reporting, not reclassifying. A page that is a third diagram is not broken, and
+telling a diagram from a screenshot of a form is exactly the inference this pipeline
+declines to make — so it states the measurement, names the threshold, and leaves the
+judgement to a reader. Two notes are withheld where they would mislead: a page already named
+as having no usable text is not named twice, and "form fields but no ruled tables" is not
+said of a document whose pages are pictures, since that note means the converter failed to
+reconstruct a grid and here there was never a vector grid to reconstruct.
+
 `report` also prints **EVIDENCE NOTES**: what each document carried beyond its text layer,
 set against what was recovered from it.
 
@@ -437,16 +468,17 @@ set against what was recovered from it.
 EVIDENCE NOTES (what the document carries beyond its text layer)
   <a 25-page annotated form>: 205 annotation(s) carrying text no text-layer
     extraction sees, 71 stating their own target
-  <a 3-page budget form>: 13 form field(s) but 1 ruled table(s) recovered --
-    a form whose grid is mostly not being reconstructed
+  <a 3-page budget form>: 3 page(s) that are mostly image, up to 36.8% of the
+    page -- that content is not in the text layer and no table extraction
+    reaches it
 ```
 
 The second line is why this section exists. That document converted with `text_class: clean`,
-full character coverage, no low-text pages and no warnings — and its budget grid reduced to a
-single table, which is to say lost. Every signal the pipeline emitted called the conversion
-fine, and the only way anyone found out was by asking the document a question by hand.
-Counting the form fields a document declares against the tables actually recovered from it
-turns that into a line of output.
+full character coverage, no low-text pages and no warnings — and the entire budget form
+absent, because the form is a picture. Every signal the pipeline emitted called the
+conversion fine, and the only way anyone found out was by asking the document a question by
+hand. A document that declares form fields while yielding no ruled tables earns a line here
+too, when its pages are vector and the grid genuinely was not reconstructed.
 
 It also guards against a subtler problem: tuning the converter to whichever evidence class
 happens to appear in the document someone looked at first. Documents differ in what they
