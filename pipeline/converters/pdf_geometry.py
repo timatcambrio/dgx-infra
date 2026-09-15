@@ -221,6 +221,9 @@ class PageAnalysis:
     callout_lines: int = 0
     #: Named AcroForm fields. A document with these is a form, whatever else it looks like.
     form_fields: int = 0
+    #: Share of the page's area covered by raster images. A form supplied as a screenshot
+    #: puts everything that matters here and nothing in the text layer.
+    image_coverage: float = 0.0
 
 
 def _normalise(text: str) -> str:
@@ -798,6 +801,24 @@ def resolve_targets(
     return resolved
 
 
+def _image_coverage(page) -> float:
+    """Share of the page covered by raster images, capped at 1.
+
+    Overlapping images would otherwise total more than the page. Capping rather than
+    computing a true union is deliberate: the number exists to answer "is this page mostly a
+    picture", and a union costs geometry for precision nothing here needs.
+    """
+    area = float(page.width) * float(page.height)
+    if area <= 0:
+        return 0.0
+    covered = sum(
+        (float(image["x1"]) - float(image["x0"]))
+        * (float(image["bottom"]) - float(image["top"]))
+        for image in (page.images or [])
+    )
+    return min(covered / area, 1.0)
+
+
 def analyse(path: Path, config: Config) -> list[PageAnalysis]:
     """Per-page geometry facts, for deciding whether this document needs more than geometry."""
     import pdfplumber  # noqa: PLC0415 - lazy: keeps `report` fast when it is not needed
@@ -834,6 +855,7 @@ def analyse(path: Path, config: Config) -> list[PageAnalysis]:
                         1 for item in annotations if item.callout is not None
                     ),
                     form_fields=len(extract_widgets(page)),
+                    image_coverage=_image_coverage(page),
                 )
             )
     return results

@@ -105,7 +105,7 @@ def test_the_report_names_the_document(config):
     }
     text = report_module.render_table(report_module.build(manifest, config))
     assert "3 page(s) that are mostly image" in text
-    assert "37%" in text
+    assert "37.0%" in text  # the report renders percentages to one decimal throughout
 
 
 def test_the_note_lists_the_pages(fixtures_dir):
@@ -117,3 +117,38 @@ def test_the_note_lists_the_pages(fixtures_dir):
 
 def test_no_pages_means_no_note():
     assert pdf.image_pages_note((), 0.0) == ""
+
+
+def test_a_page_already_named_as_low_text_is_not_named_twice(fixtures_dir):
+    """A full-page scan is both things at once; the second note would add nothing.
+
+    What this note exists for is the opposite case: a page that looks entirely healthy by
+    every text metric and is still mostly a picture.
+    """
+    assert pdf.image_pages_note((3,), 0.78, low_pages=(3,)) == ""
+    assert "page 2" in pdf.image_pages_note((2, 3), 0.78, low_pages=(3,))
+
+
+def test_a_picture_form_is_not_also_blamed_on_the_converter(config):
+    """"Fields but no grid" means a failed reconstruction. Not when the page is a picture.
+
+    There was never a vector grid to reconstruct, so the image note is the true explanation
+    and the other one would put the blame in the wrong place.
+    """
+    triage = {
+        "page_count": 3, "chars_per_page_median": 405.0, "chars_per_page_mean": 405.0,
+        "alpha_ratio": 1.0, "low_page_fraction": 0.0, "low_pages": [], "text_class": "clean",
+        "error": None, "max_columns": 1, "ruled_tables": 1, "borderless_table_pages": 0,
+        "annotations": 0, "annotations_with_callout": 0, "form_fields": 13,
+        "image_pages": [1, 2, 3], "max_image_coverage": 0.37,
+    }
+    entry = {"source_file": "a.pdf", "source_format": "pdf", "status": "converted",
+             "triage": triage}
+    text = report_module.render_table(report_module.build({"documents": [entry]}, config))
+    assert "mostly image" in text
+    assert "grid is mostly not being reconstructed" not in text
+
+    # With no image pages, the same document does earn that note.
+    vector = dict(entry, triage=dict(triage, image_pages=[], max_image_coverage=0.0))
+    text = report_module.render_table(report_module.build({"documents": [vector]}, config))
+    assert "grid is mostly not being reconstructed" in text

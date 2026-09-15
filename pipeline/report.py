@@ -59,6 +59,8 @@ def build(manifest: dict[str, Any], config: Config) -> dict[str, Any]:
                 "annotations": triage.get("annotations"),
                 "annotations_with_callout": triage.get("annotations_with_callout"),
                 "form_fields": triage.get("form_fields"),
+                "image_pages": triage.get("image_pages") or [],
+                "max_image_coverage": triage.get("max_image_coverage"),
                 "text_class": "MISSING" if missing else triage.get("text_class"),
                 "error": triage.get("error"),
                 "converter": (entry.get("conversion") or {}).get("converter"),
@@ -241,14 +243,26 @@ def render_table(report: dict[str, Any]) -> str:
     # are not has had its grid dropped, and every other signal -- text class, page count,
     # character coverage -- will call that conversion clean.
     annotated = [row for row in report["documents"] if row.get("annotations")]
+    # "Fields but no grid" means the converter failed to reconstruct a grid -- unless the
+    # pages are pictures, in which case there was never a vector grid to reconstruct and the
+    # image note above is the true explanation. Saying both would put the blame in the wrong
+    # place, and a note that misattributes a cause is worse than no note.
     formlike = [
         row
         for row in report["documents"]
         if (row.get("form_fields") or 0) > 0
         and (row.get("form_fields") or 0) > (row.get("ruled_tables") or 0)
+        and not row.get("image_pages")
     ]
-    if annotated or formlike:
+    picture = [row for row in report["documents"] if row.get("image_pages")]
+    if annotated or formlike or picture:
         lines += ["", "EVIDENCE NOTES (what the document carries beyond its text layer)"]
+        for row in sorted(picture, key=lambda item: item["source_file"] or ""):
+            lines.append(
+                f"  {row['source_file']}: {len(row['image_pages'])} page(s) that are mostly "
+                f"image, up to {_pct(row.get('max_image_coverage'))} of the page -- that "
+                "content is not in the text layer and no table extraction reaches it"
+            )
         for row in sorted(annotated, key=lambda item: item["source_file"] or ""):
             with_callout = row.get("annotations_with_callout") or 0
             lines.append(

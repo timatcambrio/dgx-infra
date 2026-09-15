@@ -111,6 +111,7 @@ class Config:
     min_chars_per_page: int
     min_alpha_ratio: float
     max_low_page_fraction: float
+    image_page_coverage: float
     csv_max_rows: int
     csv_max_cols: int
     docling_ocr_engine: str
@@ -190,6 +191,12 @@ def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = 
         min_chars_per_page=_env_int("MIN_CHARS_PER_PAGE", 100),
         min_alpha_ratio=_env_float("MIN_ALPHA_RATIO", 0.60),
         max_low_page_fraction=_env_float("MAX_LOW_PAGE_FRACTION", 0.20),
+        # Share of a page's area covered by raster images past which the page is reported as
+        # mostly picture. Not a classification: a page can be a third diagram and be perfectly
+        # fine. It is the threshold for *saying so*, because a form supplied as a screenshot
+        # defeats every text metric at once -- its callouts are real text, so character count
+        # and alpha ratio both look healthy while the form itself is unreachable.
+        image_page_coverage=_env_float("IMAGE_PAGE_COVERAGE", 0.15),
         csv_max_rows=_env_int("CSV_MAX_ROWS", 300),
         csv_max_cols=_env_int("CSV_MAX_COLS", 12),
         docling_ocr_engine=os.environ.get("DOCLING_OCR_ENGINE", DOCLING_OCR_ENGINE),

@@ -152,8 +152,45 @@ def missing_pages_note(low_pages: list[int] | tuple[int, ...]) -> str:
     )
 
 
+def image_pages_note(
+    image_pages: list[int] | tuple[int, ...],
+    max_coverage: float,
+    low_pages: list[int] | tuple[int, ...] = (),
+) -> str:
+    """A visible marker naming pages whose substance is a picture.
+
+    The case this exists for is a form supplied as a screenshot with typed callouts beside
+    it. Nothing else catches it: the callouts are real text, so character coverage is healthy
+    and the alpha ratio is perfect, no page falls below the low-text threshold, and the page
+    carries no vector content for table extraction to find. The document converts `clean`,
+    without a warning, and omits the form it is about.
+
+    Deliberately a note and not a reclassification. A page that is a third diagram is fine,
+    and telling a diagram from a screenshot of a form is exactly the inference this pipeline
+    declines to make -- so it reports the measurement and leaves the judgement to a reader.
+    """
+    # A page with no usable text at all is already named by `missing_pages_note`, and a
+    # full-page scan is both things at once. Naming it twice adds no information; what this
+    # note is for is the page that looks *fine* by every text metric and is still a picture.
+    remaining = [number for number in image_pages if number not in set(low_pages)]
+    if not remaining:
+        return ""
+    numbers = ", ".join(str(number) for number in remaining)
+    plural = "s" if len(remaining) > 1 else ""
+    verb = "are" if plural else "is"
+    return (
+        f"> **INCOMPLETE — page{plural} {numbers} {verb} mostly image "
+        f"(up to {max_coverage:.0%} of the page), and that content is not in the text "
+        "layer.** No OCR was attempted."
+    )
+
+
 def convert(
-    path: Path, config: Config, low_pages: list[int] | tuple[int, ...] = ()
+    path: Path,
+    config: Config,
+    low_pages: list[int] | tuple[int, ...] = (),
+    image_pages: list[int] | tuple[int, ...] = (),
+    max_image_coverage: float = 0.0,
 ) -> tuple[str, str]:
     """Convert a `clean` or `partial` PDF. Returns `(markdown_body, converter_name)`.
 
@@ -170,8 +207,15 @@ def convert(
         return _convert_with_docling(path, config)
 
     body = pdf_geometry.to_markdown(path, config)
-    note = missing_pages_note(low_pages)
-    return (f"{note}\n\n{body}" if note else body), CONVERTER_GEOMETRIC
+    notes = [
+        note
+        for note in (
+            missing_pages_note(low_pages),
+            image_pages_note(image_pages, max_image_coverage, low_pages),
+        )
+        if note
+    ]
+    return "\n\n".join([*notes, body]), CONVERTER_GEOMETRIC
 
 
 def _wants_docling(config: Config) -> bool:

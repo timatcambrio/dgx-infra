@@ -169,7 +169,11 @@ def _dispatch(
         if text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL):
             triage = entry.get("triage") or {}
             body, converter = pdf.convert(
-                source_path, config, low_pages=triage.get("low_pages") or ()
+                source_path,
+                config,
+                low_pages=triage.get("low_pages") or (),
+                image_pages=triage.get("image_pages") or (),
+                max_image_coverage=triage.get("max_image_coverage") or 0.0,
             )
             return body, converter, STATUS_WRITTEN
         raise StopAndAsk(f"unexpected text_class {text_class!r} for {source_path.name}")

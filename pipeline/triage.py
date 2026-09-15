@@ -67,6 +67,16 @@ class TriageResult:
     #: Named AcroForm fields. Their presence says the document is a form, which is what makes
     #: a low `ruled_tables` count on the same document worth looking at.
     form_fields: int = 0
+    #: 1-based page numbers whose area is more than IMAGE_PAGE_COVERAGE raster image.
+    #:
+    #: Recorded, never used to reclassify. A page that is a third diagram is not broken, and
+    #: telling a diagram from a screenshot of a form is exactly the inference this pipeline
+    #: declines to make. What makes it worth recording is that such a page defeats every text
+    #: metric at once: a form supplied as a picture, with typed callouts beside it, has a
+    #: healthy character count and a perfect alpha ratio and is entirely unreachable.
+    image_pages: tuple[int, ...] = ()
+    #: The largest single-page coverage seen, so the threshold can be argued with.
+    max_image_coverage: float = 0.0
     #: 1-based page numbers yielding under MIN_CHARS_PER_PAGE.
     #:
     #: A document can be `clean` overall and still contain individual pages with no usable
@@ -80,6 +90,7 @@ class TriageResult:
         # A plain list round-trips through YAML unchanged; a tuple comes back as a list and
         # would make the second write differ from the first.
         data["low_pages"] = list(self.low_pages)
+        data["image_pages"] = list(self.image_pages)
         return data
 
 
@@ -222,6 +233,14 @@ def _layout_facts(path: Path, config: Config) -> dict:
         "annotations": sum(page.annotations for page in pages),
         "annotations_with_callout": sum(page.callout_lines for page in pages),
         "form_fields": sum(page.form_fields for page in pages),
+        "image_pages": tuple(
+            page.page_number
+            for page in pages
+            if page.image_coverage > config.image_page_coverage
+        ),
+        "max_image_coverage": round(
+            max((page.image_coverage for page in pages), default=0.0), 4
+        ),
     }
 
 
