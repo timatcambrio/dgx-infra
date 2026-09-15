@@ -41,6 +41,14 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   at a scratch directory first.
 
 ## [DECISIONS]
+- 2026-09-15 [DECISION] The answerability eval has NO model in the loop. Cases are literal
+  substring assertions over converted markdown: offline, deterministic, free, reviewable, and
+  they measure whether the evidence needed to answer survived conversion -- not whether a
+  given model answers correctly, which the converter does not control. Runs in the suite over
+  fixtures and via `pipeline answerability --cases PATH` over a real kb/ (reads kb/ only, so
+  it needs neither sources nor SOURCE_DIR; exits non-zero so it can gate a release).
+- 2026-09-15 [DECISION] An unusable answerability case file raises rather than skips. A
+  silently dropped case leaves the suite green while asking one fewer question.
 - 2026-09-15 [DECISION] Annotation anchors render as one of exactly TWO kinds, each naming a
   measurement rather than a conclusion: `[points to: X]` (the annotation's callout line lands
   on X) and `[beside: X]` (X shares a row with the note). Neither claims which logical field
@@ -152,6 +160,12 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-15 [TOOL] Items 1 and 3 merged to main. Item 2 (evidence profile) and the
+  answerability eval done on branch `answerability-eval` (branched off `evidence-profile`),
+  unmerged. 272 tests pass; both gates pass. Remaining: item 4 (table-grid recovery for ruled
+  forms), item 5 (tag flattened callouts via widget rects).
+- 2026-09-15 [USER] Working instruction: finish the five-item list. Do not propose additional
+  work unless it is a bug or very high value.
 - 2026-09-15 [TOOL] Plan item 1 (table-cell targets) merged to main at `a32c267`. Item 3
   (evidence vocabulary) on branch `annotation-evidence-vocabulary`, unmerged, 5 commits
   `a778445`..`dc5f3e0`. 249 tests pass. Remaining: item 2 (evidence profile in the report),
@@ -164,6 +178,15 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `2dbafb8` the fix, `ac42309` the golden and its registration (nothing else).
 
 ## [OUTCOMES]
+- 2026-09-15 [TOOL] The evidence profile makes the original silent failure loud. Against the
+  sample documents the report now prints:
+  `<NIH form>: 205 annotation(s) carrying text no text-layer extraction sees, 71 stating
+  their own target` and `<NIFA form>: 13 form field(s) but 1 ruled table(s) recovered -- a
+  form whose grid is mostly not being reconstructed`.
+- 2026-09-15 [CODE] Hazard hit twice this session and worth remembering: an edit anchored on a
+  code snippet that is not unique to the end of a function will swallow that function's tail.
+  The CLI's `answerability` command absorbed `report`'s trailing stop-and-ask lines; caught by
+  running the command, not by the test suite.
 - 2026-09-15 [TOOL] On the NIH form after items 1 and 3: 32 `points to`, 84 `beside`, 89
   unanchored, of 205 annotations. The session's original retrieval question is answered by
   the markdown itself -- `[points to: 1.TYPE OF SUBMISSION]: Use Application for first
