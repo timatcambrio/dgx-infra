@@ -25,6 +25,8 @@ GOLDEN_BY_FIXTURE = {
     "annotated_form.pdf": "annotated_form.md",
     "linked_form.pdf": "linked_form.md",
     "ruled_form.pdf": "ruled_form.md",
+    "screenshot_form.pdf": "screenshot_form.md",
+    "boxed_notes.pdf": "boxed_notes.md",
     "simple.docx": "simple.md",
 }
 
