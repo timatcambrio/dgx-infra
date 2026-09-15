@@ -41,6 +41,13 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   at a scratch directory first.
 
 ## [DECISIONS]
+- 2026-09-15 [DECISION] Flattened callouts render as `> **Boxed text:**`, NOT
+  `> **Annotation:**`. They are page text in a rectangle and carry none of an annotation
+  object's provenance; the measurement supports only "the page sets this apart in a box".
+  Keeping the two prefixes distinct preserves that difference downstream.
+- 2026-09-15 [DECISION] A rect overlapping a ruled table is never a note box. A shaded header
+  cell is a filled rect holding text, and tearing a table apart is far worse than leaving a
+  note unmarked -- the same asymmetry as the missed-vs-invented table rule.
 - 2026-09-15 [DECISION] Image-dominant pages are REPORTED, never reclassified. A page that is
   a third diagram is not broken, and telling a diagram from a screenshot of a form is exactly
   the inference this pipeline declines to make. Threshold `IMAGE_PAGE_COVERAGE` (default
@@ -96,6 +103,21 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `tests/fixtures/callout_notes.pdf` is added via `tests/make_fixtures.py`.
 
 ## [DISCOVERIES]
+- 2026-09-15 [TOOL] Item 5 root cause, and it explains the session's original symptom. The
+  NIFA callouts are page text inside drawn rects -- 27 rects over 3 pages, each holding
+  exactly one callout. The garbled header in the first converted markdown
+  (`### Federal Matching Amount Corresponding Amount Total lines funds carry ...`) was never
+  a shredded table header: it is SIX SEPARATE CALLOUT BOXES on one baseline, interleaved word
+  by word by `_group_words_into_lines`. Removing a box's words from the body pool before line
+  grouping separates them. `Federal funds carry over` -- the thing originally asked about --
+  is now its own searchable block.
+- 2026-09-15 [TOOL] Widget presence does NOT identify these boxes: only 13 of 27 rects
+  contain a widget. The rect itself is the reliable signal. Rects are filled+stroked and
+  small; the false positive to exclude is a shaded table header cell, handled by discarding
+  any rect overlapping a ruled table.
+- 2026-09-15 [CODE] Pre-existing, NOT fixed, out of scope: `_rejoin_fragments` drops a real
+  space in `do notfit` on the NIFA document -- the opposite error from the `S ubmit` case it
+  was written for. Present in the original converted output, so it predates this session.
 - 2026-09-15 [TOOL] CORRECTION, supersedes the 2026-09-15 assessment that table-grid recovery
   was the highest-value work. The NIFA document has NO vector grid. Each of its 3 pages
   carries a raster screenshot of the form (1188x816 px, 35-37% of the page area); `lines`=0
@@ -182,6 +204,12 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-15 [MILESTONE] All five plan items are done, plus the answerability eval. Items 1,
+  2, 3, 4 (redefined) merged to main; item 5 on branch `boxed-text`, unmerged, 5 commits.
+  299 tests pass, both gates pass, `make fixtures` is a no-op.
+- 2026-09-15 [ASSESSMENT] NOT done and deliberately not started: table-grid QUALITY on
+  vector forms (the NIH form's grids are found but coarse -- merged cells, many empty
+  columns). Distinct from the grid-recovery item that was dropped as mis-premised.
 - 2026-09-15 [TOOL] Item 4 REDEFINED and the real part delivered on branch
   `image-dominant-pages`, unmerged: image-dominant page detection and reporting. 285 tests
   pass, both gates pass. The originally-scoped half of item 4 (table-grid recovery) is NOT
