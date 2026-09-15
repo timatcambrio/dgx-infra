@@ -143,18 +143,29 @@ class Cell:
     table_top: float
 
 
+#: How a target was found. These are the only two, and both name a measurement rather than a
+#: conclusion: an arrow tip landed here, or this shares a row with that.
+#:
+#: What deliberately does NOT appear is a claim about which *field* a note belongs to. A PDF's
+#: ruling is a layout grid, not a map of the form's logical fields, so the cell under an arrow
+#: need not be the field the note is about -- observed on a real form, where a note about a
+#: checkbox in field 1 points into a cell naming a different field. The reader downstream has
+#: the whole form and can reconcile that; this module has coordinates and cannot.
+TARGET_POINTS_TO = "points to"
+TARGET_BESIDE = "beside"
+
+
 @dataclass(frozen=True)
 class Target:
-    """What an annotation was found to be about.
+    """What an annotation was found near, and by which measurement.
 
-    `exact` separates a link the file states from one this module inferred. The distinction
-    has to survive into the output: downstream sees the rendered text and nothing else, and
-    a guess that renders like a fact is worse than no guess at all -- on a budget form it is
-    an instruction filed against the wrong line, with nothing to mark it as doubtful.
+    `kind` has to survive into the output: downstream sees the rendered text and nothing
+    else, so an arrow the annotator drew and two things that happen to share a row must not
+    arrive looking alike.
     """
 
     label: str
-    exact: bool
+    kind: str
     top: float
 
 
@@ -184,8 +195,7 @@ class Annotation:
     def _prefix(self) -> str:
         if self.target is None:
             return ANNOTATION_PREFIX
-        kind = "field" if self.target.exact else "near"
-        return f"> **Annotation** [{kind}: {self.target.label}]: "
+        return f"> **Annotation** [{self.target.kind}: {self.target.label}]: "
 
     def render(self) -> str:
         # Multi-line annotation contents carry \r from the PDF; each line needs the
@@ -638,28 +648,27 @@ def _line_x1(line: Line) -> float:
     return max((x1 for _, x1, _ in line.words), default=line.x0)
 
 
-def _widget_target(widget: Widget, lines: list[Line], tolerance: float) -> Target:
-    """A form field as a target: the form's name for it, positioned on its printed row.
+def _widget_anchor(
+    widget: Widget, lines: list[Line], tolerance: float
+) -> tuple[str, float]:
+    """`(label, position)` for a form field.
 
-    Name and position come from different places on purpose. `/T` is the field's identity
-    and beats any label read off the page; the widget's *rectangle*, though, is the input
-    box, which is typically set a little above the label beside it -- so anchoring to the
-    rectangle would emit the note just before the row it belongs to. The row's own text is
-    the right place to put it.
+    The two come from different places on purpose. `/T` is the field's own name and beats any
+    label read off the page; the widget's *rectangle*, though, is the input box, which is
+    typically set a little above the label beside it -- so anchoring to the rectangle would
+    emit the note just before the row it belongs to. The row's own text is the right place.
     """
     row = [
         line.top
         for line in lines
         if line.text and _overlaps(widget.top, widget.bottom, line.top, line.bottom, tolerance)
     ]
-    return Target(label=widget.name, exact=True, top=max([widget.top, *row]))
+    return widget.name, max([widget.top, *row])
 
 
-def _cell_target(cell: Cell) -> Target | None:
-    """A table cell as a target: its own text, or failing that, its row's.
+def _cell_anchor(cell: Cell) -> tuple[str, float] | None:
+    """`(label, position)` for a table cell: its own text, or failing that, its row's.
 
-    Both are the table's own structure rather than a reading of what the note means -- the
-    ruling states which cell the tip landed in, and the row states what that cell is called.
     A cell with neither is not a target; there is nothing there to name.
 
     Position is the table's top, not the cell's: a table converts to a single block, so a
@@ -670,7 +679,7 @@ def _cell_target(cell: Cell) -> Target | None:
     label = cell.text or cell.row_label
     if not label:
         return None
-    return Target(label=_label(label), exact=True, top=cell.table_top + cell.top / 1e6)
+    return _label(label), cell.table_top + cell.top / 1e6
 
 
 def _target_at(
@@ -689,21 +698,22 @@ def _target_at(
     x, y = point
     for widget in widgets:
         if _within(x, y, (widget.x0, widget.top, widget.x1, widget.bottom), tolerance):
-            return _widget_target(widget, lines, tolerance)
+            label, top = _widget_anchor(widget, lines, tolerance)
+            return Target(label=label, kind=TARGET_POINTS_TO, top=top)
     for cell in cells:
         # No tolerance here, unlike widgets and lines. Cells tile the table with no gaps
         # between them, so slack cannot bridge a gap -- there is none -- and can only pull a
         # tip that missed the table entirely into whichever edge cell happens to be nearest,
         # then report that as exact. A point is inside a cell or it is not.
         if _within(x, y, (cell.x0, cell.top, cell.x1, cell.bottom), 0.0):
-            target = _cell_target(cell)
-            if target is not None:
-                return target
+            anchor = _cell_anchor(cell)
+            if anchor is not None:
+                return Target(label=anchor[0], kind=TARGET_POINTS_TO, top=anchor[1])
     for line in lines:
         if line.text and _within(
             x, y, (line.x0, line.top, _line_x1(line), line.bottom), tolerance
         ):
-            return Target(label=_label(line.text), exact=True, top=line.top)
+            return Target(label=_label(line.text), kind=TARGET_POINTS_TO, top=line.top)
     return None
 
 
@@ -713,15 +723,16 @@ def _target_beside(
     """The field on the same row as a callout that carries no line of its own.
 
     A widget wins over a printed label even though both are found the same way, because the
-    widget names the field and the label only describes it. The label result is marked
-    inexact: sharing a row is evidence, not a statement, and on a two-column form it is
-    evidence that can be wrong.
+    widget carries the form's own name for the thing and the label only describes it. Either
+    way the result is marked `beside`: sharing a row is evidence, not a statement, and on a
+    two-column form it is evidence that can be wrong.
     """
     for widget in widgets:
         if _overlaps(
             annotation.top, annotation.bottom, widget.top, widget.bottom, tolerance
         ):
-            return _widget_target(widget, lines, tolerance)
+            label, top = _widget_anchor(widget, lines, tolerance)
+            return Target(label=label, kind=TARGET_BESIDE, top=top)
 
     candidates = [
         line
@@ -739,7 +750,7 @@ def _target_beside(
     chosen = min(
         anchored or candidates, key=lambda line: annotation.x0 - _line_x1(line)
     )
-    return Target(label=_label(chosen.text), exact=False, top=chosen.top)
+    return Target(label=_label(chosen.text), kind=TARGET_BESIDE, top=chosen.top)
 
 
 def resolve_targets(
@@ -752,13 +763,14 @@ def resolve_targets(
 ) -> list[Annotation]:
     """Bind each annotation to the field it describes, where the page allows it.
 
-    Three rules, tried strongest first, and all three are measurement rather than guesswork
-    about meaning:
+    Three rules, tried strongest first. Each reports a measurement, and none of them claims
+    to know which *field* a note is about -- see `TARGET_POINTS_TO` for why that claim is not
+    available from geometry:
 
-    1. the annotation's own callout line, which is the annotator pointing at the field --
-       resolved against form fields, ruled table cells and printed lines, in that order;
-    2. a form field sharing its row, which contributes the form's name for that field;
-    3. a printed label sharing its row, which is an inference and is marked as one.
+    1. the annotation's own callout line, resolved against form fields, ruled table cells and
+       printed lines in that order, and reported as `points to`;
+    2. a form field sharing its row, reported as `beside`, labelled with the form's own name;
+    3. a printed label sharing its row, reported as `beside`.
 
     An annotation that matches none of them keeps no target and renders exactly as it did
     before any of this existed. That is the intended outcome, not a failure: on a page where
