@@ -276,7 +276,7 @@ def linked_form(path: Path) -> None:
 #: `ruled_form.pdf` geometry, in ReportLab's bottom-up user space. A three-column grid with
 #: a header row and two field rows, ruled on every edge so pdfplumber finds it as a table.
 RULED_COLUMNS = (72, 200, 300, 420)
-RULED_ROW_LINES = (700, 670, 640, 610)
+RULED_ROW_LINES = (640, 610, 580, 550)
 RULED_CELLS: list[list[str]] = [
     ["Field", "Value", "Notes"],
     ["1. TYPE OF SUBMISSION", "", ""],
@@ -300,7 +300,11 @@ def ruled_form(path: Path) -> None:
     canvas = _canvas(path)
     callout_annotation = _callout_annotation_class()
 
-    _draw_heading(canvas, "Ruled Application Form", 730)
+    y = _draw_heading(canvas, "Ruled Application Form", 760)
+    # Enough prose to clear MIN_CHARS_PER_PAGE. Without it the page triages as `needs_ocr`
+    # and the golden quietly records the stub path instead of the geometry path this fixture
+    # exists to exercise -- green, and testing nothing.
+    _draw_paragraph(canvas, BODY_TEXT, y - 6)
 
     top, bottom = RULED_ROW_LINES[0], RULED_ROW_LINES[-1]
     for x in RULED_COLUMNS:
@@ -328,8 +332,8 @@ def ruled_form(path: Path) -> None:
         )
 
     # Into the cell that carries the label, and into an empty cell two rows down.
-    callout("Use Application for the first submission attempt.", 646, tip=(130, 655))
-    callout("Format: MM/DD/YYYY.", 616, tip=(250, 625))
+    callout("Use Application for the first submission attempt.", 586, tip=(130, 595))
+    callout("Format: MM/DD/YYYY.", 556, tip=(250, 565))
 
     canvas.showPage()
     canvas.save()
