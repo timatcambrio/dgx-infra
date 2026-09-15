@@ -430,6 +430,30 @@ Pages that yielded no usable text are named in the converted file itself, with a
 scanned pages silently, which downstream is indistinguishable from a document that never
 covered the topic.
 
+`report` also prints **EVIDENCE NOTES**: what each document carried beyond its text layer,
+set against what was recovered from it.
+
+```
+EVIDENCE NOTES (what the document carries beyond its text layer)
+  <a 25-page annotated form>: 205 annotation(s) carrying text no text-layer
+    extraction sees, 71 stating their own target
+  <a 3-page budget form>: 13 form field(s) but 1 ruled table(s) recovered --
+    a form whose grid is mostly not being reconstructed
+```
+
+The second line is why this section exists. That document converted with `text_class: clean`,
+full character coverage, no low-text pages and no warnings — and its budget grid reduced to a
+single table, which is to say lost. Every signal the pipeline emitted called the conversion
+fine, and the only way anyone found out was by asking the document a question by hand.
+Counting the form fields a document declares against the tables actually recovered from it
+turns that into a line of output.
+
+It also guards against a subtler problem: tuning the converter to whichever evidence class
+happens to appear in the document someone looked at first. Documents differ in what they
+even offer — one of the two above carries 205 annotations and no form fields, the other 13
+form fields and no annotations — so a document type nobody has handled should surface as an
+unfamiliar profile rather than as a quiet degradation.
+
 ### Escalating a document to Docling
 
 Set `PDF_ENGINE=docling`. It is not wired up yet and will say so: it needs
