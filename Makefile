@@ -9,7 +9,7 @@ PYTHON := $(UV) run python
 .DEFAULT_GOAL := help
 
 .PHONY: help sync check test gates license-gate model-gate fixtures \
-        inventory triage convert report report-json answerability clean-work
+        inventory triage convert report report-json answerability profile clean-work
 
 help:  ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) \
@@ -49,6 +49,9 @@ report:  ## Print the coverage report
 
 report-json:  ## Print the coverage report as JSON
 	$(UV) run pipeline report --format json
+
+profile:  ## Print the evidence profile for SOURCE_DIR (counts only, no document text)
+	$(PYTHON) scripts/profile_corpus.py
 
 answerability:  ## Ask the converted kb/ a fixed set of questions with known answers
 	$(UV) run pipeline answerability --cases tests/answerability/fixtures.yaml

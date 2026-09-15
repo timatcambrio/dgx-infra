@@ -497,6 +497,19 @@ as having no usable text is not named twice, and "form fields but no ruled table
 said of a document whose pages are pictures, since that note means the converter failed to
 reconstruct a grid and here there was never a vector grid to reconstruct.
 
+`make profile` prints the same facts as a table, one row per document, straight from the
+PDFs — no manifest, no conversion run, nothing written:
+
+```
+document                     pages  class  ch/pg   cols  ruled  bordl  annot   w/CL fields  imgpg   img%
+<a 25-page annotated form>      25  clean   1247      1     14     13    205     71      0      0     3%
+```
+
+It emits counts and filenames and never document text, which is the point: a corpus that
+cannot leave the machine it lives on can still be profiled there and the result pasted into a
+ticket or handed to whoever is deciding what to build next. PDFs only — the geometry facts
+mean nothing for DOCX or CSV, which carry their text structurally.
+
 `report` also prints **EVIDENCE NOTES**: what each document carried beyond its text layer,
 set against what was recovered from it.
 
