@@ -260,25 +260,25 @@ def converted(config, fixtures_dir):
 
 def test_a_callout_line_binds_to_the_widget_it_points_into(config, fixtures_dir):
     """The strongest link in the file: the annotator drew the arrow themselves."""
-    assert "[field: TypeOfSubmission]: Use Application for the first submission attempt." \
+    assert "[points to: TypeOfSubmission]: Use Application for the first submission attempt." \
         in converted(config, fixtures_dir)
 
 
 def test_a_callout_line_binds_to_a_printed_label_when_there_is_no_widget(config, fixtures_dir):
-    assert "[field: 4. PROJECT TITLE]: Limited to 200 characters." \
+    assert "[points to: 4. PROJECT TITLE]: Limited to 200 characters." \
         in converted(config, fixtures_dir)
 
 
-def test_without_a_callout_line_an_overlapping_widget_still_names_the_field(config, fixtures_dir):
-    assert "[field: ApplicantName]: Must match the name registered with the agency." \
+def test_without_a_callout_line_an_overlapping_widget_still_names_the_target(config, fixtures_dir):
+    assert "[beside: ApplicantName]: Must match the name registered with the agency." \
         in converted(config, fixtures_dir)
 
 
-def test_overlap_with_a_label_is_marked_as_inferred_not_as_exact(config, fixtures_dir):
+def test_row_overlap_is_marked_as_overlap_not_as_a_link(config, fixtures_dir):
     """A guess must never render in the same shape as a link the file actually states."""
     body = converted(config, fixtures_dir)
-    assert "[near: 2. DATE SUBMITTED]: Format: MM/DD/YYYY." in body
-    assert "[field: 2. DATE SUBMITTED]" not in body
+    assert "[beside: 2. DATE SUBMITTED]: Format: MM/DD/YYYY." in body
+    assert "[points to: 2. DATE SUBMITTED]" not in body
 
 
 def test_an_annotation_pointing_at_nothing_stays_unbound(config, fixtures_dir):
@@ -308,7 +308,7 @@ def test_linking_can_be_switched_off_without_losing_the_annotations(config, fixt
     monkeypatch.setenv("PDF_ANNOTATION_LINKING", "false")
     disabled = config_module.load(source_dir=fixtures_dir)
     body = pdf_geometry.to_markdown(fixtures_dir / LINKED, disabled)
-    assert "[field:" not in body and "[near:" not in body
+    assert "[points to:" not in body and "[beside:" not in body
     assert "Use Application for the first submission attempt." in body
 
 
@@ -321,13 +321,13 @@ def test_an_unparseable_linking_switch_is_an_error(fixtures_dir, monkeypatch):
 def test_a_document_with_no_widgets_or_callouts_is_unaffected(config, fixtures_dir):
     """Linking must not put labels on a document that never had fields."""
     body = pdf_geometry.to_markdown(fixtures_dir / "born_digital.pdf", config)
-    assert "[field:" not in body and "[near:" not in body
+    assert "[points to:" not in body and "[beside:" not in body
 
 
-def test_the_needs_ocr_stub_can_still_name_fields(config, fixtures_dir):
+def test_the_needs_ocr_stub_can_still_name_targets(config, fixtures_dir):
     """A scanned form has no labels to read, so its widgets are the only source of names."""
     body, _ = pdf.needs_ocr_stub(fixtures_dir / LINKED, config)
-    assert "[field: TypeOfSubmission]: Use Application for the first submission attempt." in body
+    assert "[points to: TypeOfSubmission]: Use Application for the first submission attempt." in body
 
 
 # --------------------------------------------------------------------------------------
@@ -346,7 +346,7 @@ RULED = "ruled_form.pdf"
 
 def test_a_callout_into_a_cell_binds_to_that_cell(config, fixtures_dir):
     body = pdf_geometry.to_markdown(fixtures_dir / RULED, config)
-    assert "[field: 1. TYPE OF SUBMISSION]: Use Application for the first submission attempt." \
+    assert "[points to: 1. TYPE OF SUBMISSION]: Use Application for the first submission attempt." \
         in body
 
 
@@ -357,7 +357,7 @@ def test_a_callout_into_an_empty_cell_binds_to_its_row(config, fixtures_dir):
     ruling says which row the tip landed in, and the row says what it is called.
     """
     body = pdf_geometry.to_markdown(fixtures_dir / RULED, config)
-    assert "[field: 2. DATE SUBMITTED]: Format: MM/DD/YYYY." in body
+    assert "[points to: 2. DATE SUBMITTED]: Format: MM/DD/YYYY." in body
 
 
 def test_a_cell_bound_annotation_is_emitted_after_its_table(config, fixtures_dir):
@@ -375,3 +375,26 @@ def test_cell_targets_need_no_widgets(config, fixtures_dir):
 
     with pdfplumber.open(fixtures_dir / RULED) as pdf:
         assert pdf_geometry.extract_widgets(pdf.pages[0]) == []
+
+
+def test_a_cell_hit_does_not_claim_to_be_the_field(config, fixtures_dir):
+    """A PDF's ruling is a layout grid, not a map of the form's logical fields.
+
+    Observed on a real annotated form: a note about a checkbox belonging to field 1 has its
+    arrow tip genuinely inside a cell whose text names a different field. The tip's location
+    is a fact; calling the cell that contains it "the field" is an assertion the file does
+    not support. So the rendering states what was measured -- the arrow points here -- and
+    leaves the reconciling to a reader that has the whole form in front of it.
+    """
+    body = pdf_geometry.to_markdown(fixtures_dir / RULED, config)
+    assert "[field:" not in body
+
+
+def test_the_two_kinds_are_the_only_kinds(config, fixtures_dir):
+    """Anything else would be a third confidence level nobody downstream has been told about."""
+    import re
+
+    for fixture in (LINKED, RULED, FIXTURE):
+        body = pdf_geometry.to_markdown(fixtures_dir / fixture, config)
+        kinds = set(re.findall(r"^> \*\*Annotation\*\* \[(.+?):", body, re.M))
+        assert kinds <= {"points to", "beside"}, kinds
