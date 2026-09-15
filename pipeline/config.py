@@ -118,6 +118,8 @@ class Config:
     pdf_engine: str
     pdf_annotations: bool
     pdf_annotation_linking: bool
+    pdf_boxed_text: bool
+    pdf_boxed_max_area: float
     pdf_annotation_link_tolerance: float
     pdf_heading_size_ratio: float
     pdf_margin_fraction: float
@@ -211,6 +213,15 @@ def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = 
         # unknown is a good deal less useful than one whose field is named, and the
         # binding degrades to today's behaviour when the file says nothing.
         pdf_annotation_linking=_env_bool("PDF_ANNOTATION_LINKING", True),
+        # Text set inside a drawn box: a flattened callout, which is page text rather than an
+        # annotation object. On by default because the alternative is worse than losing the
+        # marking -- boxes that share a baseline merge into one interleaved line, so the text
+        # is not merely unlabelled but unreadable.
+        pdf_boxed_text=_env_bool("PDF_BOXED_TEXT", True),
+        # Largest share of the page a box may cover and still be a note. A page border or a
+        # background panel is a filled rectangle around the whole page, and it is not
+        # commentary about the page.
+        pdf_boxed_max_area=_env_float("PDF_BOXED_MAX_AREA", 0.25),
         # Vertical slack, in points, when testing whether an annotation and a candidate
         # target sit on the same row. A callout is typed at its own size and rarely
         # shares a baseline with the label it describes, so exact overlap is too strict;

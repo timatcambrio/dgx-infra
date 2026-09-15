@@ -113,6 +113,14 @@ _LABEL_MAX_CHARS = 60
 #: thing a citation has to preserve.
 ANNOTATION_PREFIX = "> **Annotation:** "
 
+#: Prefix for text the page draws inside a box of its own.
+#:
+#: Deliberately not `Annotation`. This is ordinary page text that happens to sit in a
+#: rectangle -- which is what a callout becomes once a file is flattened -- and it carries
+#: none of an annotation object's provenance. What the measurement supports is "the page sets
+#: this apart in a box", and that is all the prefix claims.
+BOXED_PREFIX = "> **Boxed text:** "
+
 
 @dataclass(frozen=True)
 class Widget:
@@ -354,6 +362,63 @@ def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[l
         if len(rows) >= 2 and len(rows[0]) >= 2:
             regions.append((table.bbox, rows))
     return regions
+
+
+def _is_note_box(rect: dict, page_area: float, max_area_fraction: float) -> bool:
+    """Whether a rectangle is the kind that holds a note rather than structuring the page.
+
+    Filled or stroked, because an invisible rectangle sets nothing apart. Smaller than
+    `max_area_fraction` of the page, because a border or a background panel wraps the whole
+    page and is not commentary about it. Zero-area rectangles are neither.
+    """
+    if not (rect.get("fill") or rect.get("stroke")):
+        return False
+    width = float(rect["x1"]) - float(rect["x0"])
+    height = float(rect["bottom"]) - float(rect["top"])
+    if width <= 0 or height <= 0 or page_area <= 0:
+        return False
+    return (width * height) / page_area <= max_area_fraction
+
+
+def find_note_boxes(page, table_boxes: Iterable[tuple], config: Config) -> list[tuple]:
+    """Bounding boxes of drawn rectangles that hold text set apart from the page.
+
+    Rectangles overlapping a ruled table are excluded outright. A shaded header cell is a
+    filled rectangle containing text and is not a note, and the cost of getting that wrong is
+    a table torn apart -- the same asymmetry that makes `_table_regions` refuse to invent
+    borderless tables.
+    """
+    try:
+        rects = page.rects or []
+    except Exception:  # noqa: BLE001 - a page whose shapes cannot be read still converts
+        return []
+
+    page_area = float(page.width) * float(page.height)
+    tables = list(table_boxes)
+    boxes = []
+    for rect in rects:
+        if not _is_note_box(rect, page_area, config.pdf_boxed_max_area):
+            continue
+        box = (float(rect["x0"]), float(rect["top"]),
+               float(rect["x1"]), float(rect["bottom"]))
+        if any(_boxes_overlap(box, table) for table in tables):
+            continue
+        boxes.append(box)
+    return boxes
+
+
+def _boxes_overlap(a: tuple, b: tuple) -> bool:
+    return not (a[2] <= b[0] or a[0] >= b[2] or a[3] <= b[1] or a[1] >= b[3])
+
+
+def _words_inside(words: list[dict], box: tuple) -> list[dict]:
+    x0, top, x1, bottom = box
+    return [
+        word
+        for word in words
+        if x0 <= (float(word["x0"]) + float(word["x1"])) / 2 <= x1
+        and top <= (float(word["top"]) + float(word["bottom"])) / 2 <= bottom
+    ]
 
 
 def _table_cells(page) -> list[Cell]:
@@ -865,35 +930,44 @@ def to_markdown(path: Path, config: Config) -> str:
     """Convert a PDF to markdown using geometry alone."""
     import pdfplumber  # noqa: PLC0415 - lazy by design
 
+    # Everything that needs the open document is read here. Nothing below the `with` may
+    # touch a pdfplumber page: the file is closed, and what still works is an accident of
+    # caching rather than a contract.
+    linking = config.pdf_annotations and config.pdf_annotation_linking
+    pages = []
     with pdfplumber.open(path) as pdf:
-        pages = [
-            {
-                "words": page.extract_words(extra_attrs=_WORD_ATTRS),
-                "tables": _table_regions(page),
-                "cells": (
-                    _table_cells(page)
-                    if config.pdf_annotations and config.pdf_annotation_linking
-                    else []
-                ),
-                "width": float(page.width),
-                "height": float(page.height),
-                "annotations": (
-                    extract_annotations(page, page.extract_text() or "")
-                    if config.pdf_annotations
-                    else []
-                ),
-                "widgets": (
-                    extract_widgets(page)
-                    if config.pdf_annotations and config.pdf_annotation_linking
-                    else []
-                ),
-            }
-            for page in pdf.pages
-        ]
+        for page in pdf.pages:
+            words = page.extract_words(extra_attrs=_WORD_ATTRS)
+            tables = _table_regions(page)
+            table_boxes = [box for box, _ in tables]
+            pages.append(
+                {
+                    "words": words,
+                    "tables": tables,
+                    "table_boxes": table_boxes,
+                    "boxes": (
+                        _boxed_notes(page, words, table_boxes, config)
+                        if config.pdf_boxed_text
+                        else []
+                    ),
+                    "cells": _table_cells(page) if linking else [],
+                    "width": float(page.width),
+                    "height": float(page.height),
+                    "annotations": (
+                        extract_annotations(page, page.extract_text() or "")
+                        if config.pdf_annotations
+                        else []
+                    ),
+                    "widgets": extract_widgets(page) if linking else [],
+                }
+            )
 
     for page in pages:
+        # Boxed text is removed from the body pool for the same reason table text is: left in,
+        # it is regrouped by baseline, and boxes standing side by side interleave into one
+        # unreadable line. This is the step that separates them.
         page["body_words"] = _outside_regions(
-            page["words"], [box for box, _ in page["tables"]]
+            page["words"], page["table_boxes"] + [box for box, _ in page["boxes"]]
         )
         page["lines"] = _group_words_into_lines(page["body_words"], config)
         if config.pdf_annotation_linking and page["annotations"]:
@@ -927,6 +1001,26 @@ def to_markdown(path: Path, config: Config) -> str:
     return "\n\n".join(block for block in blocks if block.strip())
 
 
+def _boxed_notes(
+    page, words: list[dict], table_boxes: list[tuple], config: Config
+) -> list[tuple[tuple, str]]:
+    """`(box, text)` for each drawn box holding text, in no particular order.
+
+    An empty box is not a note -- a rule, a swatch, a form field's outline -- and is left
+    alone so its area is not carved out of the page for nothing.
+    """
+    found = []
+    for box in find_note_boxes(page, table_boxes, config):
+        contained = _words_inside(words, box)
+        if not contained:
+            continue
+        lines = _group_words_into_lines(contained, config)
+        text = " ".join(line.text for line in lines if line.text).strip()
+        if text:
+            found.append((box, text))
+    return found
+
+
 def _render_page(
     page: dict[str, Any],
     repeated: set[str],
@@ -956,6 +1050,8 @@ def _render_page(
         elements.append(line_group)
     for box, rows in page["tables"]:
         elements.append((float(box[1]), render_table(rows)))
+    for box, text in page.get("boxes", ()):
+        elements.append((float(box[1]), f"{BOXED_PREFIX}{text}"))
     for annotation in page.get("annotations", ()):
         rendered = annotation.render()
         if rendered:
