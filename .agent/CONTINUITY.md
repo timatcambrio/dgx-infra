@@ -204,6 +204,16 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-15 [USER] The NIFA document was REMOVED from `sample-data`; USER is unsure how
+  representative it is and does not want more time spent on it. Consequence: the image-page
+  and boxed-text work it motivated stays (both are general failure modes, and both are
+  covered by synthetic fixtures `screenshot_form.pdf` and `boxed_notes.pdf`, so nothing in
+  the suite depends on the removed file). Its measured numbers in this file are no longer
+  reproducible from `sample-data`.
+- 2026-09-15 [TOOL] `make profile` added: `scripts/profile_corpus.py` prints the evidence
+  profile for SOURCE_DIR as one row per PDF, no manifest and no conversion run. Emits counts
+  and filenames only, never document text -- a test asserts that by searching the output for
+  fixture text -- so a corpus that cannot leave its machine can still be profiled there.
 - 2026-09-15 [MILESTONE] All five plan items are done, plus the answerability eval. Items 1,
   2, 3, 4 (redefined) merged to main; item 5 on branch `boxed-text`, unmerged, 5 commits.
   299 tests pass, both gates pass, `make fixtures` is a no-op.
