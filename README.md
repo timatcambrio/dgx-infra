@@ -8,16 +8,17 @@ runs. PDFs are rebuilt from character geometry: word positions, type sizes, ruli
 it works offline, gives the same output every time, and you can read the extraction code
 instead of trusting weights.
 
-Some things can't be recovered that way. A scanned page has no text to extract. What the
-pipeline does instead is say so, which is why the two sections on reading the report and
-reading the output matter more than the rest of this file.
+Some things cannot be recovered that way: scanned pages, screen captured tables, etc. The
+pipeline generates a report of potential failure points, and marks them in the converted
+files as well. **Please check [Reading the report](#reading-the-report) to avoid these silent
+failures**, and [Reading the converted markdown](#reading-the-converted-markdown) for the
+markers.
 
 ---
 
 ## Setup
 
-You need [uv](https://docs.astral.sh/uv/). It installs Python 3.12 and every dependency
-itself. There is nothing else to install and no virtualenv to make by hand.
+You need [uv](https://docs.astral.sh/uv/). It installs Python 3.12 and every dependency.
 
 ```bash
 uv sync
@@ -31,7 +32,8 @@ SOURCE_DIR=/absolute/path/to/your/documents
 ```
 
 That is the only setting you have to fill in. Everything else in `.env.example` is commented
-out with its default shown.
+out with its default shown. To change any of the others, uncomment the corresponding line
+and edit it.
 
 Legacy `.doc` and `.dot` files also need LibreOffice. See [LibreOffice (subprocess
 only)](#libreoffice-subprocess-only). Every other format works with `uv sync` alone.
@@ -93,11 +95,12 @@ The three measurements behind the class:
 | Setting | Default | What it catches |
 | --- | --- | --- |
 | `MIN_CHARS_PER_PAGE` | 100 | A page with less than this counts as low. The median is used rather than the mean, so a few dense pages cannot hide a scanned majority. |
-| `MIN_ALPHA_RATIO` | 0.60 | A PDF with a broken font map extracts plenty of characters and every one is mojibake. The file looks text-rich and is unusable. A character count never catches this. |
+| `MIN_ALPHA_RATIO` | 0.60 | Measured over the whole document, not per page. A PDF with a broken font map extracts plenty of characters but they are garbled and unusable. The alpha ratio is the share of characters that are alphanumeric, whitespace or punctuation. Everything else, such as replacement characters and private-use glyphs, counts against it, so a lower ratio means more garbled text. |
 | `MAX_LOW_PAGE_FRACTION` | 0.20 | Above this share of low pages, a document is no longer `clean`. |
 
-Leave these alone. Moving them to make a folder look better changes the labels without
-changing the documents.
+These measurements diagnose the corpus and inform decisions taken later in the pipeline.
+They also decide how each document is handled: one classed `needs_ocr` gets a stub written
+instead of a conversion. Avoid changing them.
 
 ### LOW-TEXT PAGES
 
