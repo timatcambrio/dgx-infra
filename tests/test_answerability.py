@@ -24,6 +24,7 @@ CONVERTED = (
     "annotated_form.pdf",
     "born_digital.pdf",
     "screenshot_form.pdf",
+    "boxed_notes.pdf",
 )
 
 

@@ -430,6 +430,42 @@ Pages that yielded no usable text are named in the converted file itself, with a
 scanned pages silently, which downstream is indistinguishable from a document that never
 covered the topic.
 
+### Text the page draws in a box
+
+Not every note on a form is an annotation object. Type commentary into a box, flatten the
+file — or author it that way — and the note becomes ordinary page text inside an ordinary
+rectangle. Line grouping knows only about baselines, so boxes standing side by side
+interleave word by word. Six boxes across the top of a budget form converted to this:
+
+```markdown
+### Federal Matching Amount Corresponding Amount Total lines funds carry
+### Capacity CFDA from (c) – (f ) over over Appendix A
+```
+
+Which answers nothing, matches no search, and is not obviously broken enough for anyone to
+notice. They are six separate notes:
+
+```markdown
+> **Boxed text:** Federal funds carry over
+> **Boxed text:** Matching funds carry over
+> **Boxed text:** Corresponding CFDA
+```
+
+A box's words are removed from the body pool before lines are grouped — the same treatment
+ruled tables get, for the same reason. `PDF_BOXED_TEXT=false` turns it off, and the text is
+then unmarked and merged but never dropped.
+
+It says `Boxed text` and not `Annotation` because these carry none of an annotation object's
+provenance. What the measurement supports is that the page sets this text apart in a box, and
+that is all the prefix claims.
+
+The false positive to avoid is a shaded table header, which is also a filled rectangle
+holding text. Rectangles overlapping a ruled table are excluded outright: tearing a table
+apart is far worse than leaving a note unmarked — the same asymmetry that makes borderless
+tables a missed-rather-than-invented case. Rectangles larger than `PDF_BOXED_MAX_AREA` of the
+page are excluded as borders and background panels, and an empty box is left alone rather
+than carving its area out of the page for nothing.
+
 ### When the document is a picture of a document
 
 The hardest failure in this corpus is not a hard one to convert — it is one that looks

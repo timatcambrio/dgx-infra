@@ -81,3 +81,27 @@ cases:
       # The callouts survive and read as ordinary prose. Without the marker above they would
       # be the whole document, and nothing downstream could tell that the form was missing.
       - "No text whatsoever"
+
+  - id: side-by-side-boxes-stay-separate
+    question: >
+      Where does federal funds carry over go? The label is one of several notes
+      standing side by side across the page.
+    document: boxed-notes.md
+    expect:
+      - "> **Boxed text:** Federal funds carry over"
+      - "> **Boxed text:** Matching funds carry over"
+    forbid:
+      # The regression this is here for: boxes on one baseline merged into a run-on line,
+      # which answers nothing and matches no search.
+      - "Federal funds carry over Matching funds carry over"
+      # Boxed text is page text in a rectangle, not an annotation object.
+      - "> **Annotation:** Federal funds carry over"
+
+  - id: a-shaded-header-is-still-a-table
+    question: What is the federal amount for personnel?
+    document: boxed-notes.md
+    expect:
+      - "| Category | Federal | Match |"
+      - "| Personnel | 250,000 | 125,000 |"
+    forbid:
+      - "> **Boxed text:** Category"
