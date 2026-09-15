@@ -339,6 +339,47 @@ def ruled_form(path: Path) -> None:
     canvas.save()
 
 
+def screenshot_form(path: Path) -> None:
+    """A form that is a *picture* of a form, with typed callouts around it.
+
+    The shape that defeats every coverage metric at once. The form itself is a raster
+    screenshot, so none of its rows, cells or values are in the text layer and no table
+    extraction can reach them. What *is* in the text layer -- a heading and a handful of
+    callouts someone typed alongside -- is real text, enough of it to clear
+    MIN_CHARS_PER_PAGE and score a clean alpha ratio. The document therefore triages `clean`,
+    converts without a warning, and silently omits the entire form.
+    """
+    from reportlab.lib.utils import ImageReader
+
+    canvas = _canvas(path)
+    y = _draw_heading(canvas, "Sample Budget - Annotated", 740)
+
+    image = _text_page_image(
+        "SECTION B - BUDGET CATEGORIES\n\n"
+        "6. Object Class Categories        Federal        Non-Federal\n"
+        "   a. Personnel                   250,000        125,000\n"
+        "   b. Fringe Benefits              45,000         22,500\n"
+        "   c. Travel                       12,000          6,000",
+        size=(1188, 480),
+    )
+    # Sized to match a real specimen: roughly a third of the page, which is what a
+    # full-width screenshot of a form comes to once it is placed under a heading.
+    canvas.drawImage(ImageReader(image), 56, y - 360, width=500, height=330)
+
+    canvas.setFont("Helvetica", 9)
+    for offset, text in enumerate(
+        (
+            "Enter only estimated Federal funds in this column.",
+            "Used 18% rate against Personnel.",
+            "Estimated program income - use previous reports to estimate.",
+        )
+    ):
+        canvas.drawString(72, y - 390 - offset * 14, text)
+
+    canvas.showPage()
+    canvas.save()
+
+
 def annotated_form(path: Path) -> None:
     """A form carrying FreeText annotations, as if someone marked it up in Preview.
 
@@ -569,6 +610,7 @@ GENERATORS = {
     "annotated_form.pdf": annotated_form,
     "linked_form.pdf": linked_form,
     "ruled_form.pdf": ruled_form,
+    "screenshot_form.pdf": screenshot_form,
     "callout_notes.pdf": callout_notes,
 }
 
