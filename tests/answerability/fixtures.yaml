@@ -67,3 +67,17 @@ cases:
     expect:
       - "Lodging"
       - "$180 / night"
+
+  - id: a-form-that-is-a-picture-says-so
+    question: >
+      This document is about a budget form. Can I read the form's rows and values,
+      and if not, does the file tell me so rather than looking complete?
+    document: screenshot-form.md
+    expect:
+      - "**INCOMPLETE"
+      - "mostly image"
+      - "not in the text layer"
+    forbid:
+      # The callouts survive and read as ordinary prose. Without the marker above they would
+      # be the whole document, and nothing downstream could tell that the form was missing.
+      - "No text whatsoever"

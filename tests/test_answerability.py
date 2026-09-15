@@ -18,7 +18,13 @@ from pipeline.answerability import Case, SpecError
 CASES = Path(__file__).resolve().parent / "answerability" / "fixtures.yaml"
 
 #: Fixtures that must be converted for the case file to have anything to read.
-CONVERTED = ("linked_form.pdf", "ruled_form.pdf", "annotated_form.pdf", "born_digital.pdf")
+CONVERTED = (
+    "linked_form.pdf",
+    "ruled_form.pdf",
+    "annotated_form.pdf",
+    "born_digital.pdf",
+    "screenshot_form.pdf",
+)
 
 
 @pytest.fixture
