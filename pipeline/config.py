@@ -200,7 +200,7 @@ def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = 
         # and alpha ratio both look healthy while the form itself is unreachable.
         image_page_coverage=_env_float("IMAGE_PAGE_COVERAGE", 0.15),
         csv_max_rows=_env_int("CSV_MAX_ROWS", 300),
-        csv_max_cols=_env_int("CSV_MAX_COLS", 12),
+        csv_max_cols=_env_int("CSV_MAX_COLS", 15),
         docling_ocr_engine=os.environ.get("DOCLING_OCR_ENGINE", DOCLING_OCR_ENGINE),
         pdf_engine=os.environ.get("PDF_ENGINE", PDF_ENGINE_GEOMETRY),
         # Text annotations (Markup callouts, sticky notes) are page content that is not

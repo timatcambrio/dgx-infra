@@ -282,7 +282,7 @@ It is not wired up yet, and says so when you try, naming what it needs.
 Conversion stops on these rather than write something quietly wrong. Each one names the file
 and the reason.
 
-- A CSV past `CSV_MAX_ROWS` (300) or `CSV_MAX_COLS` (12). How a large table should be shaped
+- A CSV past `CSV_MAX_ROWS` (300) or `CSV_MAX_COLS` (15). How a large table should be shaped
   for retrieval is a decision to make, not a default to pick.
 - A source file that changed since it was recorded. Each entry stores a checksum, and a
   mismatch is a loud error rather than a silent re-convert.
