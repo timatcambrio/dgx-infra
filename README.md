@@ -10,9 +10,9 @@ instead of trusting weights.
 
 Some things cannot be recovered that way: scanned pages, screen captured tables, etc. The
 pipeline generates a report of potential failure points, and marks them in the converted
-files as well. **Please check [Reading the report](#reading-the-report) to avoid these silent
-failures**, and [Reading the converted markdown](#reading-the-converted-markdown) for the
-markers.
+files as well. **Please check [Reading the report](#reading-the-report) to avoid these
+silent failures, and [Reading the converted markdown](#reading-the-converted-markdown)
+for the markers.**
 
 ---
 
@@ -42,7 +42,7 @@ only)](#libreoffice-subprocess-only). Every other format works with `uv sync` al
 
 | | |
 | --- | --- |
-| Your documents | `SOURCE_DIR`, read-only. Nothing is written, moved, renamed or deleted here. |
+| Your documents | `SOURCE_DIR`, read-only. Nothing is written, moved, renamed, or deleted here. |
 | Converted markdown | `kb/` in the companion `dgx-knowledge` repo. Clone it beside this one. |
 | The record of what came from where | `corpus.yaml`, also in `dgx-knowledge` |
 | Scratch files | `work/`. Disposable: deleting it costs time, never information. |
@@ -95,7 +95,7 @@ The three measurements behind the class:
 | Setting | Default | What it catches |
 | --- | --- | --- |
 | `MIN_CHARS_PER_PAGE` | 100 | A page with less than this counts as low. The median is used rather than the mean, so a few dense pages cannot hide a scanned majority. |
-| `MIN_ALPHA_RATIO` | 0.60 | Measured over the whole document, not per page. A PDF with a broken font map extracts plenty of characters but they are garbled and unusable. The alpha ratio is the share of characters that are alphanumeric, whitespace or punctuation. Everything else, such as replacement characters and private-use glyphs, counts against it, so a lower ratio means more garbled text. |
+| `MIN_ALPHA_RATIO` | 0.60 | Measured over the whole document. A PDF with a broken font map extracts plenty of characters but they are garbled and unusable. The alpha ratio is the share of characters that are alphanumeric, whitespace, or punctuation. Everything else, such as replacement characters and private-use glyphs, counts against it, so a lower ratio means more garbled text. |
 | `MAX_LOW_PAGE_FRACTION` | 0.20 | Above this share of low pages, a document is no longer `clean`. |
 
 These measurements diagnose the corpus and inform decisions taken later in the pipeline.
