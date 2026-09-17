@@ -153,6 +153,41 @@ Every file opens with frontmatter recording where it came from, what converted i
 text coverage, including `needs_ocr: true` where that applies. Whatever consumes the markdown
 can then tell a complete document from an incomplete one without working it out again.
 
+For PDFs converted by the geometry engine, each content block also has a stable HTML comment
+anchor immediately before it:
+
+```markdown
+<!-- dgx:block=travel-handbook:p012:b004 -->
+| Expense category | Limit | Receipt required |
+```
+
+The matching sidecar lives next to the markdown as `<slug>.provenance.json`. It maps each
+block id to the original source page and, when geometry has it, the page bounding box:
+
+```json
+{
+  "version": 1,
+  "source_file": "travel_handbook.pdf",
+  "source_format": "pdf",
+  "content_sha256": "...",
+  "converter": "pdfplumber-geometry (model-free)",
+  "blocks": [
+    {
+      "block_id": "travel-handbook:p012:b004",
+      "page": 12,
+      "kind": "table",
+      "confidence": "geometry",
+      "bbox": [72.0, 144.0, 520.0, 310.0]
+    }
+  ]
+}
+```
+
+When an answer needs verification, cite both places: the markdown file and `dgx:block=...`
+for the extracted text, plus the sidecar's `source_file` and `page` for the original PDF.
+The `content_sha256` in frontmatter and sidecar must match; if it does not, the markdown no
+longer proves which source bytes it came from.
+
 Four markers can appear in the body.
 
 ### `> **INCOMPLETE — ...**`

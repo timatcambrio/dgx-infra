@@ -10,6 +10,7 @@ that digest is the only evidence that a given `kb/` file corresponds to given by
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,10 @@ class SourceDigestMismatch(RuntimeError):
 
 def output_path(entry: dict[str, Any], config: Config) -> Path:
     return config.kb_dir / f"{entry['slug']}.md"
+
+
+def provenance_path(output: Path) -> Path:
+    return output.with_suffix(".provenance.json")
 
 
 def _title_for(entry: dict[str, Any], source_path: Path) -> str:
@@ -104,18 +109,22 @@ def convert_entry(
 
     destination = output_path(entry, config)
     conversion = entry.get("conversion") or {}
+    source_format = entry["source_format"]
+    sidecar_required = _needs_provenance_sidecar(source_format, text_class)
     if (
         not force
         and destination.is_file()
         and conversion.get("source_sha256") == digest
+        and (not sidecar_required or provenance_path(destination).is_file())
     ):
         return ConversionResult(
             slug, source_file, STATUS_UNCHANGED, destination, conversion.get("converter")
         )
 
-    source_format = entry["source_format"]
     try:
-        body, converter, status = _dispatch(entry, source_path, config, text_class)
+        body, converter, status, provenance_blocks = _dispatch(
+            entry, source_path, config, text_class
+        )
     except StopAndAsk as exc:
         return ConversionResult(slug, source_file, STATUS_STOP_AND_ASK, message=str(exc))
 
@@ -137,19 +146,34 @@ def convert_entry(
     destination.parent.mkdir(parents=True, exist_ok=True)
     rendered = render_frontmatter(meta, body)
     destination.write_text(rendered, encoding="utf-8")
+    sidecar = None
+    if provenance_blocks is not None:
+        sidecar = provenance_path(destination)
+        sidecar.write_text(
+            _render_provenance_sidecar(
+                source_file=source_file,
+                source_format=source_format,
+                content_sha256=digest,
+                converter=converter,
+                blocks=provenance_blocks,
+            ),
+            encoding="utf-8",
+        )
 
     entry["conversion"] = {
         "converter": converter,
         "output": destination.relative_to(config.kb_path).as_posix(),
         "source_sha256": digest,
     }
+    if sidecar is not None:
+        entry["conversion"]["provenance"] = sidecar.relative_to(config.kb_path).as_posix()
     return ConversionResult(slug, source_file, status, destination, converter)
 
 
 def _dispatch(
     entry: dict[str, Any], source_path: Path, config: Config, text_class: str
-) -> tuple[str, str, str]:
-    """Route to the right converter. Returns `(body, converter_name, status)`."""
+) -> tuple[str, str, str, list[dict[str, Any]] | None]:
+    """Route to the right converter. Returns `(body, converter_name, status, provenance)`."""
     source_format = entry["source_format"]
 
     if source_format == "csv":
@@ -160,26 +184,50 @@ def _dispatch(
             description=entry.get("description"),
             csv_mode=entry.get("csv_mode", "table"),
         )
-        return body, converter, STATUS_WRITTEN
+        return body, converter, STATUS_WRITTEN, None
 
     if source_format == "pdf":
         if text_class == TEXT_CLASS_NEEDS_OCR:
             body, converter = pdf.needs_ocr_stub(source_path, config)
-            return body, converter, STATUS_STUB
+            return body, converter, STATUS_STUB, None
         if text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL):
             triage = entry.get("triage") or {}
-            body, converter = pdf.convert(
+            body, converter, provenance = pdf.convert_with_provenance(
                 source_path,
                 config,
+                provenance_slug=entry["slug"],
                 low_pages=triage.get("low_pages") or (),
                 image_pages=triage.get("image_pages") or (),
                 max_image_coverage=triage.get("max_image_coverage") or 0.0,
             )
-            return body, converter, STATUS_WRITTEN
+            return body, converter, STATUS_WRITTEN, provenance
         raise StopAndAsk(f"unexpected text_class {text_class!r} for {source_path.name}")
 
     if source_format in ("docx", "doc"):
         body, converter = office.convert(source_path, config)
-        return body, converter, STATUS_WRITTEN
+        return body, converter, STATUS_WRITTEN, None
 
     raise StopAndAsk(f"no converter for source_format {source_format!r}")
+
+
+def _needs_provenance_sidecar(source_format: str, text_class: str) -> bool:
+    return source_format == "pdf" and text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL)
+
+
+def _render_provenance_sidecar(
+    *,
+    source_file: str,
+    source_format: str,
+    content_sha256: str,
+    converter: str,
+    blocks: list[dict[str, Any]],
+) -> str:
+    payload = {
+        "version": 1,
+        "source_file": source_file,
+        "source_format": source_format,
+        "content_sha256": content_sha256,
+        "converter": converter,
+        "blocks": blocks,
+    }
+    return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"

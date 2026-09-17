@@ -11,6 +11,10 @@ def _is_table_row(line: str) -> bool:
     return line.lstrip().startswith("|")
 
 
+def _is_block_anchor(line: str) -> bool:
+    return line.strip().startswith("<!-- dgx:block=")
+
+
 def normalize_markdown(text: str) -> str:
     """Tidy converter output into markdown that parsers actually accept.
 
@@ -32,6 +36,7 @@ def normalize_markdown(text: str) -> str:
             and lines
             and lines[-1].strip()
             and not _is_table_row(lines[-1])
+            and not _is_block_anchor(lines[-1])
         ):
             lines.append("")
         lines.append(line)

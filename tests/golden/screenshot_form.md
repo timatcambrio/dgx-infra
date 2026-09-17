@@ -14,6 +14,8 @@ content_sha256: 4175b5ae2374c1640a31b64838e9e4778d3c6978c8a32634b5303e7b6c2733c5
 
 > **INCOMPLETE — page 1 is mostly image (up to 34% of the page), and that content is not in the text layer.** No OCR was attempted.
 
+<!-- dgx:block=screenshot-form:p001:b001 -->
 # Sample Budget - Annotated
 
+<!-- dgx:block=screenshot-form:p001:b002 -->
 Enter only estimated Federal funds in this column. Used 18% rate against Personnel. Estimated program income - use previous reports to estimate.

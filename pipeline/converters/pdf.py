@@ -13,6 +13,7 @@ Docling flips a default.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from ..config import BANNED_OCR_ENGINES, Config
 from ..triage import extract_page_texts
@@ -201,10 +202,32 @@ def convert(
 
     Escalation is per document: set `converter: docling` on a manifest entry.
     """
-    if _wants_docling(config):
-        return _convert_with_docling(path, config)
+    body, converter, _ = convert_with_provenance(
+        path,
+        config,
+        low_pages=low_pages,
+        image_pages=image_pages,
+        max_image_coverage=max_image_coverage,
+    )
+    return body, converter
 
-    body = pdf_geometry.to_markdown(path, config)
+
+def convert_with_provenance(
+    path: Path,
+    config: Config,
+    *,
+    provenance_slug: str | None = None,
+    low_pages: list[int] | tuple[int, ...] = (),
+    image_pages: list[int] | tuple[int, ...] = (),
+    max_image_coverage: float = 0.0,
+) -> tuple[str, str, list[dict[str, Any]]]:
+    """Convert a PDF and optionally anchor geometry blocks for a sidecar map."""
+    if _wants_docling(config):
+        body, converter = _convert_with_docling(path, config)
+        return body, converter, []
+
+    blocks = pdf_geometry.to_blocks(path, config)
+    body, provenance = _render_blocks(blocks, provenance_slug)
     notes = [
         note
         for note in (
@@ -213,7 +236,37 @@ def convert(
         )
         if note
     ]
-    return "\n\n".join([*notes, body]), CONVERTER_GEOMETRIC
+    return "\n\n".join([*notes, body]), CONVERTER_GEOMETRIC, provenance
+
+
+def _render_blocks(
+    blocks: list[pdf_geometry.RenderedBlock], provenance_slug: str | None
+) -> tuple[str, list[dict[str, Any]]]:
+    if provenance_slug is None:
+        return "\n\n".join(block.text for block in blocks if block.text.strip()), []
+
+    page_counts: dict[int, int] = {}
+    parts: list[str] = []
+    provenance: list[dict[str, Any]] = []
+    for block in blocks:
+        if not block.text.strip():
+            continue
+        page_counts[block.page_number] = page_counts.get(block.page_number, 0) + 1
+        block_id = (
+            f"{provenance_slug}:p{block.page_number:03d}:"
+            f"b{page_counts[block.page_number]:03d}"
+        )
+        parts.append(f"<!-- dgx:block={block_id} -->\n{block.text}")
+        record: dict[str, Any] = {
+            "block_id": block_id,
+            "page": block.page_number,
+            "kind": block.kind,
+            "confidence": "geometry",
+        }
+        if block.bbox is not None:
+            record["bbox"] = [round(float(value), 2) for value in block.bbox]
+        provenance.append(record)
+    return "\n\n".join(parts), provenance
 
 
 def _wants_docling(config: Config) -> bool:

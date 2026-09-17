@@ -234,6 +234,27 @@ class PageAnalysis:
     image_coverage: float = 0.0
 
 
+@dataclass(frozen=True)
+class RenderedBlock:
+    """One markdown block plus the page geometry that produced it."""
+
+    page_number: int
+    kind: str
+    top: float
+    text: str
+    bbox: tuple[float, float, float, float] | None = None
+
+
+@dataclass(frozen=True)
+class TextBlock:
+    """A page-local block before the page number is attached."""
+
+    top: float
+    kind: str
+    text: str
+    bbox: tuple[float, float, float, float] | None = None
+
+
 def _normalise(text: str) -> str:
     return _DIGITS.sub("#", _WHITESPACE.sub(" ", text).strip().lower())
 
@@ -928,6 +949,11 @@ def analyse(path: Path, config: Config) -> list[PageAnalysis]:
 
 def to_markdown(path: Path, config: Config) -> str:
     """Convert a PDF to markdown using geometry alone."""
+    return "\n\n".join(block.text for block in to_blocks(path, config) if block.text.strip())
+
+
+def to_blocks(path: Path, config: Config) -> list[RenderedBlock]:
+    """Convert a PDF to markdown blocks using geometry alone."""
     import pdfplumber  # noqa: PLC0415 - lazy by design
 
     # Everything that needs the open document is read here. Nothing below the `with` may
@@ -936,12 +962,13 @@ def to_markdown(path: Path, config: Config) -> str:
     linking = config.pdf_annotations and config.pdf_annotation_linking
     pages = []
     with pdfplumber.open(path) as pdf:
-        for page in pdf.pages:
+        for page_number, page in enumerate(pdf.pages, start=1):
             words = page.extract_words(extra_attrs=_WORD_ATTRS)
             tables = _table_regions(page)
             table_boxes = [box for box, _ in tables]
             pages.append(
                 {
+                    "page_number": page_number,
                     "words": words,
                     "tables": tables,
                     "table_boxes": table_boxes,
@@ -994,11 +1021,11 @@ def to_markdown(path: Path, config: Config) -> str:
         reverse=True,
     )
 
-    blocks: list[str] = []
+    blocks: list[RenderedBlock] = []
     for page in pages:
         blocks.extend(_render_page(page, repeated, body, heading_sizes, config))
 
-    return "\n\n".join(block for block in blocks if block.strip())
+    return [block for block in blocks if block.text.strip()]
 
 
 def _boxed_notes(
@@ -1027,7 +1054,7 @@ def _render_page(
     body: float,
     heading_sizes: list[float],
     config: Config,
-) -> list[str]:
+) -> list[RenderedBlock]:
     keep = [
         line
         for line in page["lines"]
@@ -1045,20 +1072,57 @@ def _render_page(
     else:
         ordered = keep
 
-    elements: list[tuple[float, str]] = []
-    for line_group in _paragraphs(ordered, body, heading_sizes, config):
-        elements.append(line_group)
+    page_number = int(page["page_number"])
+    elements: list[tuple[float, RenderedBlock]] = []
+    for block in _paragraph_blocks(ordered, body, heading_sizes, config):
+        elements.append(
+            (
+                block.top,
+                RenderedBlock(page_number, block.kind, block.top, block.text, block.bbox),
+            )
+        )
     for box, rows in page["tables"]:
-        elements.append((float(box[1]), render_table(rows)))
+        top = float(box[1])
+        elements.append(
+            (
+                top,
+                RenderedBlock(
+                    page_number, "table", top, render_table(rows), _bbox_from_box(box)
+                ),
+            )
+        )
     for box, text in page.get("boxes", ()):
-        elements.append((float(box[1]), f"{BOXED_PREFIX}{text}"))
+        top = float(box[1])
+        elements.append(
+            (
+                top,
+                RenderedBlock(
+                    page_number,
+                    "boxed_text",
+                    top,
+                    f"{BOXED_PREFIX}{text}",
+                    _bbox_from_box(box),
+                ),
+            )
+        )
     for annotation in page.get("annotations", ()):
         rendered = annotation.render()
         if rendered:
             # A bound annotation is emitted at its *target's* position, not its own. That is
             # the whole point of binding: in a margin column the notes' vertical order is
             # not the fields' order, so leaving them at their own y is what scattered them.
-            elements.append((annotation.anchor, rendered))
+            elements.append(
+                (
+                    annotation.anchor,
+                    RenderedBlock(
+                        page_number,
+                        "annotation",
+                        annotation.anchor,
+                        rendered,
+                        _bbox_from_annotation(annotation),
+                    ),
+                )
+            )
 
     # Two-column pages are already in reading order; re-sorting by `top` would interleave
     # the columns again, which is the failure this whole branch exists to avoid. Tables and
@@ -1067,7 +1131,35 @@ def _render_page(
     # shuffling the columns back together.
     if columns == 1:
         elements.sort(key=lambda item: item[0])
-    return [text for _, text in elements]
+    return [block for _, block in elements]
+
+
+def _bbox_from_box(box: tuple) -> tuple[float, float, float, float]:
+    return (float(box[0]), float(box[1]), float(box[2]), float(box[3]))
+
+
+def _bbox_from_annotation(annotation: Annotation) -> tuple[float, float, float, float] | None:
+    if annotation.x1 <= annotation.x0 or annotation.bottom <= annotation.top:
+        return None
+    return (annotation.x0, annotation.top, annotation.x1, annotation.bottom)
+
+
+def _bbox_from_lines(lines: list[Line]) -> tuple[float, float, float, float] | None:
+    if not lines:
+        return None
+    x0 = min(line.x0 for line in lines)
+    x1_values = [
+        max(word_x1 for _, word_x1, _ in line.words)
+        for line in lines
+        if line.words
+    ]
+    x1 = max(x1_values) if x1_values else max(line.x0 for line in lines)
+    return (
+        x0,
+        min(line.top for line in lines),
+        x1,
+        max(line.bottom for line in lines),
+    )
 
 
 def find_aligned_table_runs(lines: list[Line], config: Config) -> list[tuple[int, int]]:
@@ -1127,7 +1219,9 @@ def _table_from_lines(lines: list[Line], config: Config) -> str:
     return render_table([row + [""] * (width - len(row)) for row in rows])
 
 
-def _render_list(items: list[tuple[float, str, list[str]]], tolerance: float) -> str:
+def _render_list(
+    items: list[tuple[float, str, list[str], list[Line]]], tolerance: float
+) -> str:
     """Render collected list items, nesting by how far their markers are indented.
 
     Depth comes from the marker's x, grouped within the same tolerance the table code uses
@@ -1135,12 +1229,12 @@ def _render_list(items: list[tuple[float, str, list[str]]], tolerance: float) ->
     the distinct indents on one list is not.
     """
     columns: list[float] = []
-    for x0, _, _ in sorted(items, key=lambda item: item[0]):
+    for x0, _, _, _ in sorted(items, key=lambda item: item[0]):
         if not columns or x0 - columns[-1] > tolerance:
             columns.append(x0)
 
     lines = []
-    for x0, marker, parts in items:
+    for x0, marker, parts, _ in items:
         depth = max(index for index, column in enumerate(columns) if x0 >= column - tolerance)
         lines.append(f"{'  ' * depth}{marker} {' '.join(parts).strip()}")
     return "\n".join(lines)
@@ -1195,6 +1289,16 @@ def _paragraphs(
     lines: list[Line], body: float, heading_sizes: list[float], config: Config
 ) -> list[tuple[float, str]]:
     """Group lines into headings, paragraphs, lists and borderless tables."""
+    return [
+        (block.top, block.text)
+        for block in _paragraph_blocks(lines, body, heading_sizes, config)
+    ]
+
+
+def _paragraph_blocks(
+    lines: list[Line], body: float, heading_sizes: list[float], config: Config
+) -> list[TextBlock]:
+    """Group lines into typed blocks with page-local geometry."""
     if not lines:
         return []
 
@@ -1208,10 +1312,10 @@ def _paragraphs(
     gap_limit = line_height * config.pdf_paragraph_gap_ratio
     wrap_limit = max(line_height * 1.4, 1.0)
 
-    output: list[tuple[float, str]] = []
+    output: list[TextBlock] = []
     buffer: list[Line] = []
     # (marker x0, marker, text parts) per item of the list currently being collected.
-    items: list[tuple[float, str, list[str]]] = []
+    items: list[tuple[float, str, list[str], list[Line]]] = []
     list_top = 0.0
     list_size = 0.0
 
@@ -1220,13 +1324,23 @@ def _paragraphs(
             return
         text = " ".join(line.text for line in buffer).strip()
         if text:
-            output.append((buffer[0].top, text))
+            output.append(
+                TextBlock(buffer[0].top, "paragraph", text, _bbox_from_lines(buffer))
+            )
         buffer.clear()
 
     def flush_list() -> None:
         nonlocal items
         if items:
-            output.append((list_top, _render_list(items, config.pdf_column_align_tolerance)))
+            item_lines = [line for _, _, _, lines_ in items for line in lines_]
+            output.append(
+                TextBlock(
+                    list_top,
+                    "list",
+                    _render_list(items, config.pdf_column_align_tolerance),
+                    _bbox_from_lines(item_lines),
+                )
+            )
             items = []
 
     index = 0
@@ -1237,7 +1351,15 @@ def _paragraphs(
             start, end = in_table[index]
             flush()
             flush_list()
-            output.append((lines[start].top, _table_from_lines(lines[start:end], config)))
+            table_lines = lines[start:end]
+            output.append(
+                TextBlock(
+                    lines[start].top,
+                    "table",
+                    _table_from_lines(table_lines, config),
+                    _bbox_from_lines(table_lines),
+                )
+            )
             index = end
             continue
 
@@ -1251,7 +1373,7 @@ def _paragraphs(
             if not items:
                 list_top, list_size = line.top, line.size
             marker, text = item
-            items.append((line.x0, marker, [text]))
+            items.append((line.x0, marker, [text], [line]))
             index += 1
             continue
 
@@ -1260,6 +1382,7 @@ def _paragraphs(
         # bullet starts at the marker's own x, not at the text's.
         if items and not broken and abs(line.size - list_size) < 0.01:
             items[-1][2].append(line.text)
+            items[-1][3].append(line)
             index += 1
             continue
 
@@ -1270,8 +1393,16 @@ def _paragraphs(
         )
         if level:
             flush()
-            text = " ".join(heading.text for heading in lines[index:end])
-            output.append((line.top, f"{'#' * level} {text}"))
+            headings = lines[index:end]
+            text = " ".join(heading.text for heading in headings)
+            output.append(
+                TextBlock(
+                    line.top,
+                    "heading",
+                    f"{'#' * level} {text}",
+                    _bbox_from_lines(headings),
+                )
+            )
             index = end
             continue
 
