@@ -1,0 +1,91 @@
+# Stage 2 compose (brief §7.2), as amended for S0 (brief §9):
+#
+#   - `db` is real: pgvector/pgvector:pg16, a volume, a pg_isready healthcheck, and an init
+#     script that creates database `kb` and the two roles (`kb_index` owner, `kb_read`
+#     SELECT-only).
+#   - `ollama` is defined but NOTHING depends on it and it has no healthcheck yet -- a slow
+#     dev machine pulling model weights must not block S0, and no milestone before the
+#     real-corpus eval needs a running model. Both land in S4.
+#   - `kb-mcp`, `kb-static`, `caddy` are commented placeholders for S4 (HTTP transport,
+#     bearer auth, the static kb/ server, TLS).
+#   - the `dev` profile publishes `db` and `ollama` to localhost for a host venv.
+#
+# `compose/Dockerfile` is deferred to S4: nothing before S4 runs `kb-mcp` (or anything else)
+# inside a container -- `kb index`, `kb search` etc. all run from the host venv against the
+# `dev` profile's published `db` port. See `compose/Dockerfile`'s own header comment.
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      KB_INDEX_PASSWORD: ${KB_INDEX_PASSWORD:-kb}
+      KB_READ_PASSWORD: ${KB_READ_PASSWORD:-kb}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/10-init-db.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d kb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Only the `dev` profile publishes a port to the host, so a plain `docker compose up`
+    # against this file (once kb-mcp/caddy land in S4) never exposes Postgres directly.
+    profiles: ["dev"]
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  ollama:
+    image: ollama/ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama
+    # No healthcheck and nothing `depends_on` this yet (S0, per brief §9): the `ollama`
+    # healthcheck (GET /api/tags) and kb-mcp's dependency on it are added in S4.
+    profiles: ["dev"]
+    ports:
+      - "127.0.0.1:11434:11434"
+
+  # --- S4 placeholders -------------------------------------------------------------------
+  #
+  # kb-mcp:
+  #   build:
+  #     context: ..
+  #     dockerfile: compose/Dockerfile
+  #   command: ["kb", "serve", "--transport", "streamable-http"]
+  #   environment:
+  #     DATABASE_URL: postgresql://kb_read:${KB_READ_PASSWORD:-kb}@db:5432/kb
+  #     DATABASE_URL_INDEX: postgresql://kb_index:${KB_INDEX_PASSWORD:-kb}@db:5432/kb
+  #     OLLAMA_BASE_URL: http://ollama:11434
+  #     KB_BIND: 0.0.0.0:8765
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #     ollama:
+  #       condition: service_healthy
+  #   # binds 0.0.0.0:8765 inside the compose network only -- not published to the host.
+  #
+  # kb-static:
+  #   image: caddy:2
+  #   command: ["caddy", "file-server", "--root", "/kb", "--listen", ":8080", "--browse=false"]
+  #   volumes:
+  #     - ${KB_PATH:-../../dgx-knowledge}/kb:/kb:ro
+  #
+  # caddy:
+  #   image: caddy:2
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy-data:/data
+  #   ports:
+  #     - "443:443"
+  #   depends_on:
+  #     - kb-mcp
+  #     - kb-static
+
+volumes:
+  db-data:
+  ollama-data:
+  # caddy-data:

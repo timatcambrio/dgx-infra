@@ -335,6 +335,33 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-17 [USER] S0 review: **`CREATEROLE` dropped from `kb_index`.** The builder had
+  granted it so `kb index --init` could create `kb_read` on a database the compose init
+  script never touched. Tim's call: the init script is the only place roles are created;
+  `--init` (`retrieval/db.py:grant_read_role`) grants SELECT and, if the role is missing,
+  exits 2 printing the CREATE ROLE statement. Verified on a fresh volume: both roles have
+  `rolcreaterole = f`, `--init` succeeds, `make check` 344 passed. Committed as S0.
+- 2026-09-17 [TOOL] Stage 2 milestone S0 (skeleton) built per `stage2-retrieval-brief.md`
+  §9: new `retrieval/` package (`__init__.py`, `cli.py` with typer app `kb` — only `index
+  --init` works, the rest exit 2 naming the milestone that adds them —, `config.py` per
+  §7.1, `ids.py` per §5.5, `db.py` + `schema.sql` per §6.1 with the `{EMBED_DIM}`
+  placeholder and an asyncpg pool registering the pgvector codec in `init=`). `pyproject.toml`
+  gained the `serve` extra (`mcp`, `asyncpg`, `pgvector`, `httpx`) and the `kb` script; a bare
+  `uv sync` still installs only Stage 1. `compose/docker-compose.yml` brings up a healthy `db`
+  (pgvector/pgvector:pg16, `dev` profile publishes 5432/11434 to localhost); `ollama` is
+  defined but nothing depends on it yet (S4). `compose/Dockerfile` is a minimal, unexercised
+  `uv sync --extra serve` image, deferred to S4 in practice. `tests/retrieval/` added:
+  `conftest.py` (skips DB tests with a clear message if `DATABASE_URL_TEST` is unreachable),
+  `test_config.py`, `test_ids.py`, `test_layout.py` (AST-grep: `pipeline/` never imports
+  `retrieval/`; `retrieval/` imports only `pipeline.frontmatter`), `test_db.py` (schema
+  smoke test). `tests/retrieval/make_fixtures.py` generates the four synthetic §8.1
+  documents (`handbook`, `budget-form`, `deck`, `reference-table`) deterministically from a
+  seeded word list via `pipeline.frontmatter.render`; committed under
+  `tests/retrieval/fixtures/kb/` with a generated `expected.json` (block counts only —
+  section/chunk counts are added in S1 once `retrieval/chunk.py` exists). `.env.example`,
+  `Makefile` (`index`, `search`, `serve`, `eval-retrieval`, `compose-up`, `compose-down`,
+  `fixtures-retrieval`) and `README.md` ("Stage 2: search and serve (in progress)") updated.
+  No document content read or written anywhere in this work.
 - 2026-09-15 [CODE] Dead weight removed on USER instruction: `CONVERTER_DOCLING_PDFPLUMBER`
   and `CONVERTER_MARKITDOWN` in `converters/pdf.py` were defined and referenced nowhere, and
   `markitdown` was a declared dependency of the `pdf` extra with ZERO call sites -- it pulls

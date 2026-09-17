@@ -1,0 +1,68 @@
+{
+  "_note": "Block counts are generated (S0). Section and chunk counts are added in S1 once retrieval/chunk.py exists.",
+  "documents": {
+    "handbook": {
+      "slug": "handbook",
+      "title": "Employee Handbook",
+      "source_format": "pdf",
+      "text_class": "clean",
+      "has_sidecar": true,
+      "chars": 62722,
+      "block_count": 115,
+      "block_kind_counts": {
+        "heading": 20,
+        "paragraph": 83,
+        "table": 2,
+        "list": 10
+      },
+      "page_count": 67
+    },
+    "budget-form": {
+      "slug": "budget-form",
+      "title": "Budget Reallocation Form",
+      "source_format": "pdf",
+      "text_class": "partial",
+      "has_sidecar": true,
+      "chars": 14317,
+      "block_count": 59,
+      "block_kind_counts": {
+        "heading": 6,
+        "paragraph": 34,
+        "table": 2,
+        "annotation": 10,
+        "boxed_text": 6,
+        "list": 1
+      },
+      "page_count": 6
+    },
+    "deck": {
+      "slug": "deck",
+      "title": "Program Review Deck",
+      "source_format": "pdf",
+      "text_class": "clean",
+      "has_sidecar": true,
+      "chars": 14746,
+      "block_count": 73,
+      "block_kind_counts": {
+        "heading": 31,
+        "paragraph": 17,
+        "list": 25
+      },
+      "page_count": 30
+    },
+    "reference-table": {
+      "slug": "reference-table",
+      "title": "Reference Table",
+      "source_format": "csv",
+      "text_class": "clean",
+      "has_sidecar": false,
+      "chars": 705,
+      "block_count": 2,
+      "block_kind_counts": {
+        "heading": 1,
+        "table": 1
+      },
+      "page_count": null
+    }
+  }
+}

@@ -329,8 +329,45 @@ and the reason.
 
 ## What this does not do
 
-No OCR, no LLM calls, no chunking, no embeddings, no vector store, no retrieval, no serving.
-A document that needs OCR gets identified here and dealt with elsewhere.
+No OCR, no LLM calls. Chunking, embeddings, a vector store, retrieval and serving are Stage
+2 (below) — not part of conversion, and not something this command runs.
+
+---
+
+## Stage 2: search and serve (in progress)
+
+Once `kb/` exists, a second, separate command line — `kb` — makes it searchable and hands it
+to an AI assistant (Codex, ChatGPT desktop, Claude Code, Claude desktop) over MCP. It lives
+in the same repo, behind its own install step, and does not change anything above.
+
+**Status:** skeleton only. The database schema and `kb index --init` work; indexing,
+search, and serving come in later milestones and are not usable yet.
+
+```bash
+uv sync --extra serve                      # installs kb's dependencies; plain `uv sync` does not
+cp .env.example .env                       # then fill in the Stage 2 keys (see below)
+docker compose -f compose/docker-compose.yml --profile dev up -d db
+uv run kb index --init                     # applies the database schema
+```
+
+`kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); all but
+`index --init` currently exit with "not implemented until S<n>" naming the milestone that
+adds them.
+
+### What the Stage 2 keys in `.env` mean
+
+`.env.example` documents every key `kb` reads, each with a one-line comment. The two that
+matter to get right: `DATABASE_URL_INDEX` (the writer role `kb index` uses) and
+`DATABASE_URL` (the read-only role `kb serve`/`kb search` use). `docker compose --profile
+dev up -d db` creates a local Postgres with both roles already set up, matching the defaults
+in `.env.example`.
+
+### What is deliberately not built yet
+
+Indexing kb/ into the database, search, the MCP server (stdio and HTTP), the eval harness,
+and document summaries all come later, in the order in `stage2-retrieval-brief.md` §9. This
+section will grow a real quickstart (adding `kb` to Codex and Claude Code, reading the eval
+table, rotating a token) as those land.
 
 ---
 

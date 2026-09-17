@@ -1,0 +1,363 @@
+{
+  "version": 1,
+  "source_file": "budget-form.pdf",
+  "source_format": "pdf",
+  "content_sha256": "997a2ad658989dbf1cbce21715bc6c49e83457a70a7cb6ae122d3361d30880dc",
+  "converter": "pdfplumber-geometry (model-free)",
+  "blocks": [
+    {
+      "block_id": "budget-form:p001:b000",
+      "page": 1,
+      "kind": "heading",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p001:b001",
+      "page": 1,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p001:b002",
+      "page": 1,
+      "kind": "table",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p001:b003",
+      "page": 1,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p001:b004",
+      "page": 1,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p001:b005",
+      "page": 1,
+      "kind": "boxed_text",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p002:b000",
+      "page": 2,
+      "kind": "heading",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p002:b001",
+      "page": 2,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p002:b002",
+      "page": 2,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p002:b003",
+      "page": 2,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p002:b004",
+      "page": 2,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p002:b005",
+      "page": 2,
+      "kind": "boxed_text",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p003:b000",
+      "page": 3,
+      "kind": "heading",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p003:b001",
+      "page": 3,
+      "kind": "table",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p003:b002",
+      "page": 3,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p003:b003",
+      "page": 3,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p003:b004",
+      "page": 3,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p003:b005",
+      "page": 3,
+      "kind": "boxed_text",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p004:b000",
+      "page": 4,
+      "kind": "heading",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p004:b001",
+      "page": 4,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p004:b002",
+      "page": 4,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p004:b003",
+      "page": 4,
+      "kind": "boxed_text",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p005:b000",
+      "page": 5,
+      "kind": "heading",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p005:b001",
+      "page": 5,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p005:b002",
+      "page": 5,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p005:b003",
+      "page": 5,
+      "kind": "annotation",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p005:b004",
+      "page": 5,
+      "kind": "boxed_text",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b000",
+      "page": 6,
+      "kind": "heading",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b001",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b002",
+      "page": 6,
+      "kind": "list",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b003",
+      "page": 6,
+      "kind": "boxed_text",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b004",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b005",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b006",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b007",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b008",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b009",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b010",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b011",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b012",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b013",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b014",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b015",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b016",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b017",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b018",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b019",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b020",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b021",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b022",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b023",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b024",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b025",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b026",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b027",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b028",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b029",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b030",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "budget-form:p006:b031",
+      "page": 6,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    }
+  ]
+}
