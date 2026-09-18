@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 _BLANK_RUN = re.compile(r"\n{3,}")
 
@@ -41,3 +42,31 @@ def normalize_markdown(text: str) -> str:
             lines.append("")
         lines.append(line)
     return _BLANK_RUN.sub("\n\n", "\n".join(lines)).strip("\n")
+
+
+def render_block_provenance(
+    blocks: list[tuple[str, str, str]], slug: str
+) -> tuple[str, list[dict[str, Any]]]:
+    """Anchor a flat block list and build its sidecar records. Shared by DOCX/DOC and CSV.
+
+    Neither format has a page concept, so every record gets `page: null` and the block's
+    position in the list is the only locator -- ids are `<slug>:p000:b<NNN>`, `NNN` starting
+    at 0 and zero-padded to 3 (4 once a document has 1000+ blocks). Mirrors the anchor and id
+    conventions in `pdf._render_blocks` for the one thing PDF has that these formats do not:
+    pages.
+    """
+    width = 4 if len(blocks) >= 1000 else 3
+    parts: list[str] = []
+    provenance: list[dict[str, Any]] = []
+    for index, (text, kind, confidence) in enumerate(blocks):
+        block_id = f"{slug}:p000:b{index:0{width}d}"
+        parts.append(f"<!-- dgx:block={block_id} -->\n{text}")
+        provenance.append(
+            {
+                "block_id": block_id,
+                "page": None,
+                "kind": kind,
+                "confidence": confidence,
+            }
+        )
+    return "\n\n".join(parts), provenance

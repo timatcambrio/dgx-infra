@@ -520,6 +520,60 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
 - 2026-09-14 [MILESTONE] Done, on branch `claude/serene-mclaren-cb7901`, three commits in
   the order the task required: `53d83d5` failing tests + `callout_notes.pdf` fixture,
   `2dbafb8` the fix, `ac42309` the golden and its registration (nothing else).
+- 2026-09-18 [TOOL] Stage 1 sidecar addendum (`dgx-deployment/stage1-sidecar-addendum.md`)
+  implemented for DOCX, DOC and CSV, per its §3-4. `_needs_provenance_sidecar` now covers
+  `docx`/`doc`/`csv`; `office.py` and `csv_table.py` gained `convert_with_provenance()`
+  returning `(body, converter, provenance)`, mirroring `pdf.convert_with_provenance`; a new
+  shared `converters.render_block_provenance(blocks, slug)` builds the `<slug>:p000:b<NNN>`
+  anchors (0-indexed, matching the addendum's own `b000`/`b001`/`b002` example for CSV) for
+  both. `office.py` no longer calls `document.export_to_markdown()`; it walks
+  `document.iterate_items()` itself.
+- 2026-09-18 [TOOL] Docling item model actually observed (docling-core, installed in
+  `.venv`, verified by running `MsWordDocumentBackend` against a probe `.docx` and printing
+  `document.iterate_items()` -- not assumed from the addendum's table): `TitleItem` (label
+  `title`, no `.level`), `SectionHeaderItem` (label `section_header`, `.level` = the Word
+  heading level, 1 for "Heading 1"), `TextItem` (label one of `text`, `paragraph`, `caption`,
+  `footnote`, `page_header`, `page_footer`, `reference`, `checkbox_selected/unselected`,
+  `field_key`, `field_hint`, `marker`, `handwritten_text` -- `DocItemLabel` in
+  `docling_core/types/doc/labels.py`), `ListItem` (label `list_item`, `.enumerated: bool`,
+  `.marker: str` already carries the resolved marker, e.g. `"1."` for an ordered item),
+  `TableItem` (label `table`, `.export_to_markdown(doc=document)` renders its own GFM pipe
+  table), `PictureItem` (label `picture`). This matches the addendum §3.2 table materially;
+  no STOP-AND-ASK needed on the item model itself.
+- 2026-09-18 [TOOL] DISCOVERY, not in the addendum: `MsWordDocumentBackend` treats any
+  picture at or under `SPACER_IMAGE_AREA_THRESHOLD` (25px^2, `msword_backend.py:282`) as an
+  invisible layout spacer -- `content_layer` is set to `INVISIBLE` and the item is dropped
+  from both `document.iterate_items()` (default content layers exclude it) and
+  `document.export_to_markdown()` entirely, with no error or note. Verified directly: a
+  4x4px (16px^2) embedded PNG, exactly the size the addendum names for the fixture,
+  produces zero `PictureItem`s. `tests/make_fixtures.py`'s `tables_and_image_docx` therefore
+  embeds a 6x6px (36px^2) PNG instead, documented inline at its generator function; a 4x4
+  image would silently defeat the fixture's own purpose (proving the `picture` block and
+  INCOMPLETE-note path). Not a STOP-AND-ASK case under addendum §7 since it is a fixture
+  sizing detail, not an item-model mismatch.
+- 2026-09-18 [DECISION] Word heading levels map literally per addendum §3.2 (`n` ->
+  `#`*min(n,6)): Word "Heading 1" -> markdown `#`, not `##`. This differs from the OLD
+  whole-document `export_to_markdown()` behaviour (verified in the prior `simple.md` golden:
+  "Heading 1" rendered as `##`), which is Docling's own convention and not one this
+  implementation preserves, since blocks are now built directly rather than via
+  `export_to_markdown()`. Updated the one pre-existing assertion this changed,
+  `test_docx_output_is_well_formed_markdown` in `tests/test_convert_golden.py` (was
+  `"## Travel Reimbursement Handbook"`, now `"#"`), and its blank-line-before-table check to
+  also accept a block anchor comment immediately before a table (the same pattern the PDF
+  path's own goldens already use, e.g. `tests/golden/born_digital.md`).
+- 2026-09-18 [DECISION] `office.convert()` and `csv_table.convert()` (the old two-tuple,
+  no-anchor signatures) are kept unchanged and still used directly by the pre-existing
+  `tests/test_csv.py` call sites (~10 of them); they now delegate to the new
+  `convert_with_provenance(..., provenance_slug=None)`, which returns an unanchored body
+  when no slug is given -- mirrors `pdf.py`'s existing `convert()`/`convert_with_provenance()`
+  split exactly, so none of those pre-existing tests needed to change.
+- 2026-09-18 [PLAN] Three commits per addendum §2.4/§4, in order: (1) failing tests +
+  `tables_and_image.docx` fixture + `make_fixtures.py` generator; (2) the implementation
+  (`convert.py`, `converters/office.py`, `converters/csv_table.py`, `converters/__init__.py`,
+  `report.py`) + README §"Reading the converted markdown" + this entry; (3) golden
+  regeneration only (`tests/golden/simple.md`, `reference_table.md` changed;
+  `tables_and_image.md` new). Stopped after commit 3, per addendum §5 -- did not start
+  Stage 2 S3.
 
 ## [OUTCOMES]
 - 2026-09-15 [TOOL] The evidence profile makes the original silent failure loud. Against the

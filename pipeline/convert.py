@@ -167,6 +167,10 @@ def convert_entry(
     }
     if sidecar is not None:
         entry["conversion"]["provenance"] = sidecar.relative_to(config.kb_path).as_posix()
+    if source_format in ("docx", "doc"):
+        entry["conversion"]["images"] = sum(
+            1 for block in (provenance_blocks or []) if block.get("kind") == "picture"
+        )
     return ConversionResult(slug, source_file, status, destination, converter)
 
 
@@ -177,14 +181,15 @@ def _dispatch(
     source_format = entry["source_format"]
 
     if source_format == "csv":
-        body, converter = csv_table.convert(
+        body, converter, provenance = csv_table.convert_with_provenance(
             source_path,
             config,
+            provenance_slug=entry["slug"],
             title=entry.get("title"),
             description=entry.get("description"),
             csv_mode=entry.get("csv_mode", "table"),
         )
-        return body, converter, STATUS_WRITTEN, None
+        return body, converter, STATUS_WRITTEN, provenance
 
     if source_format == "pdf":
         if text_class == TEXT_CLASS_NEEDS_OCR:
@@ -204,14 +209,18 @@ def _dispatch(
         raise StopAndAsk(f"unexpected text_class {text_class!r} for {source_path.name}")
 
     if source_format in ("docx", "doc"):
-        body, converter = office.convert(source_path, config)
-        return body, converter, STATUS_WRITTEN, None
+        body, converter, provenance = office.convert_with_provenance(
+            source_path, config, provenance_slug=entry["slug"]
+        )
+        return body, converter, STATUS_WRITTEN, provenance
 
     raise StopAndAsk(f"no converter for source_format {source_format!r}")
 
 
 def _needs_provenance_sidecar(source_format: str, text_class: str) -> bool:
-    return source_format == "pdf" and text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL)
+    if source_format == "pdf":
+        return text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL)
+    return source_format in ("docx", "doc", "csv")
 
 
 def _render_provenance_sidecar(

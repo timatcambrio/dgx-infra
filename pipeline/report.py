@@ -64,6 +64,7 @@ def build(manifest: dict[str, Any], config: Config) -> dict[str, Any]:
                 "text_class": "MISSING" if missing else triage.get("text_class"),
                 "error": triage.get("error"),
                 "converter": (entry.get("conversion") or {}).get("converter"),
+                "images": (entry.get("conversion") or {}).get("images"),
             }
         )
 
@@ -255,13 +256,22 @@ def render_table(report: dict[str, Any]) -> str:
         and not row.get("image_pages")
     ]
     picture = [row for row in report["documents"] if row.get("image_pages")]
-    if annotated or formlike or picture:
+    # A DOCX with embedded pictures loses them the same way a PDF's image pages do -- their
+    # content is not in the text layer -- so it earns the same kind of note here, one line
+    # per document with its image count.
+    docx_with_images = [row for row in report["documents"] if (row.get("images") or 0) > 0]
+    if annotated or formlike or picture or docx_with_images:
         lines += ["", "EVIDENCE NOTES (what the document carries beyond its text layer)"]
         for row in sorted(picture, key=lambda item: item["source_file"] or ""):
             lines.append(
                 f"  {row['source_file']}: {len(row['image_pages'])} page(s) that are mostly "
                 f"image, up to {_pct(row.get('max_image_coverage'))} of the page -- that "
                 "content is not in the text layer and no table extraction reaches it"
+            )
+        for row in sorted(docx_with_images, key=lambda item: item["source_file"] or ""):
+            lines.append(
+                f"  {row['source_file']}: {row['images']} embedded image(s) not in the text "
+                "layer"
             )
         for row in sorted(annotated, key=lambda item: item["source_file"] or ""):
             with_callout = row.get("annotations_with_callout") or 0

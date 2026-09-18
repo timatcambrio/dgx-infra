@@ -153,16 +153,16 @@ Every file opens with frontmatter recording where it came from, what converted i
 text coverage, including `needs_ocr: true` where that applies. Whatever consumes the markdown
 can then tell a complete document from an incomplete one without working it out again.
 
-For PDFs converted by the geometry engine, each content block also has a stable HTML comment
-anchor immediately before it:
+Every converted document -- PDF, DOCX, DOC and CSV alike -- has a sidecar next to it, and
+every content block has a stable HTML comment anchor immediately before it:
 
 ```markdown
 <!-- dgx:block=travel-handbook:p012:b004 -->
 | Expense category | Limit | Receipt required |
 ```
 
-The matching sidecar lives next to the markdown as `<slug>.provenance.json`. It maps each
-block id to the original source page and, when geometry has it, the page bounding box:
+The sidecar lives next to the markdown as `<slug>.provenance.json`. It maps each block id to
+the original source page and, when geometry has it, the page bounding box:
 
 ```json
 {
@@ -183,12 +183,20 @@ block id to the original source page and, when geometry has it, the page boundin
 }
 ```
 
-When an answer needs verification, cite both places: the markdown file and `dgx:block=...`
-for the extracted text, plus the sidecar's `source_file` and `page` for the original PDF.
-The `content_sha256` in frontmatter and sidecar must match; if it does not, the markdown no
-longer proves which source bytes it came from.
+Word and CSV documents have no fixed page geometry, so their blocks carry `page: null` and no
+`bbox` at all -- the block's position in the file is the only locator, and its id still names
+the document (`travel-handbook:p000:b004`; `p000` reads as "no page"). Their `kind` and
+`confidence` mean the same thing PDF's do: `confidence` is `"structural"` for a block docling
+mapped with confidence, or `"docling:<label>"` naming the item type when it met something the
+mapping does not have a rule for, so an unfamiliar block type is visible rather than silently
+flattened into ordinary prose.
 
-Four markers can appear in the body.
+When an answer needs verification, cite both places: the markdown file and `dgx:block=...`
+for the extracted text, plus the sidecar's `source_file` and, for a PDF, `page` for the
+original document. The `content_sha256` in frontmatter and sidecar must match; if it does
+not, the markdown no longer proves which source bytes it came from.
+
+Five markers can appear in the body.
 
 ### `> **INCOMPLETE — ...**`
 
@@ -245,6 +253,17 @@ label. All the marker says is that the page sets this text apart in a box.
 
 Marking them also keeps them readable. Boxes standing side by side share a baseline, and
 without this their words interleave into one unreadable line.
+
+### `> **Image:**`
+
+```markdown
+> **Image:** embedded picture, not extracted. No OCR was attempted.
+```
+
+A DOCX's own way of naming what a PDF's INCOMPLETE note names for a scanned page: a picture
+embedded in the document, marked in place rather than silently dropped. When a DOCX embeds
+one or more of these, the body also opens with an INCOMPLETE note giving the count, and
+`corpus.yaml` records it under `conversion.images` so `pipeline report` can list it.
 
 ### Tables
 

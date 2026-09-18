@@ -28,6 +28,7 @@ GOLDEN_BY_FIXTURE = {
     "screenshot_form.pdf": "screenshot_form.md",
     "boxed_notes.pdf": "boxed_notes.md",
     "simple.docx": "simple.md",
+    "tables_and_image.docx": "tables_and_image.md",
 }
 
 
@@ -142,8 +143,13 @@ def test_docx_output_is_well_formed_markdown(config, entry_for):
 
     for index, line in enumerate(lines):
         if line.startswith("|") and index and not lines[index - 1].startswith("|"):
-            assert lines[index - 1].strip() == "", "table must be preceded by a blank line"
+            previous = lines[index - 1].strip()
+            # A block anchor is its own HTML block, so a table starting immediately after
+            # one is fine -- the same pattern the PDF path's own goldens already use.
+            assert previous == "" or previous.startswith("<!-- dgx:block="), (
+                "table must be preceded by a blank line or a block anchor"
+            )
 
-    assert "## Travel Reimbursement Handbook" in text
+    assert "# Travel Reimbursement Handbook" in text
     assert "- Lodging" in text
     assert "<table" not in text and "<p>" not in text  # no raw HTML

@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+from typing import Any
 
 from .. import StopAndAsk
 from ..config import Config
+from . import render_block_provenance
 
 #: Enough bytes for `csv.Sniffer` to see the delimiter without reading a huge file.
 _SNIFF_BYTES = 8192
@@ -102,15 +104,21 @@ def check_guardrails(path: Path, rows: list[list[str]], config: Config) -> None:
         )
 
 
-def convert(
+def convert_with_provenance(
     path: Path,
     config: Config,
     *,
+    provenance_slug: str | None = None,
     title: str | None = None,
     description: str | None = None,
     csv_mode: str = "table",
-) -> tuple[str, str]:
-    """Convert one CSV. Returns `(markdown_body, converter_name)`."""
+) -> tuple[str, str, list[dict[str, Any]]]:
+    """Convert one CSV. Returns `(markdown_body, converter_name, provenance)`.
+
+    Blocks, in order: `heading` (the `# ` line), `paragraph` (the description, only if one
+    was given), `table` (the rendered rows). Ids `b000`, `b001`, `b002` (or `b000`, `b001`
+    without a description).
+    """
     if csv_mode != "table":
         raise StopAndAsk(
             f"{path.name} declares csv_mode={csv_mode!r}. Only 'table' is implemented; "
@@ -121,8 +129,29 @@ def convert(
     check_guardrails(path, rows, config)
 
     heading = title or prettify_filename(path)
-    parts = [f"# {heading}"]
+    blocks: list[tuple[str, str, str]] = [(f"# {heading}", "heading", "structural")]
     if description:
-        parts.append(description.strip())
-    parts.append(render_table(rows))
-    return "\n\n".join(parts), CONVERTER_NAME
+        blocks.append((description.strip(), "paragraph", "structural"))
+    blocks.append((render_table(rows), "table", "structural"))
+
+    if provenance_slug is None:
+        body = "\n\n".join(text for text, _, _ in blocks)
+        provenance: list[dict[str, Any]] = []
+    else:
+        body, provenance = render_block_provenance(blocks, provenance_slug)
+    return body, CONVERTER_NAME, provenance
+
+
+def convert(
+    path: Path,
+    config: Config,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    csv_mode: str = "table",
+) -> tuple[str, str]:
+    """Convert one CSV. Returns `(markdown_body, converter_name)`."""
+    body, converter, _ = convert_with_provenance(
+        path, config, title=title, description=description, csv_mode=csv_mode
+    )
+    return body, converter
