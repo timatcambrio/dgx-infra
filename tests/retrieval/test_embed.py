@@ -187,3 +187,48 @@ def test_index_summary_names_truncated_embeddings() -> None:
     assert IndexResult(reindexed=2, embeddings_truncated=3).summary_line.endswith(
         "3 embeddings truncated (see stderr)"
     )
+
+
+def test_a_batch_is_bounded_by_characters_as_well_as_count() -> None:
+    """Embedding time grows with the characters sent, not the number of texts: on the dev
+    Mac (2026-09-18, ollama 0.21, nomic-embed-text on CPU) 32 texts of 2,500 characters
+    took 63 s against a 60 s read timeout, while 32 texts of ~1,200 characters took half
+    that. A request therefore never carries more than BATCH_MAX_CHARS characters, except
+    that a single text over the cap travels alone; vectors still come back in input order."""
+    from retrieval.embed import BATCH_MAX_CHARS, BATCH_SIZE
+
+    requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        requests.append(body["input"])
+        return fixed_dim_handler(EMBED_DIM)(request)
+
+    texts = [f"{i:04d}" + "t" * 2496 for i in range(64)] + ["big" * 40000] + ["tail"]
+    vectors = embed_documents(
+        texts, base_url=BASE_URL, model="m", embed_dim=EMBED_DIM, client=_client(handler)
+    )
+    assert len(vectors) == len(texts)
+    assert [t for batch in requests for t in batch] == ["search_document: " + t for t in texts]
+    for batch in requests:
+        assert len(batch) <= BATCH_SIZE
+        assert sum(len(t) for t in batch) <= BATCH_MAX_CHARS or len(batch) == 1
+    assert any(len(batch) == 1 and batch[0].startswith("search_document: big") for batch in requests)
+    # order: each vector equals the vector the fake returns for that text on its own
+    single = fixed_dim_handler(EMBED_DIM)
+    for text, vec in zip(texts[:3], vectors[:3]):
+        alone = embed_documents([text], base_url=BASE_URL, model="m", embed_dim=EMBED_DIM, client=_client(single))
+        assert alone[0] == vec
+
+
+def test_truncation_positions_are_absolute_across_variable_batches() -> None:
+    from retrieval.embed import BATCH_MAX_CHARS
+
+    truncations: list = []
+    big = "w" * (BATCH_MAX_CHARS // 2 + 1)
+    texts = [big, big, big, "small"]
+    embed_documents(
+        texts, base_url=BASE_URL, model="m", embed_dim=EMBED_DIM,
+        client=_client(_context_capped_handler(1000, [])), truncations=truncations,
+    )
+    assert [t[0] for t in truncations] == [0, 1, 2]
