@@ -228,7 +228,7 @@ def test_source_dir_is_never_written_to(kb_path, tmp_path, fixtures_dir):
 
     source = tmp_path / "sources"
     source.mkdir()
-    for name in ("reference_table.csv", "born_digital.pdf", "mixed.pdf"):
+    for name in ("reference_table.csv", "born_digital.pdf", "mixed.pdf", "toc_page.pdf"):
         shutil.copy(fixtures_dir / name, source / name)
     before = {path.name for path in source.rglob("*")}
 

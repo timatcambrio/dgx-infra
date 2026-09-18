@@ -845,8 +845,37 @@ def dangling_rels_docx(path: Path) -> None:
             archive.writestr(info, payload[name])
 
 
+def toc_page(path: Path) -> None:
+    """A table-of-contents page with dotted leaders, then one body page.
+
+    Real handbooks set each entry as "title <dots> page" on its own line. The geometry
+    engine joins those lines into one paragraph, which is what a real 2023 report produced:
+    a single block of 3,900 characters, 3,000 of them dots. The normaliser must turn that
+    into one entry per line with the leader collapsed.
+    """
+    canvas = _canvas(path)
+    y = _draw_heading(canvas, "Table of Contents", 720)
+    canvas.setFont("Helvetica", 11)
+    y -= 24
+    entries = [("Section 1 Governance", "5"), ("1.1 Purpose", "5"), ("1.2 Scope", "6"),
+               ("Section 2 Travel", "9"), ("2.1 Lodging", "9"), ("2.2 Meals", "11"),
+               ("2.3 Mileage", "12"), ("Section 3 Claims", "14"), ("3.1 Receipts", "14"),
+               ("3.2 Approval", "15"), ("Appendix A Forms", "iv"), ("Appendix B Contacts", "vi")]
+    for title, page in entries:
+        dots = "." * max(4, 70 - len(title) - len(page))
+        canvas.drawString(72, y, f"{title} {dots} {page}")
+        y -= 16
+    canvas.showPage()
+
+    y = _draw_heading(canvas, "Section 1 Governance", 720)
+    _draw_paragraph(canvas, BODY_TEXT, y - 6)
+    canvas.showPage()
+    canvas.save()
+
+
 GENERATORS = {
     "born_digital.pdf": born_digital,
+    "toc_page.pdf": toc_page,
     "image_only.pdf": image_only,
     "mixed.pdf": mixed,
     "mojibake.pdf": mojibake,
