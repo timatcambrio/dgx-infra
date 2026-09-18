@@ -173,3 +173,20 @@ def test_strip_non_element_nodes_covers_every_wml_part(config):
                 part.partname
             )
     assert _strip_non_element_nodes(docx_obj) == 0
+
+
+def test_docx_with_dangling_relationships_converts_and_reports_them(config, entry_for):
+    """An image relationship whose target is a directory or a missing file must not stop
+    the conversion (Word ignores it; python-docx alone cannot). The real image survives,
+    and the dangling references are recorded as evidence: the document points at content
+    the package does not contain."""
+    entry = entry_for("dangling_rels.docx")
+    result = convert_entry(entry, config)
+    assert result.output is not None, result.message
+    data = json.loads(provenance_path(result.output).read_text(encoding="utf-8"))
+    kinds = [b["kind"] for b in data["blocks"]]
+    assert kinds.count("picture") == 1
+    assert kinds.count("heading") == 1
+    assert entry["conversion"]["images"] == 1
+    assert entry["conversion"]["dangling_relationships"] == 2
+    assert "INCOMPLETE" in result.output.read_text(encoding="utf-8")

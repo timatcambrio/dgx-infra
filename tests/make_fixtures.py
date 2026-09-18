@@ -794,6 +794,57 @@ def xml_comment_docx(path: Path) -> None:
     _normalise_zip(path)
 
 
+def dangling_rels_docx(path: Path) -> None:
+    """A Word package whose relationships file points at parts that do not exist.
+
+    Seen in the wild on a regulation supplement: an image relationship whose target is the
+    `media/` directory, plus references to files never packaged. Word opens such files
+    without complaint; python-docx tries to load every relationship target as a part and
+    fails. The fixture carries one dangling directory target, one dangling missing-file
+    target, and one real inline image, so the test proves the real image still converts.
+    """
+    from docx import Document
+    from docx.shared import Inches
+
+    document = Document()
+    document.add_heading("Procedures Part 252", level=1)
+    document.add_paragraph(BODY_TEXT)
+    document.add_picture(_floor_plan_thumbnail_bytes(), width=Inches(0.5))
+    document.add_paragraph(BODY_TEXT)
+
+    properties = document.core_properties
+    properties.created = EPOCH.replace(tzinfo=None)
+    properties.modified = EPOCH.replace(tzinfo=None)
+    properties.title = "Procedures Part 252"
+    properties.author = "fixture"
+    properties.last_modified_by = "fixture"
+    properties.revision = 1
+    document.save(str(path))
+
+    # Post-process the package: add the dangling relationships and a directory entry, the
+    # way the publishing tool that produced the original did.
+    with zipfile.ZipFile(path) as archive:
+        entries = archive.namelist()
+        payload = {name: archive.read(name) for name in entries}
+    rels = payload["word/_rels/document.xml.rels"].decode("utf-8")
+    dangling = (
+        '<Relationship Id="rId901" Type="http://schemas.openxmlformats.org/officeDocument/'
+        '2006/relationships/image" Target="media/"/>'
+        '<Relationship Id="rId902" Type="http://schemas.openxmlformats.org/officeDocument/'
+        '2006/relationships/image" Target="media/Graphics/never-packaged.gif"/>'
+    )
+    payload["word/_rels/document.xml.rels"] = rels.replace(
+        "</Relationships>", dangling + "</Relationships>"
+    ).encode("utf-8")
+    payload["word/media/"] = b""
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name in sorted(payload):
+            info = zipfile.ZipInfo(name, date_time=ZIP_DATE_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o600 << 16
+            archive.writestr(info, payload[name])
+
+
 GENERATORS = {
     "born_digital.pdf": born_digital,
     "image_only.pdf": image_only,
@@ -802,6 +853,7 @@ GENERATORS = {
     "simple.docx": simple_docx,
     "tables_and_image.docx": tables_and_image_docx,
     "xml_comment.docx": xml_comment_docx,
+    "dangling_rels.docx": dangling_rels_docx,
     "reference_table.csv": reference_table_csv,
     "too_big.csv": too_big_csv,
     "annotated_form.pdf": annotated_form,
