@@ -753,6 +753,41 @@ def _write_csv(path: Path, rows: list[list[str]]) -> None:
         csv.writer(handle, lineterminator="\n").writerows(rows)
 
 
+def xml_comment_docx(path: Path) -> None:
+    """A Word body carrying XML comment and processing-instruction nodes between paragraphs.
+
+    Regulation publishing systems emit these (a `<!--Topic ...-->` marker before each
+    section). Docling's Word backend walks every body child and asks lxml for its tag name;
+    a comment node has none, so the walk raised `ValueError: Invalid input tag`. The fixture
+    exists so that the converter is proven to strip such nodes before the walk.
+    """
+    from docx import Document
+    from lxml import etree
+
+    document = Document()
+    document.add_heading("Supplement Part 201", level=1)
+    document.add_paragraph(BODY_TEXT)
+    document.add_heading("201.1 Purpose", level=2)
+    document.add_paragraph(BODY_TEXT)
+
+    body = document.element.body
+    paragraphs = list(body)
+    body.insert(0, etree.Comment("Topic unique_1"))
+    body.insert(body.index(paragraphs[2]), etree.Comment("Topic unique_2"))
+    body.insert(body.index(paragraphs[3]), etree.ProcessingInstruction("publisher", "marker"))
+
+    properties = document.core_properties
+    properties.created = EPOCH.replace(tzinfo=None)
+    properties.modified = EPOCH.replace(tzinfo=None)
+    properties.title = "Supplement Part 201"
+    properties.author = "fixture"
+    properties.last_modified_by = "fixture"
+    properties.revision = 1
+
+    document.save(str(path))
+    _normalise_zip(path)
+
+
 GENERATORS = {
     "born_digital.pdf": born_digital,
     "image_only.pdf": image_only,
@@ -760,6 +795,7 @@ GENERATORS = {
     "mojibake.pdf": mojibake,
     "simple.docx": simple_docx,
     "tables_and_image.docx": tables_and_image_docx,
+    "xml_comment.docx": xml_comment_docx,
     "reference_table.csv": reference_table_csv,
     "too_big.csv": too_big_csv,
     "annotated_form.pdf": annotated_form,

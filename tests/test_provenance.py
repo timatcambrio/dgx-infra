@@ -135,3 +135,15 @@ def test_csv_sidecar_ends_with_a_table_block(config, entry_for):
     data = json.loads(provenance_path(result.output).read_text(encoding="utf-8"))
 
     assert data["blocks"][-1]["kind"] == "table"
+
+
+def test_docx_with_xml_comment_nodes_in_body_converts(config, entry_for):
+    """Regulation-style DOCX bodies carry `<!--Topic ...-->` comment nodes and processing
+    instructions between paragraphs. They must be ignored, not crash the walk."""
+    result = convert_entry(entry_for("xml_comment.docx"), config)
+    assert result.output is not None, result.message
+    data = json.loads(provenance_path(result.output).read_text(encoding="utf-8"))
+    kinds = [b["kind"] for b in data["blocks"]]
+    assert kinds.count("heading") == 2
+    assert kinds.count("paragraph") == 2
+    assert "Topic unique" not in result.output.read_text(encoding="utf-8")
