@@ -126,7 +126,7 @@ class DocBuilder:
             n = per_page_counter.get(key, 0)
             per_page_counter[key] = n + 1
             page_component = page if page is not None else 0
-            block_id = f"{self.slug}:p{page_component:03d}:b{n:03d}"
+            block_id = f"{self.slug}:p{page_component:03d}:b{n + 1:03d}"
             if with_anchors:
                 body_parts.append(f"<!-- dgx:block={block_id} -->")
             body_parts.append(blk["text"])

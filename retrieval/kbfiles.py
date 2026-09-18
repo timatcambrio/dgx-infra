@@ -194,7 +194,7 @@ def _load_fallback(slug: str, md_path: Path, meta: dict[str, Any], body: str) ->
         blocks.append(
             Block(
                 ordinal=0,
-                block_id=f"{slug}:p000:b000",
+                block_id=f"{slug}:p000:b001",
                 page=None,
                 kind="table",
                 confidence=None,
@@ -214,7 +214,7 @@ def _load_fallback(slug: str, md_path: Path, meta: dict[str, Any], body: str) ->
             blocks.append(
                 Block(
                     ordinal=ordinal,
-                    block_id=f"{slug}:p000:b{ordinal:03d}",
+                    block_id=f"{slug}:p000:b{ordinal + 1:03d}",
                     page=None,
                     kind=kind,
                     confidence=None,

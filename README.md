@@ -443,7 +443,7 @@ by an indented citation line:
 
 ```
 0.0164  sec:handbook:5  pages 12–13  Employee Handbook › Handbook › Per Diem Rates  |  Uxbane...
-    Employee Handbook, Employee Handbook › Handbook › Per Diem Rates (source: handbook.pdf, pages 12–13, dated UNCONFIRMED; blocks handbook:p012:b000…handbook:p013:b002)
+    Employee Handbook, Employee Handbook › Handbook › Per Diem Rates (source: handbook.pdf, pages 12–13, dated UNCONFIRMED; blocks handbook:p012:b001…handbook:p013:b003)
 ```
 
 Every search runs two independent legs over the indexed chunks and merges them:

@@ -116,7 +116,7 @@ def convert_with_provenance(
     """Convert one CSV. Returns `(markdown_body, converter_name, provenance)`.
 
     Blocks, in order: `heading` (the `# ` line), `paragraph` (the description, only if one
-    was given), `table` (the rendered rows). Ids `b000`, `b001`, `b002` (or `b000`, `b001`
+    was given), `table` (the rendered rows). Ids `b001`, `b002`, `b003` (or `b001`, `b002`
     without a description).
     """
     if csv_mode != "table":

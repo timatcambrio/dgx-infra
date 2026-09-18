@@ -77,7 +77,7 @@ def test_reference_table_has_no_sidecar_and_synthetic_ids() -> None:
     assert len(doc.blocks) == 1
     assert doc.blocks[0].kind == "table"
     assert doc.blocks[0].page is None
-    assert doc.blocks[0].block_id == "reference-table:p000:b000"
+    assert doc.blocks[0].block_id == "reference-table:p000:b001"
 
 
 def test_deck_section0_paragraph_precedes_first_heading() -> None:

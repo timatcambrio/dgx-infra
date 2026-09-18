@@ -2,37 +2,31 @@
   "version": 1,
   "source_file": "handbook.pdf",
   "source_format": "pdf",
-  "content_sha256": "544fd4fe8da0e78342903e96a3cb58be8641fc57b34f187690d55979cc1c0c1b",
+  "content_sha256": "a0d2fe14d08ddbf3da9f52d3db7b040dd09adb87220a4ca024dc03cbb51bb579",
   "converter": "pdfplumber-geometry (model-free)",
   "blocks": [
     {
-      "block_id": "handbook:p001:b000",
-      "page": 1,
-      "kind": "heading",
-      "confidence": "geometry"
-    },
-    {
       "block_id": "handbook:p001:b001",
       "page": 1,
-      "kind": "paragraph",
+      "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p002:b000",
-      "page": 2,
-      "kind": "heading",
+      "block_id": "handbook:p001:b002",
+      "page": 1,
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p002:b001",
       "page": 2,
-      "kind": "table",
+      "kind": "heading",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p002:b002",
       "page": 2,
-      "kind": "paragraph",
+      "kind": "table",
       "confidence": "geometry"
     },
     {
@@ -48,57 +42,57 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p003:b000",
-      "page": 3,
+      "block_id": "handbook:p002:b005",
+      "page": 2,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p003:b001",
       "page": 3,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "handbook:p003:b002",
+      "page": 3,
       "kind": "list",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p004:b000",
+      "block_id": "handbook:p004:b001",
       "page": 4,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p005:b000",
+      "block_id": "handbook:p005:b001",
       "page": 5,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p006:b000",
+      "block_id": "handbook:p006:b001",
       "page": 6,
-      "kind": "paragraph",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "handbook:p007:b000",
-      "page": 7,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p007:b001",
       "page": 7,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "handbook:p007:b002",
+      "page": 7,
       "kind": "list",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p008:b000",
+      "block_id": "handbook:p008:b001",
       "page": 8,
       "kind": "heading",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "handbook:p009:b000",
-      "page": 9,
-      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -108,39 +102,39 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p010:b000",
-      "page": 10,
+      "block_id": "handbook:p009:b002",
+      "page": 9,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p010:b001",
       "page": 10,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p011:b000",
-      "page": 11,
-      "kind": "heading",
+      "block_id": "handbook:p010:b002",
+      "page": 10,
+      "kind": "list",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p011:b001",
       "page": 11,
-      "kind": "paragraph",
+      "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p012:b000",
-      "page": 12,
-      "kind": "heading",
+      "block_id": "handbook:p011:b002",
+      "page": 11,
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p012:b001",
       "page": 12,
-      "kind": "paragraph",
+      "kind": "heading",
       "confidence": "geometry"
     },
     {
@@ -158,19 +152,19 @@
     {
       "block_id": "handbook:p012:b004",
       "page": 12,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p013:b000",
-      "page": 13,
-      "kind": "heading",
+      "block_id": "handbook:p012:b005",
+      "page": 12,
+      "kind": "list",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p013:b001",
       "page": 13,
-      "kind": "paragraph",
+      "kind": "heading",
       "confidence": "geometry"
     },
     {
@@ -192,33 +186,33 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p014:b000",
-      "page": 14,
+      "block_id": "handbook:p013:b005",
+      "page": 13,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p014:b001",
       "page": 14,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "handbook:p014:b002",
+      "page": 14,
       "kind": "list",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p015:b000",
+      "block_id": "handbook:p015:b001",
       "page": 15,
       "kind": "table",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p016:b000",
+      "block_id": "handbook:p016:b001",
       "page": 16,
       "kind": "heading",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "handbook:p017:b000",
-      "page": 17,
-      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -242,19 +236,19 @@
     {
       "block_id": "handbook:p017:b004",
       "page": 17,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "handbook:p017:b005",
+      "page": 17,
       "kind": "list",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p018:b000",
+      "block_id": "handbook:p018:b001",
       "page": 18,
       "kind": "heading",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "handbook:p019:b000",
-      "page": 19,
-      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -270,8 +264,8 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p020:b000",
-      "page": 20,
+      "block_id": "handbook:p019:b003",
+      "page": 19,
       "kind": "paragraph",
       "confidence": "geometry"
     },
@@ -284,30 +278,30 @@
     {
       "block_id": "handbook:p020:b002",
       "page": 20,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "handbook:p020:b003",
+      "page": 20,
       "kind": "list",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p021:b000",
+      "block_id": "handbook:p021:b001",
       "page": 21,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p022:b000",
+      "block_id": "handbook:p022:b001",
       "page": 22,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p022:b001",
+      "block_id": "handbook:p022:b002",
       "page": 22,
-      "kind": "paragraph",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "handbook:p023:b000",
-      "page": 23,
       "kind": "paragraph",
       "confidence": "geometry"
     },
@@ -320,19 +314,19 @@
     {
       "block_id": "handbook:p023:b002",
       "page": 23,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p024:b000",
-      "page": 24,
-      "kind": "heading",
+      "block_id": "handbook:p023:b003",
+      "page": 23,
+      "kind": "list",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p024:b001",
       "page": 24,
-      "kind": "paragraph",
+      "kind": "heading",
       "confidence": "geometry"
     },
     {
@@ -354,27 +348,27 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p025:b000",
-      "page": 25,
+      "block_id": "handbook:p024:b005",
+      "page": 24,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p025:b001",
       "page": 25,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p026:b000",
-      "page": 26,
-      "kind": "heading",
+      "block_id": "handbook:p025:b002",
+      "page": 25,
+      "kind": "list",
       "confidence": "geometry"
     },
     {
       "block_id": "handbook:p026:b001",
       "page": 26,
-      "kind": "paragraph",
+      "kind": "heading",
       "confidence": "geometry"
     },
     {
@@ -384,8 +378,8 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p027:b000",
-      "page": 27,
+      "block_id": "handbook:p026:b003",
+      "page": 26,
       "kind": "paragraph",
       "confidence": "geometry"
     },
@@ -404,293 +398,299 @@
     {
       "block_id": "handbook:p027:b003",
       "page": 27,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "handbook:p027:b004",
+      "page": 27,
       "kind": "list",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p028:b000",
+      "block_id": "handbook:p028:b001",
       "page": 28,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p029:b000",
+      "block_id": "handbook:p029:b001",
       "page": 29,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p030:b000",
+      "block_id": "handbook:p030:b001",
       "page": 30,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p030:b001",
+      "block_id": "handbook:p030:b002",
       "page": 30,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p031:b000",
+      "block_id": "handbook:p031:b001",
       "page": 31,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p032:b000",
+      "block_id": "handbook:p032:b001",
       "page": 32,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p033:b000",
+      "block_id": "handbook:p033:b001",
       "page": 33,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p034:b000",
+      "block_id": "handbook:p034:b001",
       "page": 34,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p035:b000",
+      "block_id": "handbook:p035:b001",
       "page": 35,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p035:b001",
+      "block_id": "handbook:p035:b002",
       "page": 35,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p036:b000",
+      "block_id": "handbook:p036:b001",
       "page": 36,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p037:b000",
+      "block_id": "handbook:p037:b001",
       "page": 37,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p038:b000",
+      "block_id": "handbook:p038:b001",
       "page": 38,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p039:b000",
+      "block_id": "handbook:p039:b001",
       "page": 39,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p040:b000",
+      "block_id": "handbook:p040:b001",
       "page": 40,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p040:b001",
+      "block_id": "handbook:p040:b002",
       "page": 40,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p041:b000",
+      "block_id": "handbook:p041:b001",
       "page": 41,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p042:b000",
+      "block_id": "handbook:p042:b001",
       "page": 42,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p043:b000",
+      "block_id": "handbook:p043:b001",
       "page": 43,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p044:b000",
+      "block_id": "handbook:p044:b001",
       "page": 44,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p045:b000",
+      "block_id": "handbook:p045:b001",
       "page": 45,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p045:b001",
+      "block_id": "handbook:p045:b002",
       "page": 45,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p046:b000",
+      "block_id": "handbook:p046:b001",
       "page": 46,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p047:b000",
+      "block_id": "handbook:p047:b001",
       "page": 47,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p048:b000",
+      "block_id": "handbook:p048:b001",
       "page": 48,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p049:b000",
+      "block_id": "handbook:p049:b001",
       "page": 49,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p050:b000",
+      "block_id": "handbook:p050:b001",
       "page": 50,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p050:b001",
+      "block_id": "handbook:p050:b002",
       "page": 50,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p051:b000",
+      "block_id": "handbook:p051:b001",
       "page": 51,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p052:b000",
+      "block_id": "handbook:p052:b001",
       "page": 52,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p053:b000",
+      "block_id": "handbook:p053:b001",
       "page": 53,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p054:b000",
+      "block_id": "handbook:p054:b001",
       "page": 54,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p055:b000",
+      "block_id": "handbook:p055:b001",
       "page": 55,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p055:b001",
+      "block_id": "handbook:p055:b002",
       "page": 55,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p056:b000",
+      "block_id": "handbook:p056:b001",
       "page": 56,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p057:b000",
+      "block_id": "handbook:p057:b001",
       "page": 57,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p058:b000",
+      "block_id": "handbook:p058:b001",
       "page": 58,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p059:b000",
+      "block_id": "handbook:p059:b001",
       "page": 59,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p060:b000",
+      "block_id": "handbook:p060:b001",
       "page": 60,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p060:b001",
+      "block_id": "handbook:p060:b002",
       "page": 60,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p061:b000",
+      "block_id": "handbook:p061:b001",
       "page": 61,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p062:b000",
+      "block_id": "handbook:p062:b001",
       "page": 62,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p063:b000",
+      "block_id": "handbook:p063:b001",
       "page": 63,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p064:b000",
+      "block_id": "handbook:p064:b001",
       "page": 64,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p065:b000",
+      "block_id": "handbook:p065:b001",
       "page": 65,
       "kind": "heading",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p065:b001",
+      "block_id": "handbook:p065:b002",
       "page": 65,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p066:b000",
+      "block_id": "handbook:p066:b001",
       "page": 66,
       "kind": "paragraph",
       "confidence": "geometry"
     },
     {
-      "block_id": "handbook:p067:b000",
+      "block_id": "handbook:p067:b001",
       "page": 67,
       "kind": "paragraph",
       "confidence": "geometry"

@@ -51,14 +51,14 @@ def render_block_provenance(
 
     Neither format has a page concept, so every record gets `page: null` and the block's
     position in the list is the only locator -- ids are `<slug>:p000:b<NNN>`, `NNN` starting
-    at 0 and zero-padded to 3 (4 once a document has 1000+ blocks). Mirrors the anchor and id
-    conventions in `pdf._render_blocks` for the one thing PDF has that these formats do not:
+    at 1 and zero-padded to 3 (4 once a document has 1000+ blocks). Mirrors the anchor and id
+    conventions in `pdf._render_blocks` (which also count from 1) for the one thing PDF has that these formats do not:
     pages.
     """
     width = 4 if len(blocks) >= 1000 else 3
     parts: list[str] = []
     provenance: list[dict[str, Any]] = []
-    for index, (text, kind, confidence) in enumerate(blocks):
+    for index, (text, kind, confidence) in enumerate(blocks, start=1):
         block_id = f"{slug}:p000:b{index:0{width}d}"
         parts.append(f"<!-- dgx:block={block_id} -->\n{text}")
         provenance.append(
