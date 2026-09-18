@@ -9,7 +9,7 @@ PYTHON := $(UV) run python
 .DEFAULT_GOAL := help
 
 .PHONY: help sync check test gates license-gate model-gate fixtures \
-        inventory triage convert report report-json answerability profile clean-work \
+        inventory triage prune convert report report-json answerability profile clean-work \
         index search serve serve-http eval-retrieval compose-up compose-down \
         compose-index compose-env-check fixtures-retrieval
 
@@ -42,6 +42,9 @@ inventory:  ## Scan SOURCE_DIR and populate corpus.yaml
 
 triage:  ## Measure text-layer coverage and write metrics into corpus.yaml
 	$(UV) run pipeline triage
+
+prune:  ## Drop MISSING manifest entries and their kb/ output. Dry run; ARGS=--yes applies
+	$(UV) run pipeline prune $(ARGS)
 
 convert:  ## Convert SOURCE_DIR documents into kb/ markdown
 	$(UV) run pipeline convert

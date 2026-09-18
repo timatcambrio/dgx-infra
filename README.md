@@ -342,7 +342,10 @@ and the reason.
   mismatch is a loud error rather than a silent re-convert.
 - An encrypted or password-protected PDF.
 - A file listed in `corpus.yaml` but no longer in `SOURCE_DIR` is reported `MISSING` and the
-  run carries on. The entry is never deleted and the run never fails because of it.
+  run carries on. The entry is never deleted and the run never fails because of it. To
+  remove such entries and the `kb/` files they produced, run `make inventory` so the marks
+  are current, then `make prune` to see what would go and `make prune ARGS=--yes` to do
+  it. Stage 2's `kb index` drops the matching database rows on its next run.
 
 ---
 

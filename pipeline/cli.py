@@ -143,6 +143,67 @@ def inventory(
 
 
 @app.command()
+def prune(
+    source_dir: Optional[Path] = SOURCE_DIR_OPTION,
+    only: Optional[str] = ONLY_OPTION,
+    yes: bool = typer.Option(
+        False, "--yes", help="Actually delete. Without it, only report what would go."
+    ),
+) -> None:
+    """Remove manifest entries whose source file is MISSING, and the kb/ output they own.
+
+    `inventory` never deletes an entry on its own: a document that disappears from
+    SOURCE_DIR is marked MISSING and kept, so a mounted drive that is offline for one run
+    cannot erase months of conversion records. Removing is a decision, so it is this
+    separate command, and it is a dry run unless `--yes` is passed. Run `inventory` first
+    so the MISSING marks are current. Stage 2's `kb index` drops the database rows of any
+    kb/ file that no longer exists on its next run.
+    """
+    config = _load_config(source_dir)
+    _resolved_source(config)
+    manifest = manifest_module.load(config.manifest_path)
+    entries = _selected(manifest, only)
+
+    missing = [entry for entry in entries if entry.get("status") == STATUS_MISSING]
+    if not missing:
+        typer.echo("Nothing to prune: no MISSING entries. Run `pipeline inventory` first.")
+        return
+
+    kb_root = (config.kb_path / "kb").resolve()
+    to_delete: list[Path] = []
+    for entry in missing:
+        conversion = entry.get("conversion") or {}
+        for key in ("output", "provenance"):
+            rel = conversion.get(key)
+            if not rel:
+                continue
+            candidate = (config.kb_path / rel).resolve()
+            # Only ever delete inside kb/, and only what the manifest itself recorded.
+            if kb_root in candidate.parents and candidate.is_file():
+                to_delete.append(candidate)
+
+    verb = "Removing" if yes else "Would remove"
+    for entry in missing:
+        typer.echo(f"  {verb:<13} {entry['source_file']}  (slug {entry['slug']})")
+    for path in to_delete:
+        typer.echo(f"  {verb:<13} {path.relative_to(config.kb_path)}")
+
+    if not yes:
+        typer.echo(
+            f"\nDry run: {len(missing)} entr{'y' if len(missing) == 1 else 'ies'} and "
+            f"{len(to_delete)} file(s). Re-run with --yes to apply."
+        )
+        return
+
+    for path in to_delete:
+        path.unlink()
+    keep = {id(entry) for entry in missing}
+    manifest["documents"] = [e for e in manifest.get("documents", []) if id(e) not in keep]
+    manifest_module.save(manifest, config.manifest_path)
+    typer.echo(f"\nPruned {len(missing)} entr{'y' if len(missing) == 1 else 'ies'} and {len(to_delete)} file(s).")
+
+
+@app.command()
 def triage(
     source_dir: Optional[Path] = SOURCE_DIR_OPTION,
     only: Optional[str] = ONLY_OPTION,
