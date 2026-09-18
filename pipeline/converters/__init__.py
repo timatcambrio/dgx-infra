@@ -7,6 +7,17 @@ from typing import Any
 
 _BLANK_RUN = re.compile(r"\n{3,}")
 
+#: A dotted leader: four or more dots, optionally spaced ("...." or ". . . ."), with any
+#: surrounding spaces. Three dots stay: that is an ellipsis in prose.
+_LEADER_RUN = re.compile(r" *(?:\. ?){4,} *")
+ELLIPSIS = " … "
+#: One table-of-contents entry, once leaders are collapsed: "… <page>" followed by more
+#: text on the same line. Pages are arabic, roman, or appendix-style ("A-1").
+_ENTRY_BOUNDARY = re.compile(r"(… (?:\d+|[ivxlcdm]+|[A-Z]-\d+))\s+(?=\S)")
+_ENTRY_COUNT = re.compile(r"… (?:\d+|[ivxlcdm]+|[A-Z]-\d+)(?=\s|$)")
+#: Fewer entries than this on one line is prose that happens to mention two page numbers.
+TOC_MIN_ENTRIES = 3
+
 
 def _is_table_row(line: str) -> bool:
     return line.lstrip().startswith("|")
@@ -28,10 +39,18 @@ def normalize_markdown(text: str) -> str:
       Docling versions that differ only in vertical whitespace, so a golden diff means
       something changed.
 
+    * **Dotted leaders collapsed, tables of contents split per entry.** A row of dots between
+      a title and its page number is typography; it carries no meaning and, at 3,000 dots in
+      one block, it defeats the embedding model. Any run of four or more dots becomes one
+      ellipsis. When the geometry engine has joined a whole table of contents into one
+      paragraph, a line holding `TOC_MIN_ENTRIES` or more "… page" entries is broken into one
+      entry per line, so the contents page stays a readable map from titles to pages.
+
     Applied to every converter's output so all formats produce markdown of the same shape.
     """
     lines: list[str] = []
     for line in text.split("\n"):
+        line = _normalize_leaders(line)
         if (
             _is_table_row(line)
             and lines
@@ -70,3 +89,13 @@ def render_block_provenance(
             }
         )
     return "\n\n".join(parts), provenance
+
+
+def _normalize_leaders(line: str) -> str:
+    """Collapse leader runs; split a joined table of contents into one entry per line."""
+    if "...." not in line and ". . . ." not in line:
+        return line
+    collapsed = _LEADER_RUN.sub(ELLIPSIS, line).strip()
+    if len(_ENTRY_COUNT.findall(collapsed)) < TOC_MIN_ENTRIES:
+        return collapsed
+    return _ENTRY_BOUNDARY.sub(r"\1\n", collapsed)
