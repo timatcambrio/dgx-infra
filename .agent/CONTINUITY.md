@@ -61,9 +61,13 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   determined (no tokenize endpoint). `retrieval/embed.py` raises 4xx at once with ollama's
   reason and shrinks a context-refused text by 0.75/step for embedding only (floor 256 →
   error), reported, logged with chunk identity, counted in the summary line.
-- 2026-09-18 [TOOL] The dotted-leader chunk: `2023-05_RPT.pdf` p.9 "Table of Contents" is one
-  paragraph block (block 28) — the geometry engine joined every TOC line into it. Handling
-  UNDECIDED.
+- 2026-09-18 [USER→TOOL] Dotted leaders DONE (commits 47f840d tests, 37d8661 fix, 8481e1d
+  golden): `normalize_markdown` collapses runs of >=4 dots to " … " and splits a line holding
+  >=3 "… page" entries into one entry per line (`TOC_MIN_ENTRIES`); fixture `toc_page.pdf`.
+  The real report's TOC block went from 3,917 chars / 3,020 dots on one line to 975 chars /
+  30 lines. Table-row chunking for huge tables: agreed in principle, to be done conservatively
+  (only above a size threshold, split at row boundaries only, header row repeated, one-row
+  overlap, non-table-shaped "table" blocks split at blank lines). NOT started.
 - 2026-09-18 [TOOL] Compose: `${VAR:?}` breaks the dev path (interpolation is file-wide);
   relative bind-mount sources resolve against `compose/`; `sed -i` fails on a `:ro` mount;
   Caddyfile splits unquoted arguments on spaces (quote the substituted regex); `ollama/ollama`
