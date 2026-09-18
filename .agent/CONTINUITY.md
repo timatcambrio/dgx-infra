@@ -358,6 +358,14 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-18 [TOOL] **Docling Word backend crashes on XML comment nodes in the body** (`ValueError:
+  Invalid input tag of type cython_function_or_method` from `etree.QName` in
+  `MsWordDocumentBackend._walk_linear`). Hit on a regulation supplement DOCX carrying
+  `<!--Topic unique_N-->` markers between paragraphs; DAFFARS converted, DFARS did not.
+  Fixed in `office._strip_non_element_nodes`: comment and processing-instruction nodes are
+  removed from the body before the walk (tail text preserved). Synthetic fixture
+  `xml_comment.docx` + `test_docx_with_xml_comment_nodes_in_body_converts`. Upstream bug
+  in docling, not reported. 439 tests.
 - 2026-09-18 [TOOL] Stage 2 milestone S4 (HTTP on the LAN) built per
   `stage2-retrieval-brief.md` §3 (HTTP), §6.5.4-§6.5.6, §7.1-§7.4, §9 S4, §13, Appendix B.
   New: `retrieval/auth.py` (`BearerMiddleware`, pure ASGI, `hmac.compare_digest` over

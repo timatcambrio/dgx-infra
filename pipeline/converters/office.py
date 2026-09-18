@@ -119,7 +119,38 @@ def _load_document(path: Path):
         backend=MsWordDocumentBackend,
         filename=path.name,
     )
-    return MsWordDocumentBackend(in_doc=in_doc, path_or_stream=path).convert()
+    backend = MsWordDocumentBackend(in_doc=in_doc, path_or_stream=path)
+    _strip_non_element_nodes(backend.docx_obj.element.body)
+    return backend.convert()
+
+
+def _strip_non_element_nodes(body) -> int:
+    """Remove XML comment and processing-instruction nodes from a Word body, in place.
+
+    Regulation publishing systems emit `<!--Topic ...-->` markers and processing
+    instructions between body paragraphs. Docling's Word backend walks every child of the
+    body and asks lxml for its tag name; a comment or processing instruction has none, so
+    the walk raised `ValueError: Invalid input tag`. Neither node kind carries document
+    text, so dropping them loses nothing. Returns the number removed.
+    """
+    from lxml import etree  # noqa: PLC0415 - lazy, alongside the docling imports
+
+    removed = 0
+    for node in list(body.iter(etree.Comment, etree.ProcessingInstruction)):
+        parent = node.getparent()
+        if parent is None:
+            continue
+        # lxml drops a removed node's tail text with it; OOXML tail text between body
+        # children is insignificant whitespace, but keep it anyway to alter nothing else.
+        if node.tail:
+            previous = node.getprevious()
+            if previous is not None:
+                previous.tail = (previous.tail or "") + node.tail
+            else:
+                parent.text = (parent.text or "") + node.tail
+        parent.remove(node)
+        removed += 1
+    return removed
 
 
 def _heading_block(level: int, text: str) -> str:
