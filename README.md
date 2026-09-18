@@ -359,8 +359,9 @@ Once `kb/` exists, a second, separate command line — `kb` — makes it searcha
 to an AI assistant (Codex, ChatGPT desktop, Claude Code, Claude desktop) over MCP. It lives
 in the same repo, behind its own install step, and does not change anything above.
 
-**Status:** indexing, search and the eval harness work. Serving over MCP (Codex, Claude
-Code, and the rest) and document summaries come in later milestones and are not usable yet.
+**Status:** indexing, search, the eval harness and the MCP server over **stdio** work.
+Streamable HTTP (the shared LAN server, bearer tokens, Caddy) and document summaries come
+in later milestones and are not usable yet.
 
 ```bash
 uv sync --extra serve                      # installs kb's dependencies; plain `uv sync` does not
@@ -368,11 +369,12 @@ cp .env.example .env                       # then fill in the Stage 2 keys (see 
 docker compose -f compose/docker-compose.yml --profile dev up -d db
 uv run kb index --init                     # applies the database schema
 uv run kb index                            # walks kb/, embeds it, loads it into Postgres
+uv run kb serve                            # runs the MCP server over stdio
 ```
 
-`kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); `serve`
-and `catalog` currently exit with "not implemented until S<n>" naming the milestone that
-adds them.
+`kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); `serve
+--transport http` and `catalog` currently exit with "not implemented until S<n>" naming the
+milestone that adds them.
 
 ### `kb index`
 
@@ -495,11 +497,80 @@ eval` against the real, indexed corpus and records those numbers here** once tha
 happened; no number for the real corpus is invented in this README or committed by an
 agent.
 
+### `kb serve` — the MCP server
+
+```bash
+uv run kb serve --transport stdio    # the default; --transport is optional
+```
+
+Runs a read-only [MCP](https://modelcontextprotocol.io) server against the index, over
+**stdio**: the assistant starts `kb serve` itself as a subprocess and talks to it over
+stdin/stdout, so there is nothing to bind or expose on the network. `--transport http` (the
+shared server on the LAN, behind Caddy with a bearer token) is not implemented yet — it
+exits naming the milestone that adds it (S4).
+
+It exposes five tools, each read-only (`readOnlyHint: true`) and documented to the
+assistant in its own instructions:
+
+- **`search(query, k=8, slug=None, text_class=None)`** — find candidate sections for a
+  question; returns ids, titles, snippets and citation urls, never full text.
+- **`fetch(id)`** — read the whole section, page, or document named by an id from
+  `search`, `list_documents`, or `get_outline`.
+- **`list_documents(text_class=None, title_contains=None)`** — every indexed document,
+  sorted by title, with its size and section count.
+- **`get_outline(id)`** — the section-by-section table of contents for one document.
+- **`get_section(id, neighbours=0)`** — like `fetch` on a section or page, but also pulls
+  in `neighbours` sections before and after it, concatenated in reading order.
+
+#### Use it from Codex
+
+```toml
+# ~/.codex/config.toml — developer, local stdio
+[mcp_servers.kb]
+command = "uv"
+args = ["run", "--directory", "/path/to/dgx-infra", "kb", "serve", "--transport", "stdio"]
+startup_timeout_sec = 30
+tool_timeout_sec = 60
+
+# end user, the shared server on the LAN (arrives in S4 — not usable yet)
+[mcp_servers.kb]
+url = "https://kb.internal.example/mcp"
+bearer_token_env_var = "KB_TOKEN"
+tool_timeout_sec = 60
+```
+
+Equivalent CLI: `codex mcp add kb -- uv run --directory /path/to/dgx-infra kb serve --transport stdio`.
+
+#### Use it from Claude Code
+
+```bash
+claude mcp add --transport stdio kb -- uv run --directory /path/to/dgx-infra kb serve --transport stdio
+claude mcp add --transport http kb https://kb.internal.example/mcp --header "Authorization: Bearer $KB_TOKEN"
+```
+
+The `--transport http` form is for the shared LAN server and arrives in S4 — running it
+against nothing today will simply fail to connect. Use the `--transport stdio` form for now.
+
+#### What you should see
+
+Once added, ask the assistant something the fixtures or your real corpus can answer. It
+should call `search`, get back a short list of section ids with snippets, call `fetch` (or
+`get_section`) on the most promising one or two, and answer using that section's text —
+citing the `citation` string it got back, not the question itself. If you watch `kb serve`'s
+own stderr (redirected by your assistant's MCP client, not printed to your terminal
+directly) you will see one JSON line per tool call: the tool name, its arguments, the
+result ids, how long it took, and any error.
+
+**A snippet is not evidence.** `search` returns a 300-character preview of the single best
+match — enough to judge relevance, not enough to answer from, and never enough to tell
+whether a table came out flattened or a note got separated from what it is about. Treat it
+as a pointer, not an answer: the assistant should always `fetch` (or `get_section` with
+`neighbours=1` when a section looks cut off) before quoting anything back to you.
+
 ### What is deliberately not built yet
 
-The MCP server (stdio and HTTP) and document summaries come later, in the order in
-`stage2-retrieval-brief.md` §9. This section will grow a real quickstart (adding `kb` to
-Codex and Claude Code, rotating a token) once those land.
+Streamable HTTP transport, bearer-token auth, the static `kb/` file server, and document
+summaries come later, in the order in `stage2-retrieval-brief.md` §9 (S4, S5).
 
 ---
 

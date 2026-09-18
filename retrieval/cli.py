@@ -201,12 +201,35 @@ def search(
 
 @app.command()
 def serve(
-    transport: str = typer.Option("stdio", "--transport", help="stdio|streamable-http"),
+    transport: str = typer.Option(
+        "stdio", "--transport", help="stdio|http (streamable HTTP arrives in S4)"
+    ),
     env_file: Optional[Path] = ENV_FILE_OPTION,
 ) -> None:
-    """Run the MCP server. Not implemented until S3 (stdio) / S4 (http)."""
-    _load_config(env_file)
-    _not_implemented("serve", "S3")
+    """Run the MCP server."""
+    cfg = _load_config(env_file)
+
+    if transport in ("http", "streamable-http"):
+        _not_implemented("serve --transport http", "S4")
+    if transport != "stdio":
+        typer.secho(
+            f"--transport must be stdio|http, got {transport!r}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
+
+    try:
+        cfg.require_database_url()
+        cfg.require_kb_url_base()
+    except ConfigError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(EXIT_CONFIG_ERROR) from exc
+
+    # Imported lazily: see the note on `index`'s import above — asyncpg/mcp live behind
+    # the `serve` extra.
+    from . import server as server_module
+
+    mcp_server = server_module.build_server(cfg)
+    mcp_server.run(transport="stdio")
 
 
 @app.command(name="eval")

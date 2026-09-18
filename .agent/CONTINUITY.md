@@ -574,6 +574,54 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   regeneration only (`tests/golden/simple.md`, `reference_table.md` changed;
   `tables_and_image.md` new). Stopped after commit 3, per addendum §5 -- did not start
   Stage 2 S3.
+- 2026-09-18 [TOOL] Stage 2 S3 (MCP over stdio, `stage2-retrieval-brief.md` §6.5/§9 S3)
+  built and staged, not committed (per instructions for this run). New:
+  `retrieval/server.py` (five tools: `search`, `fetch`, `list_documents`, `get_outline`,
+  `get_section`, plus `/health` via `custom_route`, brief §6.5.1-§6.5.4), the `serve`
+  stanza in `retrieval/cli.py` (`--transport stdio` runs it; `--transport http`/
+  `streamable-http` exits 2 naming S4), `tests/retrieval/test_server.py` (14 tests, incl. a
+  real stdio subprocess round trip and a real-subprocess check that exactly one tool call
+  produces exactly one JSON line on stderr), and a Stage 2 README subsection ("`kb serve` —
+  the MCP server", "Use it from Codex", "Use it from Claude Code", "What you should see").
+  `make check` (`WORK_DIR=/private/tmp/dgx-empty-work make check`) passes, 426 tests.
+  Verified against the real `kb` database (`docker compose --profile dev up -d db`, `kb
+  index --init`, `kb index` with a local fake-ollama HTTP server standing in for a real
+  embed model) with a subprocess client over stdio: `initialize`, `list_tools` (all five
+  names), `search("FORM-7731")` (first hit `sec:budget-form:0`), `fetch` on that id.
+- 2026-09-18 [TOOL] FastMCP 1.x (`mcp==1.30.0`, installed via the `serve` extra) APIs used,
+  each read from the installed source before use per the brief's instruction: `FastMCP(name,
+  instructions=, lifespan=)` (no `host`/`port`/`streamable_http_path` passed, per the S3
+  scope); `@mcp.tool(annotations=ToolAnnotations(...))` on an `async def` returning a
+  `TypedDict` auto-generates `outputSchema` and returns both a `content[0].text` JSON blob
+  and `structuredContent` (`mcp/server/fastmcp/utilities/func_metadata.py:convert_result`)
+  -- verified equal in `test_dual_encoding_search_and_fetch`, so the brief's fallback
+  (`mcp.types.CallToolResult(...)` returned explicitly) was not needed. `Context` (from
+  `mcp.server.fastmcp`) as a tool parameter, resolved via
+  `ctx.request_context.lifespan_context` to the pool/config/embedder the lifespan opened.
+  `mcp.shared.memory.create_connected_server_and_client_session(mcp, raise_exceptions=True)`
+  for in-memory tests; `mcp.client.stdio.stdio_client`/`ClientSession` for the real
+  subprocess tests (`stdio_client(params, errlog=<file>)` to capture the server's stderr
+  for the log-line test, since `StdioServerParameters` has no `env`-merge surprises worth
+  noting -- it replaces, not merges, the parent environment). `@mcp.custom_route("/health",
+  methods=["GET"])` exists in 1.30.0 and is registered, but is only reachable once
+  `streamable_http_app()` serves it (S4) -- confirmed by reading `server.py`'s route
+  wiring, not exercised by a request in these tests. Nothing named in the brief was found
+  missing from the installed 1.x API.
+- 2026-09-18 [DECISION] Interpretation choices not fully pinned down by the brief: (1)
+  `get_section`/`fetch` on a multi-section range needs no synthetic per-section heading
+  line -- block ordinals are contiguous in document order and each section's own heading
+  block is already its first block, so joining every block in the overall ordinal range by
+  `\n\n` naturally reproduces "each with its own heading line" (brief §6.5.2) without extra
+  construction. (2) `page:` fetch's `citation` uses `heading_path="page {n}"` rather than
+  repeating the page title, to avoid a citation like "Doc — page 3, Doc — page 3 (...)".
+  (3) `get_section` on a `page:` id resolves to the section whose page range contains that
+  page, or (if none contains it) the section with the closest `page_first`. (4) A `title`
+  with no heading tail (`_strip_title` returns `""`) renders as the bare document title,
+  not `"{title} › "` with a trailing separator. (5) `search`'s per-result `url`/citation
+  data (`rel_path`, first block id) is looked up per hit rather than batched -- fine at
+  fixture scale, a candidate optimisation if S4's real corpus makes it a hot path. None of
+  these touch `search.py`/`chunk.py`/`sections.py`/`kbfiles.py` behaviour or signatures;
+  all logic lives in the new `retrieval/server.py`.
 
 ## [OUTCOMES]
 - 2026-09-15 [TOOL] The evidence profile makes the original silent failure loud. Against the
