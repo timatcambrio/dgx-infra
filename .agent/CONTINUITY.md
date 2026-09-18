@@ -6,9 +6,10 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
-- 2026-09-18 [USER] Next: Tim runs the real-model eval (`../testing-guide.md`); optional S5
-  (catalog summaries via ollama, gated on `models.yaml`); embedding-model comparison on the DGX;
-  dotted-leader/TOC handling in Stage 1 (UNDECIDED); `mcp` 2.x migration (later).
+- 2026-09-18 [USER] Next (after eval floor and table-row chunking, both DONE): embedding-model
+  comparison on the DGX against the recorded floor; optional S5 (catalog summaries via ollama,
+  gated on `models.yaml`, needs a go); `get_outline` paging/depth limit; `mcp` 2.x (later).
+  Eval cases: `~/Dropbox/Cambrio/dgx-eval/proxy-cases.yaml` (outside the repo).
 - 2026-09-15 [USER] Standing rules for builders: `make check` is the verification command
   (`WORK_DIR=/private/tmp/dgx-empty-work` while the Marker cache is in `dgx-knowledge/work`);
   README is written for a user of the pipeline, not a maintainer; no milestone vocabulary in
@@ -19,6 +20,15 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-09-18 [DECISION] **Table-row chunking** (`retrieval/chunk.py` rule 1): a table at or
+  under `CHUNK_MAX` is never split; above it a pipe table (header row + GFM delimiter row)
+  is cut only between rows, each piece = header + delimiter + previous piece's last row +
+  rows filled greedily to `CHUNK_MAX`, at least one new row per piece (a row over
+  `CHUNK_MAX` stays whole), lines not starting with `|` continue the row before them, the
+  table's ordinal is kept on every piece, only the last piece stays open for annotation
+  gluing; a `table` block with no pipe rows splits at blank lines like rule 3. Why: the
+  old "one oversized chunk" reached 500k chars and the embed client ranks such a chunk on
+  the prefix it embeds. Section fetch is unaffected.
 - 2026-09-15 [USER] **Objective:** answerability by a frontier model, not fidelity. The converter
   preserves evidence and does not resolve it (emit which cell a callout tip lands in, never
   which label it "means").
@@ -46,6 +56,12 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-09-18 [TOOL] **Embedding time is per character, not per text.** Host ollama 0.21 +
+  nomic-embed-text on the Intel dev Mac: 1 × 2,358 chars = 1.0 s, 8 = 7.2 s, 32 = 62.6 s,
+  over the 60 s `httpx` read timeout; `make index --force` failed twice on the regulation
+  DOCX once its 499k-char table became ~200 pieces of ≤2,500 chars. Fix (tests b49b02e, fix 269d685): `embed.py` batches ≤ 32 texts AND ≤ `BATCH_MAX_CHARS` = 40,000 (a
+  longer single text goes alone); truncation positions now use a running offset (the old
+  `start * BATCH_SIZE` assumed fixed-size batches).
 - 2026-09-18 [TOOL] **Real-corpus Word failures and their fixes** (each an invariant with a
   synthetic fixture): (1) Docling's `_walk_linear` crashes on XML comment/PI nodes
   (`etree.QName` on a comment) → `office._strip_non_element_nodes` removes them from every
@@ -99,6 +115,8 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- [MILESTONE] 2026-09-18 Table-row chunking: tests fcac158, fix 9224229, golden 5d2f4f1
+  (handbook fixture 66 → 67 chunks), README dd3af7c. Eval floor recorded f153cb5.
 - [MILESTONE] 2026-09-18 Stage 2 S0–S4 shipped (commits 3ed6f8c and predecessors), plus
   hardening: error isolation in `convert` (`conversion_error`, exit 1, report section),
   `--only` case-insensitive substring-or-glob, `pipeline prune` (dry run; `--yes`), one-line
@@ -115,6 +133,11 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   with `callout_notes.pdf` fixture; conftest scrubs `PDF_*` env vars.
 
 ## [OUTCOMES]
+- 2026-09-18 [TOOL] Proxy-corpus eval, 21 cases, chunker before row splitting: lexical 33%,
+  vector 67%, fused 76% hit@5 (README "Recorded floor"). After row splitting + bounded batches, re-embedded
+  (12 reindexed, 18 truncations): identical rates, CSV case vector rank 3 → 1; 3,854
+  chunks, largest 39,063 chars; 611 over `CHUNK_MAX`, 392 of them one-row pieces of the
+  regulation DOCX's cell-padded table (header 1,303 + overlap 1,303 + row 1,303).
 - 2026-09-18 [TOOL] `make check` green: 454 passed with the DB up (Stage 2 tests skip cleanly
   without it); both gates pass with `WORK_DIR=/private/tmp/dgx-empty-work`.
 - 2026-09-18 [TOOL] Compose stack verified end to end on the dev Mac: `/health` over HTTPS,
