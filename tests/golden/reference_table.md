@@ -12,10 +12,10 @@ needs_ocr: false
 content_sha256: ff5c2cc3d2aa465435fa5ac381dd45b9313c52d875223cae5bd414bf730c526a
 ---
 
-<!-- dgx:block=reference-table:p000:b000 -->
+<!-- dgx:block=reference-table:p000:b001 -->
 # Reference Table
 
-<!-- dgx:block=reference-table:p000:b001 -->
+<!-- dgx:block=reference-table:p000:b002 -->
 | Code | Expense category | Limit | Receipt required |
 | --- | --- | --- | --- |
 | LDG | Lodging | $180 / night | Yes |
