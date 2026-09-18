@@ -20,6 +20,8 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
     help="Stage 2: index kb/ into Postgres and serve it to AI assistants over MCP.",
+    # The rich traceback's locals panel prints connection parameters, password included.
+    pretty_exceptions_show_locals=False,
 )
 
 EXIT_NOT_IMPLEMENTED = 2
@@ -43,6 +45,42 @@ def _not_implemented(name: str, milestone: str) -> None:
         f"`kb {name}` is not implemented until {milestone}.", fg=typer.colors.YELLOW, err=True
     )
     raise typer.Exit(EXIT_NOT_IMPLEMENTED)
+
+
+def _run_db(coro, *, what: str, dsn: str | None):
+    """`asyncio.run` for commands that talk to Postgres, turning the two failures a user can
+    fix into one line each: the server is not reachable, or the credentials/database are
+    wrong. Anything else propagates unchanged."""
+    import asyncpg  # noqa: PLC0415 - behind the `serve` extra
+
+    try:
+        return asyncio.run(coro)
+    except (ConnectionRefusedError, OSError) as exc:
+        where = _dsn_host_port(dsn)
+        typer.echo(
+            f"{what}: cannot reach Postgres at {where} ({exc.__class__.__name__}). "
+            "Is it running? For the developer path:\n"
+            "  docker compose -f compose/docker-compose.yml --profile dev up -d db",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    except (asyncpg.InvalidPasswordError, asyncpg.InvalidCatalogNameError,
+            asyncpg.InvalidAuthorizationSpecificationError) as exc:
+        typer.echo(
+            f"{what}: Postgres at {_dsn_host_port(dsn)} refused the login: {exc}. "
+            "Check DATABASE_URL / DATABASE_URL_INDEX in .env against compose/init-db.sh.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+
+def _dsn_host_port(dsn: str | None) -> str:
+    from urllib.parse import urlsplit  # noqa: PLC0415
+
+    if not dsn:
+        return "(unset)"
+    parts = urlsplit(dsn)
+    return f"{parts.hostname or 'localhost'}:{parts.port or 5432}"
 
 
 @app.command()
@@ -72,7 +110,11 @@ def index(
     from . import index as index_module
 
     try:
-        result = asyncio.run(index_module.run_index(cfg, force=force, reindex_all=reindex_all))
+        result = _run_db(
+            index_module.run_index(cfg, force=force, reindex_all=reindex_all),
+            what="kb index",
+            dsn=cfg.database_url_index,
+        )
     except index_module.IndexConfigError as exc:
         typer.echo(f"kb index: {exc}", err=True)
         raise typer.Exit(code=2)
@@ -105,7 +147,7 @@ def _run_init(cfg: Config) -> None:
     from . import db as db_module
 
     try:
-        asyncio.run(_init())
+        _run_db(_init(), what="kb index --init", dsn=cfg.database_url_index)
     except db_module.ReadRoleMissing as exc:
         typer.echo(f"kb index --init: {exc}", err=True)
         raise typer.Exit(code=2)
@@ -196,7 +238,7 @@ def search(
         finally:
             await conn.close()
 
-    asyncio.run(_run())
+    _run_db(_run(), what="kb search", dsn=cfg.database_url)
 
 
 @app.command()
@@ -301,7 +343,7 @@ def eval_(
         finally:
             await conn.close()
 
-    result = asyncio.run(_run())
+    result = _run_db(_run(), what="kb eval", dsn=cfg.database_url)
     for line in result.table_lines:
         typer.echo(line)
     typer.echo("")

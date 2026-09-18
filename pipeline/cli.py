@@ -31,6 +31,9 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
     help="Stage 1: documents -> markdown, with a text-layer coverage report.",
+    # A traceback should say what failed, not dump every local (paths, settings, and in
+    # Stage 2's case credentials) in a panel hundreds of lines long.
+    pretty_exceptions_show_locals=False,
 )
 
 SOURCE_DIR_OPTION = typer.Option(
