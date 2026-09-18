@@ -13,8 +13,11 @@ strictly read-only.
 from __future__ import annotations
 
 import logging
+import posixpath
 import shutil
 import subprocess
+import zipfile
+from io import BytesIO
 
 from pathlib import Path
 from typing import Any
@@ -119,9 +122,84 @@ def _load_document(path: Path):
         backend=MsWordDocumentBackend,
         filename=path.name,
     )
-    backend = MsWordDocumentBackend(in_doc=in_doc, path_or_stream=path)
+    sanitised, dangling = _sanitise_package(path)
+    if dangling:
+        _logger.warning(
+            "%s: %d relationship(s) point at parts the package does not contain; "
+            "treated as external references",
+            path.name,
+            len(dangling),
+        )
+    backend = MsWordDocumentBackend(
+        in_doc=in_doc, path_or_stream=sanitised if sanitised is not None else path
+    )
     _strip_non_element_nodes(backend.docx_obj)
-    return backend.convert()
+    return backend.convert(), dangling
+
+
+_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+
+def _sanitise_package(path: Path) -> tuple[BytesIO | None, list[str]]:
+    """Make an OPC package loadable by re-marking dangling relationships as external.
+
+    OPC (the zip-and-XML container under every Office file) requires an internal
+    relationship to target a part that exists in the package. Some publishing tools emit
+    relationships whose target is a directory (`media/`) or a file that was never packaged.
+    Word ignores those; python-docx tries to load every internal target as a part and
+    fails on the first one, taking the whole document with it.
+
+    A relationship with nothing behind it carries no content, so the lossless treatment is
+    to mark it `TargetMode="External"`: python-docx then skips it on load, the id stays
+    resolvable so nothing that references it raises, and Docling's image resolver already
+    skips external references with a log line. Returns `(stream, dangling)`: the rewritten
+    package as a stream when anything changed (else `None`), and one description per
+    dangling relationship so the caller can record that the document points at content the
+    file does not contain.
+    """
+    from lxml import etree  # noqa: PLC0415 - lazy, alongside the docling imports
+
+    with zipfile.ZipFile(path) as archive:
+        infos = archive.infolist()
+        part_names = {info.filename for info in infos if not info.is_dir()}
+        payload = {info.filename: archive.read(info.filename) for info in infos}
+
+    dangling: list[str] = []
+    for name in list(payload):
+        if not name.endswith(".rels"):
+            continue
+        root = etree.fromstring(payload[name])
+        base = name.split("_rels/", 1)[0]  # '' for the package rels, 'word/' for document
+        changed = False
+        for rel in root:
+            if not isinstance(rel.tag, str) or etree.QName(rel).localname != "Relationship":
+                continue
+            if rel.get("TargetMode") == "External":
+                continue
+            target = rel.get("Target") or ""
+            if target.startswith("/"):
+                resolved = posixpath.normpath(target).lstrip("/")
+            else:
+                resolved = posixpath.normpath(posixpath.join(base, target))
+            if resolved in part_names:
+                continue
+            rel.set("TargetMode", "External")
+            dangling.append(f"{name}: {rel.get('Id')} -> {target}")
+            changed = True
+        if changed:
+            payload[name] = etree.tostring(
+                root, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
+
+    if not dangling:
+        return None, []
+
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in payload.items():
+            archive.writestr(name, data)
+    buffer.seek(0)
+    return buffer, dangling
 
 
 #: Every WordprocessingML part shares this content-type prefix: the main document, headers,
@@ -273,8 +351,13 @@ def _walk_items(document) -> tuple[list[tuple[str, str, str]], int, int]:
 
 def convert_with_provenance(
     path: Path, config: Config, *, provenance_slug: str | None = None
-) -> tuple[str, str, list[dict[str, Any]]]:
+) -> tuple[str, str, list[dict[str, Any]], dict[str, Any]]:
     """Convert a DOCX, or a legacy DOC/DOT via LibreOffice first. Anchors every block.
+
+    Returns `(body, converter, provenance, extras)`. `extras` is what the manifest records
+    under `conversion` beyond the standard keys: `images` (embedded pictures, whose content
+    is not in the text layer) and `dangling_relationships` (references to parts the package
+    does not contain). Both are evidence for the report, not verdicts.
 
     Legacy `.doc`/`.dot` need no separate item handling here: `doc_to_docx` turns them into a
     `.docx` first, and everything below is format-agnostic over the result.
@@ -287,7 +370,7 @@ def convert_with_provenance(
         docx_path = path
         converter = CONVERTER_DOCLING
 
-    document = _load_document(docx_path)
+    document, dangling = _load_document(docx_path)
     blocks, picture_count, empty_skipped = _walk_items(document)
     if empty_skipped:
         _logger.debug("%s: skipped %d empty item(s)", path.name, empty_skipped)
@@ -298,18 +381,27 @@ def convert_with_provenance(
     else:
         body, provenance = render_block_provenance(blocks, provenance_slug)
 
+    notes: list[str] = []
     if picture_count:
-        note = (
+        notes.append(
             f"> **INCOMPLETE — this document embeds {picture_count} image(s), and their "
             "content is not in the text layer.** No OCR was attempted. Each is marked in "
             "place below."
         )
-        body = "\n\n".join([note, body])
+    if dangling:
+        notes.append(
+            f"> **INCOMPLETE — {len(dangling)} reference(s) in this document point at "
+            "content the file does not contain** (for example an image that was never "
+            "packaged). Nothing can be recovered for them."
+        )
+    if notes:
+        body = "\n\n".join([*notes, body])
 
-    return body, converter, provenance
+    extras = {"images": picture_count, "dangling_relationships": len(dangling)}
+    return body, converter, provenance, extras
 
 
 def convert(path: Path, config: Config) -> tuple[str, str]:
     """Convert a DOCX, or a legacy DOC/DOT via LibreOffice first."""
-    body, converter, _ = convert_with_provenance(path, config)
+    body, converter, _, _ = convert_with_provenance(path, config)
     return body, converter

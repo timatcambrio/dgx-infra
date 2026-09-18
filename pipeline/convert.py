@@ -122,7 +122,7 @@ def convert_entry(
         )
 
     try:
-        body, converter, status, provenance_blocks = _dispatch(
+        body, converter, status, provenance_blocks, extras = _dispatch(
             entry, source_path, config, text_class
         )
     except StopAndAsk as exc:
@@ -167,17 +167,18 @@ def convert_entry(
     }
     if sidecar is not None:
         entry["conversion"]["provenance"] = sidecar.relative_to(config.kb_path).as_posix()
-    if source_format in ("docx", "doc"):
-        entry["conversion"]["images"] = sum(
-            1 for block in (provenance_blocks or []) if block.get("kind") == "picture"
-        )
+    entry["conversion"].update(extras)
     return ConversionResult(slug, source_file, status, destination, converter)
 
 
 def _dispatch(
     entry: dict[str, Any], source_path: Path, config: Config, text_class: str
-) -> tuple[str, str, str, list[dict[str, Any]] | None]:
-    """Route to the right converter. Returns `(body, converter_name, status, provenance)`."""
+) -> tuple[str, str, str, list[dict[str, Any]] | None, dict[str, Any]]:
+    """Route to the right converter.
+
+    Returns `(body, converter_name, status, provenance, extras)`; `extras` are converter
+    specific facts recorded verbatim under the manifest entry's `conversion` key.
+    """
     source_format = entry["source_format"]
 
     if source_format == "csv":
@@ -189,12 +190,12 @@ def _dispatch(
             description=entry.get("description"),
             csv_mode=entry.get("csv_mode", "table"),
         )
-        return body, converter, STATUS_WRITTEN, provenance
+        return body, converter, STATUS_WRITTEN, provenance, {}
 
     if source_format == "pdf":
         if text_class == TEXT_CLASS_NEEDS_OCR:
             body, converter = pdf.needs_ocr_stub(source_path, config)
-            return body, converter, STATUS_STUB, None
+            return body, converter, STATUS_STUB, None, {}
         if text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL):
             triage = entry.get("triage") or {}
             body, converter, provenance = pdf.convert_with_provenance(
@@ -205,14 +206,14 @@ def _dispatch(
                 image_pages=triage.get("image_pages") or (),
                 max_image_coverage=triage.get("max_image_coverage") or 0.0,
             )
-            return body, converter, STATUS_WRITTEN, provenance
+            return body, converter, STATUS_WRITTEN, provenance, {}
         raise StopAndAsk(f"unexpected text_class {text_class!r} for {source_path.name}")
 
     if source_format in ("docx", "doc"):
-        body, converter, provenance = office.convert_with_provenance(
+        body, converter, provenance, extras = office.convert_with_provenance(
             source_path, config, provenance_slug=entry["slug"]
         )
-        return body, converter, STATUS_WRITTEN, provenance
+        return body, converter, STATUS_WRITTEN, provenance, extras
 
     raise StopAndAsk(f"no converter for source_format {source_format!r}")
 

@@ -358,6 +358,22 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-18 [TOOL] **Two more real-corpus failures on the new Word files, both fixed as
+  invariants rather than patches.** (1) A regulation supplement DOCX carried an image
+  relationship whose Target is the `media/` directory (plus, in principle, targets never
+  packaged); Word ignores such relationships, python-docx loads every internal target as a
+  part and died with `KeyError: 'word/media'` inside `DocumentLoadError`. Fix:
+  `office._sanitise_package` rewrites the package in memory, re-marking every internal
+  relationship whose target is not a part as `TargetMode="External"` (python-docx skips
+  those on load; docling's image resolver already skips external refs). Count recorded as
+  `conversion.dangling_relationships`, an INCOMPLETE note in the body, and an EVIDENCE line
+  in the report: the document points at content the file does not contain. (2) Any
+  converter exception ended the whole `convert` run with a traceback. Now: `ERROR <file>`
+  line, `conversion_error` recorded on the entry (cleared on the next success), run
+  continues, `FAILED TO CONVERT` summary, exit 1; report gains a CONVERSION ERRORS section.
+  Converter `extras` dict now flows from `_dispatch` into `conversion` (replaces the
+  images-from-blocks count). Fixture `dangling_rels.docx`; tests in `test_provenance.py`
+  and new `test_convert_cli.py`. 443 tests.
 - 2026-09-18 [TOOL] **Docling Word backend crashes on XML comment nodes in the body** (`ValueError:
   Invalid input tag of type cython_function_or_method` from `etree.QName` in
   `MsWordDocumentBackend._walk_linear`). Hit on a regulation supplement DOCX carrying

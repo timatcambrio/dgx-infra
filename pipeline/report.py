@@ -65,6 +65,10 @@ def build(manifest: dict[str, Any], config: Config) -> dict[str, Any]:
                 "error": triage.get("error"),
                 "converter": (entry.get("conversion") or {}).get("converter"),
                 "images": (entry.get("conversion") or {}).get("images"),
+                "dangling_relationships": (entry.get("conversion") or {}).get(
+                    "dangling_relationships"
+                ),
+                "conversion_error": entry.get("conversion_error"),
             }
         )
 
@@ -260,7 +264,10 @@ def render_table(report: dict[str, Any]) -> str:
     # content is not in the text layer -- so it earns the same kind of note here, one line
     # per document with its image count.
     docx_with_images = [row for row in report["documents"] if (row.get("images") or 0) > 0]
-    if annotated or formlike or picture or docx_with_images:
+    dangling = [
+        row for row in report["documents"] if (row.get("dangling_relationships") or 0) > 0
+    ]
+    if annotated or formlike or picture or docx_with_images or dangling:
         lines += ["", "EVIDENCE NOTES (what the document carries beyond its text layer)"]
         for row in sorted(picture, key=lambda item: item["source_file"] or ""):
             lines.append(
@@ -272,6 +279,11 @@ def render_table(report: dict[str, Any]) -> str:
             lines.append(
                 f"  {row['source_file']}: {row['images']} embedded image(s) not in the text "
                 "layer"
+            )
+        for row in sorted(dangling, key=lambda item: item["source_file"] or ""):
+            lines.append(
+                f"  {row['source_file']}: {row['dangling_relationships']} reference(s) to "
+                "content the file does not contain (for example an image never packaged)"
             )
         for row in sorted(annotated, key=lambda item: item["source_file"] or ""):
             with_callout = row.get("annotations_with_callout") or 0
@@ -285,6 +297,12 @@ def render_table(report: dict[str, Any]) -> str:
                 f"{row.get('ruled_tables') or 0} ruled table(s) recovered -- a form whose "
                 "grid is mostly not being reconstructed"
             )
+
+    failed = [row for row in report["documents"] if row.get("conversion_error")]
+    if failed:
+        lines += ["", "CONVERSION ERRORS (the last `convert` run could not convert these)"]
+        for row in sorted(failed, key=lambda item: item["source_file"] or ""):
+            lines.append(f"  {row['source_file']}: {row['conversion_error']}")
 
     # A document can be `clean` overall and still hold individual pages with no usable text.
     # Those pages are where content goes missing silently, so name them: a cover or a

@@ -186,6 +186,7 @@ def convert(
 
     stop_and_ask: list[str] = []
     unavailable: list[str] = []
+    errors: list[str] = []
 
     for entry in entries:
         if entry.get("status") == STATUS_MISSING:
@@ -193,6 +194,7 @@ def convert(
             continue
         try:
             result = convert_entry(entry, config, force=force)
+            entry.pop("conversion_error", None)
         except SourceDigestMismatch as exc:
             typer.secho(f"  DIGEST MISMATCH {entry['source_file']}", fg=typer.colors.RED)
             typer.secho(f"    {exc}", fg=typer.colors.RED, err=True)
@@ -204,6 +206,16 @@ def convert(
         except StopAndAsk as exc:
             stop_and_ask.append(f"{entry['source_file']}: {exc}")
             typer.echo(f"  STOP-AND-ASK   {entry['source_file']}")
+            continue
+        except Exception as exc:  # noqa: BLE001 - one document must not end the run
+            # A converter failure is a fact about one document. It is recorded on that
+            # entry, reported at the end, and the run carries on, so a fourteen-file corpus
+            # does not stop at file eight. The exit code still says something failed.
+            message = f"{type(exc).__name__}: {exc}"
+            entry["conversion_error"] = message
+            errors.append(f"{entry['source_file']}: {message}")
+            typer.secho(f"  ERROR          {entry['source_file']}", fg=typer.colors.RED)
+            typer.secho(f"    {message}", fg=typer.colors.RED, err=True)
             continue
 
         if result.status == "stop_and_ask":
@@ -223,6 +235,12 @@ def convert(
         typer.secho("\nSTOP AND ASK", fg=typer.colors.YELLOW, bold=True)
         for item in stop_and_ask:
             typer.secho(f"  * {item}", fg=typer.colors.YELLOW)
+
+    if errors:
+        typer.secho("\nFAILED TO CONVERT (recorded in corpus.yaml as conversion_error)", fg=typer.colors.RED, bold=True)
+        for item in errors:
+            typer.secho(f"  * {item}", fg=typer.colors.RED)
+        raise typer.Exit(1)
         raise typer.Exit(EXIT_STOP_AND_ASK)
 
 
