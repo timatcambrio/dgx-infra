@@ -77,3 +77,26 @@ def test_a_clean_run_clears_a_previous_conversion_error(workspace, monkeypatch):
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     by_file = {d["source_file"]: d for d in manifest["documents"]}
     assert "conversion_error" not in by_file["simple.docx"]
+
+
+def test_only_filter_is_case_insensitive_substring_or_glob():
+    from pipeline.cli import _selected
+
+    manifest = {
+        "documents": [
+            {"source_file": "DFARSPGI.docx", "slug": "dfarspgi"},
+            {"source_file": "Ch 05_b.pdf", "slug": "ch-05-b"},
+            {"source_file": "notes.csv", "slug": "notes"},
+        ]
+    }
+
+    def names(only):
+        return [e["slug"] for e in _selected(manifest, only)]
+
+    assert names("DFARSPGI") == ["dfarspgi"]
+    assert names("dfarspgi") == ["dfarspgi"]
+    assert names("DFARSPGI.docx") == ["dfarspgi"]
+    assert names("*.DOCX") == ["dfarspgi"]
+    assert names("05") == ["ch-05-b"]
+    assert names(None) == ["dfarspgi", "ch-05-b", "notes"]
+    assert names("nomatch") == []

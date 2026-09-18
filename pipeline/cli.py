@@ -39,7 +39,10 @@ SOURCE_DIR_OPTION = typer.Option(
     help="Directory holding the source documents. Defaults to SOURCE_DIR from .env.",
 )
 ONLY_OPTION = typer.Option(
-    None, "--only", help="Restrict to manifest entries matching this glob."
+    None,
+    "--only",
+    help="Restrict to entries whose file name or slug contains this text or matches this "
+    "glob. Case-insensitive.",
 )
 
 EXIT_STOP_AND_ASK = 2
@@ -62,14 +65,27 @@ def _resolved_source(config: Config) -> Path:
 
 
 def _selected(manifest: dict[str, Any], only: str | None) -> list[dict[str, Any]]:
+    """Entries whose source file name or slug matches `only`.
+
+    Case-insensitive, and a match is either a substring or a glob, so `--only dfarspgi`,
+    `--only DFARSPGI`, `--only DFARSPGI.docx` and `--only '*.docx'` all do what they look
+    like they do. `fnmatch.fnmatch` alone was neither: it follows the OS's case rule (macOS
+    and Linux: sensitive) and it is a whole-string glob, so `--only DFARSPGI` silently
+    matched nothing.
+    """
     entries = manifest.get("documents", [])
     if not only:
         return entries
+    needle = only.lower()
+
+    def matches(value: str) -> bool:
+        value = value.lower()
+        return needle in value or fnmatch.fnmatchcase(value, needle)
+
     return [
         entry
         for entry in entries
-        if fnmatch.fnmatch(entry.get("source_file", ""), only)
-        or fnmatch.fnmatch(entry.get("slug", ""), only)
+        if matches(entry.get("source_file", "")) or matches(entry.get("slug", ""))
     ]
 
 
