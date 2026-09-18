@@ -265,3 +265,22 @@ def test_docx_converts_identically_twice(config, entry_for):
     first = convert_fixture_text("simple.docx", config, entry_for)
     second = convert_fixture_text("simple.docx", config, entry_for)
     assert first == second
+
+
+def test_tables_and_image_docx_converts_identically_twice(config, entry_for):
+    """The per-item walk (headings, list grouping, tables, picture) must be reproducible."""
+    first = convert_fixture_text("tables_and_image.docx", config, entry_for)
+    second = convert_fixture_text("tables_and_image.docx", config, entry_for)
+    assert first == second
+
+
+def test_tables_and_image_docx_sidecar_is_byte_stable(config, entry_for):
+    from pipeline.convert import convert_entry, provenance_path
+
+    entry = entry_for("tables_and_image.docx")
+    first = convert_entry(entry, config, force=True)
+    first_sidecar = provenance_path(first.output).read_bytes()
+
+    second = convert_entry(entry, config, force=True)
+
+    assert provenance_path(second.output).read_bytes() == first_sidecar

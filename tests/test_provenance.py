@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import re
 
+import pytest
+
 from pipeline.convert import convert_entry, provenance_path
 
 BLOCK = re.compile(r"<!-- dgx:block=([^ ]+) -->")
@@ -72,3 +74,64 @@ def test_missing_pdf_sidecar_prevents_false_unchanged_status(config, entry_for):
 
     assert second.status == "written"
     assert provenance_path(second.output).is_file()
+
+
+# ------------------------------------------------------------------- DOCX, DOC, and CSV
+
+
+@pytest.mark.parametrize(
+    "fixture_name", ["simple.docx", "tables_and_image.docx", "reference_table.csv"]
+)
+def test_sidecar_written_with_matching_anchors_and_null_page(fixture_name, config, entry_for):
+    """Every block id in the sidecar has exactly one anchor in the markdown and vice versa."""
+    result = convert_entry(entry_for(fixture_name), config)
+
+    markdown = result.output.read_text(encoding="utf-8")
+    sidecar = provenance_path(result.output)
+    data = json.loads(sidecar.read_text(encoding="utf-8"))
+
+    ids_in_markdown = BLOCK.findall(markdown)
+    ids_in_sidecar = [block["block_id"] for block in data["blocks"]]
+
+    assert ids_in_markdown
+    assert ids_in_markdown == ids_in_sidecar
+    assert markdown.count("<!-- dgx:block=") == len(data["blocks"])
+    assert data["version"] == 1
+    assert data["content_sha256"]
+    assert data["converter"] == result.converter
+    assert all(block["page"] is None for block in data["blocks"])
+    assert all("bbox" not in block for block in data["blocks"])
+
+
+def test_docx_content_sha256_matches_frontmatter(config, entry_for):
+    result = convert_entry(entry_for("simple.docx"), config)
+    markdown = result.output.read_text(encoding="utf-8")
+    sidecar = json.loads(provenance_path(result.output).read_text(encoding="utf-8"))
+
+    front_sha = re.search(r"content_sha256: (\w+)", markdown).group(1)
+    assert front_sha == sidecar["content_sha256"]
+
+
+def test_tables_and_image_docx_block_kinds(config, entry_for):
+    result = convert_entry(entry_for("tables_and_image.docx"), config)
+    data = json.loads(provenance_path(result.output).read_text(encoding="utf-8"))
+
+    kinds = [block["kind"] for block in data["blocks"]]
+    assert kinds.count("table") == 2
+    assert kinds.count("list") == 1
+    assert kinds.count("picture") == 1
+
+
+def test_tables_and_image_docx_has_incomplete_note_simple_does_not(config, entry_for):
+    with_image = convert_entry(entry_for("tables_and_image.docx"), config)
+    without_image = convert_entry(entry_for("simple.docx"), config)
+
+    assert "INCOMPLETE" in with_image.output.read_text(encoding="utf-8")
+    assert "INCOMPLETE" not in without_image.output.read_text(encoding="utf-8")
+
+
+def test_csv_sidecar_ends_with_a_table_block(config, entry_for):
+    result = convert_entry(entry_for("reference_table.csv"), config)
+    data = json.loads(provenance_path(result.output).read_text(encoding="utf-8"))
+
+    assert data["blocks"][-1]["kind"] == "table"

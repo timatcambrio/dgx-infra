@@ -21,6 +21,7 @@ import csv
 import shutil
 import zipfile
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -622,6 +623,91 @@ def simple_docx(path: Path) -> None:
     _normalise_zip(path)
 
 
+#: `tables_and_image.docx` table content. Two separate tables so the provenance test can
+#: assert on "exactly two `table` blocks" rather than on one table split awkwardly in two.
+ROOM_TABLE_ROWS = [
+    ["Room", "Capacity", "Building", "Booking lead time"],
+    ["Alder", "8", "North", "24 hours"],
+    ["Birch", "20", "South", "48 hours"],
+]
+
+EQUIPMENT_TABLE_ROWS = [
+    ["Item", "Location", "Contact"],
+    ["Projector", "Supply closet", "facilities@example.org"],
+    ["Whiteboard cart", "Supply closet", "facilities@example.org"],
+]
+
+
+def _floor_plan_thumbnail_bytes() -> BytesIO:
+    """A tiny, deterministic PNG for the embedded-picture fixture.
+
+    6x6 rather than the 4x4 the addendum names: docling's `MsWordDocumentBackend` treats any
+    picture at or under `SPACER_IMAGE_AREA_THRESHOLD` (25px^2) as an invisible layout spacer
+    and drops it from the converted document entirely (verified against the installed
+    docling version -- a 4x4, 16px^2 image produces zero `PictureItem`s). 6x6 = 36px^2 clears
+    the threshold while staying a trivial, committable size. PIL's PNG writer embeds no
+    timestamp, so this is byte-stable across runs.
+    """
+    from PIL import Image
+
+    buffer = BytesIO()
+    Image.new("RGB", (6, 6), (176, 44, 44)).save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
+
+def tables_and_image_docx(path: Path) -> None:
+    """A title, two heading levels, a list, two tables, and one embedded picture.
+
+    Exercises the DOCX provenance walk end to end: headings at two distinct levels, a
+    bulleted list, two separate tables (so list/table grouping and block counting both have
+    something to prove), and one embedded picture, which must produce exactly one `picture`
+    block and the document-level INCOMPLETE note.
+    """
+    from docx import Document
+
+    document = Document()
+    document.add_heading("Facilities Reference Guide", level=0)
+    document.add_heading("Conference Rooms", level=1)
+    document.add_heading("Booking Policy", level=2)
+    document.add_paragraph(BODY_TEXT)
+
+    for item in (
+        "Reserve at least 24 hours ahead",
+        "Cancel unused holds by 9am so others can book",
+        "Report AV issues to facilities, not the room's occupant",
+    ):
+        document.add_paragraph(item, style="List Bullet")
+
+    room_table = document.add_table(rows=len(ROOM_TABLE_ROWS), cols=len(ROOM_TABLE_ROWS[0]))
+    for row_index, row in enumerate(ROOM_TABLE_ROWS):
+        for column_index, cell in enumerate(row):
+            room_table.cell(row_index, column_index).text = cell
+
+    document.add_paragraph("Shared equipment is booked separately from the rooms themselves.")
+
+    equipment_table = document.add_table(
+        rows=len(EQUIPMENT_TABLE_ROWS), cols=len(EQUIPMENT_TABLE_ROWS[0])
+    )
+    for row_index, row in enumerate(EQUIPMENT_TABLE_ROWS):
+        for column_index, cell in enumerate(row):
+            equipment_table.cell(row_index, column_index).text = cell
+
+    picture_paragraph = document.add_paragraph()
+    picture_paragraph.add_run().add_picture(_floor_plan_thumbnail_bytes())
+
+    properties = document.core_properties
+    properties.created = EPOCH.replace(tzinfo=None)
+    properties.modified = EPOCH.replace(tzinfo=None)
+    properties.title = "Facilities Reference Guide"
+    properties.author = "fixture"
+    properties.last_modified_by = "fixture"
+    properties.revision = 1
+
+    document.save(str(path))
+    _normalise_zip(path)
+
+
 def _normalise_zip(path: Path) -> None:
     """Repack a zip with fixed timestamps and sorted entries, so bytes are reproducible."""
     with zipfile.ZipFile(path) as archive:
@@ -673,6 +759,7 @@ GENERATORS = {
     "mixed.pdf": mixed,
     "mojibake.pdf": mojibake,
     "simple.docx": simple_docx,
+    "tables_and_image.docx": tables_and_image_docx,
     "reference_table.csv": reference_table_csv,
     "too_big.csv": too_big_csv,
     "annotated_form.pdf": annotated_form,

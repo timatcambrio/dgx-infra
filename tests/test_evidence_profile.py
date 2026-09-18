@@ -116,3 +116,15 @@ def test_a_document_whose_instructions_are_annotations_is_flagged(config):
 def test_a_plain_document_raises_no_evidence_notes(config):
     text = report_module.render_table(report_module.build(_manifest(), config))
     assert "EVIDENCE" not in text
+
+
+def test_a_docx_with_images_is_flagged_in_evidence_notes(config):
+    """A DOCX's embedded pictures are not in the text layer, same as a PDF's image pages."""
+    manifest = _manifest()
+    manifest["documents"][0]["source_file"] = "handbook.docx"
+    manifest["documents"][0]["source_format"] = "docx"
+    manifest["documents"][0]["conversion"] = {"converter": "docling (docx)", "images": 2}
+
+    text = report_module.render_table(report_module.build(manifest, config))
+
+    assert "handbook.docx: 2 embedded image(s) not in the text layer" in text
