@@ -358,6 +358,17 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-18 [TOOL] **ollama's `truncate: true` is not reliable** (ollama 0.21, nomic-embed-text,
+  `nomic-bert.context_length` 2048 with modelfile `num_ctx 8192`): a ~4k-char dotted-leader
+  table-of-contents chunk is refused with HTTP 400 "the input length exceeds the context
+  length" while 100k chars of plain words are accepted after truncation. Rule not
+  determined (no tokenize endpoint); not built on a guess. `retrieval/embed.py` now: 4xx is
+  raised at once with ollama's `error` text (no pointless retries; transient errors still
+  retried); a context-overflow 4xx falls back to per-text embedding, shrinking the text by
+  0.75 per step until accepted (floor 256 chars -> error), and reports each event as
+  `(position, original_len, kept_len)`. `index.py` logs one warning per event naming slug,
+  chunk, section and block range, and the summary line gains "N embeddings truncated".
+  Stored chunk text and the lexical leg are untouched. Deterministic. 454 tests.
 - 2026-09-18 [TOOL] **Two more real-corpus failures on the new Word files, both fixed as
   invariants rather than patches.** (1) A regulation supplement DOCX carried an image
   relationship whose Target is the `media/` directory (plus, in principle, targets never

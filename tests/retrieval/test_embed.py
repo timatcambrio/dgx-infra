@@ -115,3 +115,75 @@ def test_fake_ollama_helper_is_deterministic() -> None:
     assert v1 == v2
     v3 = embed_query("different text", base_url=BASE_URL, model="m", embed_dim=EMBED_DIM, client=_client(handler))
     assert v3 != v1
+
+
+def test_a_4xx_is_raised_at_once_with_ollamas_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+    monkeypatch.setattr("retrieval.embed.time.sleep", lambda s: pytest.fail("must not sleep on a 4xx"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(404, json={"error": "model 'm' not found"})
+
+    with pytest.raises(EmbedError, match="model 'm' not found"):
+        embed_documents(["a"], base_url=BASE_URL, model="m", embed_dim=EMBED_DIM, client=_client(handler))
+    assert len(calls) == 1
+
+
+def _context_capped_handler(cap: int, requests: list):
+    """Refuses any input longer than `cap` characters the way ollama does, else embeds."""
+    from fake_ollama import deterministic_vector
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        requests.append(body["input"])
+        if any(len(t) > cap for t in body["input"]):
+            return httpx.Response(400, json={"error": "the input length exceeds the context length"})
+        return httpx.Response(200, json={"embeddings": [deterministic_vector(t, EMBED_DIM) for t in body["input"]]})
+
+    return handler
+
+
+def test_context_overflow_shortens_only_the_offending_text_and_reports_it() -> None:
+    requests: list = []
+    texts = ["short one", "x" * 5000, "short two"]
+    truncations: list = []
+    vectors = embed_documents(
+        texts, base_url=BASE_URL, model="m", embed_dim=EMBED_DIM,
+        client=_client(_context_capped_handler(1000, requests)), truncations=truncations,
+    )
+    assert len(vectors) == 3
+    assert len(truncations) == 1
+    position, original, kept = truncations[0]
+    assert position == 1 and original == 5000 + len("search_document: ") and kept <= 1000
+    # The short texts were embedded whole; only the long one was cut.
+    embedded_singly = [b[0] for b in requests if len(b) == 1]
+    assert any(t == "search_document: short one" for t in embedded_singly)
+    # The final, accepted request for the long text is within the cap.
+    accepted_long = [b[0] for b in requests if len(b) == 1 and b[0].startswith("search_document: x") and len(b[0]) <= 1000]
+    assert accepted_long and len(accepted_long[-1]) == kept
+
+
+def test_context_overflow_is_deterministic() -> None:
+    texts = ["y" * 3000]
+    outs = []
+    for _ in range(2):
+        truncations: list = []
+        outs.append((embed_documents(texts, base_url=BASE_URL, model="m", embed_dim=EMBED_DIM,
+                     client=_client(_context_capped_handler(800, [])), truncations=truncations), truncations))
+    assert outs[0] == outs[1]
+
+
+def test_context_overflow_below_the_floor_is_an_error() -> None:
+    with pytest.raises(EmbedError, match="refuses text #0"):
+        embed_documents(["z" * 3000], base_url=BASE_URL, model="m", embed_dim=EMBED_DIM,
+                        client=_client(_context_capped_handler(10, [])))
+
+
+def test_index_summary_names_truncated_embeddings() -> None:
+    from retrieval.index import IndexResult
+
+    assert "truncated" not in IndexResult(unchanged=1).summary_line
+    assert IndexResult(reindexed=2, embeddings_truncated=3).summary_line.endswith(
+        "3 embeddings truncated (see stderr)"
+    )

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -21,6 +22,8 @@ from .embed import embed_documents
 from .kbfiles import KbFileError, load_document
 from .sections import build_sections
 
+_log = logging.getLogger(__name__)
+
 CONTENT_TABLES = ("chunks", "sections", "blocks", "documents")
 
 
@@ -34,13 +37,19 @@ class IndexResult:
     reindexed: int = 0
     deleted: int = 0
     errors: list[tuple[Path, str]] = field(default_factory=list)
+    #: Chunks whose text had to be shortened for the embedding model (embed.py). The stored
+    #: text is intact; only the vector saw a prefix. Counted so it is never silent.
+    embeddings_truncated: int = 0
 
     @property
     def summary_line(self) -> str:
-        return (
+        line = (
             f"{self.unchanged} unchanged, {self.reindexed} reindexed, "
             f"{self.deleted} deleted, {len(self.errors)} errors"
         )
+        if self.embeddings_truncated:
+            line += f", {self.embeddings_truncated} embeddings truncated (see stderr)"
+        return line
 
 
 async def _check_index_meta(conn: asyncpg.Connection, cfg: Config, *, reindex_all: bool) -> None:
@@ -125,13 +134,24 @@ async def run_index(
                     f"{section_by_index[c.section_index].heading_path}\n\n{c.text}"
                     for c in chunks
                 ]
+                truncations: list = []
                 vectors = embed_documents(
                     texts,
                     base_url=cfg.ollama_base_url,
                     model=cfg.embed_model,
                     embed_dim=cfg.embed_dim,
                     client=embed_client,
+                    truncations=truncations,
                 )
+                for position, original, kept in truncations:
+                    chunk = chunks[position]
+                    _log.warning(
+                        "%s chunk %d (section %d, blocks %d-%d): embedded the first %d of %d "
+                        "characters; the model refused the whole text as over its context",
+                        slug, position, chunk.section_index,
+                        chunk.block_first, chunk.block_last, kept, original,
+                    )
+                result.embeddings_truncated += len(truncations)
 
             outline = [
                 {
