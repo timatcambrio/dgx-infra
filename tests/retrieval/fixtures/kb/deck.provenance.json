@@ -2,7 +2,7 @@
   "version": 1,
   "source_file": "deck.pdf",
   "source_format": "pdf",
-  "content_sha256": "896beac4916c394af3a1684e60392bf6695f7727ec8f1346769bab0639120d5b",
+  "content_sha256": "6e9b9f66a8ec224c29d104832e2390971eeea7267820397409c7093cf404d293",
   "converter": "pdfplumber-geometry (model-free)",
   "blocks": [
     {
@@ -219,6 +219,12 @@
       "block_id": "deck:p015:b001",
       "page": 15,
       "kind": "list",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "deck:p015:b002",
+      "page": 15,
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {

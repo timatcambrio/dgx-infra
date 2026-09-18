@@ -52,10 +52,10 @@
       "source_format": "pdf",
       "text_class": "clean",
       "has_sidecar": true,
-      "chars": 14218,
-      "block_count": 73,
+      "chars": 14307,
+      "block_count": 74,
       "block_kind_counts": {
-        "paragraph": 18,
+        "paragraph": 19,
         "heading": 31,
         "list": 24
       },
@@ -71,7 +71,7 @@
       "source_format": "csv",
       "text_class": "clean",
       "has_sidecar": false,
-      "chars": 686,
+      "chars": 697,
       "block_count": 1,
       "block_kind_counts": {
         "table": 1

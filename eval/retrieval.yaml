@@ -1,0 +1,56 @@
+# Retrieval regression cases (brief §6.7). Run with `kb eval` (or `make eval-retrieval`).
+#
+# These eight run against the synthetic fixtures in `tests/retrieval/fixtures/kb/` and are
+# asserted to reach 100% fused hit@5 in `tests/retrieval/test_eval.py`. They exercise the
+# distinctive tokens `make_fixtures.py` plants (FORM-7731, "carry over", DECKMARK-4412,
+# REFTAB-ANCHOR-4471) plus a few handbook section headings, which are the only real-English
+# text in an otherwise nonsense-word corpus and so are themselves unambiguous.
+#
+# This file is NOT the recorded numbers for the real corpus -- Tim runs `kb eval` there and
+# records those in the README separately (brief §6.7, README "How to read the eval table").
+
+#
+# Question wording note: `websearch_to_tsquery` ANDs every unquoted word, so a question
+# padded with words the (nonsense-word) fixture corpus does not contain would fail the
+# lexical leg for reasons that have nothing to do with retrieval quality. Every question
+# below is built only from words that actually appear in its target section (the planted
+# token, or the section's own heading, which is real English in an otherwise nonsense
+# corpus) -- that is a property of writing a fair fixture question, not of tuning the
+# retrieval code.
+
+cases:
+  - id: form-token-exact
+    question: "FORM-7731"
+    expected_slug: budget-form
+    # A bare alphanumeric code like this is exactly what embeddings blur and exact-token
+    # lexical search catches -- the case the two legs exist to cover differently.
+
+  - id: carryover-page
+    question: Carried-Over Federal Funds
+    expected_slug: budget-form
+    expected_page: 3
+
+  - id: carryover-phrase
+    question: carry over amounts
+    expected_slug: budget-form
+    expected_phrase: "carry over"
+
+  - id: reference-table-anchor
+    question: "REFTAB-ANCHOR-4471"
+    expected_slug: reference-table
+
+  - id: deck-marker
+    question: "DECKMARK-4412"
+    expected_slug: deck
+
+  - id: handbook-per-diem
+    question: Per Diem Rates
+    expected_slug: handbook
+
+  - id: handbook-travel-policy
+    question: Travel Policy
+    expected_slug: handbook
+
+  - id: handbook-mileage
+    question: Mileage
+    expected_slug: handbook

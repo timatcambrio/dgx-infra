@@ -54,6 +54,11 @@ WORDS = (
 
 CALLOUT_TOKEN = "FORM-7731"
 CARRY_OVER = "carry over"
+#: Planted for the S2 retrieval eval (brief §6.7): each appears exactly once in its
+#: document so a lexical query for it has an unambiguous target, including the two
+#: documents (`deck`, `reference-table`) that otherwise contain only nonsense words.
+DECK_TOKEN = "DECKMARK-4412"
+REFTAB_TOKEN = "REFTAB-ANCHOR-4471"
 
 
 def rng_for(slug: str) -> random.Random:
@@ -329,6 +334,8 @@ def build_deck() -> dict:
                 doc.add(page, "paragraph", paragraph(rng, rng.randint(3, 5)))
             else:
                 doc.add(page, "list", bullet_list(rng, rng.randint(3, 6)))
+        if page == 15:
+            doc.add(page, "paragraph", f"Marker token {DECK_TOKEN} appears once in this deck.")
 
     return doc.render(title="Program Review Deck", source_format="pdf", text_class="clean")
 
@@ -338,7 +345,7 @@ def build_reference_table() -> dict:
     "a CSV body that is a single markdown table becomes one `kind='table'` block")."""
     rng = rng_for("reference-table")
     doc = DocBuilder("reference-table")
-    doc.add(None, "table", table(rng, rows=12, cols=5))
+    doc.add(None, "table", table(rng, rows=12, cols=5, plant=REFTAB_TOKEN))
     return doc.render(
         title="Reference Table",
         source_format="csv",

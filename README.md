@@ -340,8 +340,8 @@ Once `kb/` exists, a second, separate command line — `kb` — makes it searcha
 to an AI assistant (Codex, ChatGPT desktop, Claude Code, Claude desktop) over MCP. It lives
 in the same repo, behind its own install step, and does not change anything above.
 
-**Status:** indexing works. Search, serving over MCP, the eval harness, and document
-summaries come in later milestones and are not usable yet.
+**Status:** indexing, search and the eval harness work. Serving over MCP (Codex, Claude
+Code, and the rest) and document summaries come in later milestones and are not usable yet.
 
 ```bash
 uv sync --extra serve                      # installs kb's dependencies; plain `uv sync` does not
@@ -351,9 +351,9 @@ uv run kb index --init                     # applies the database schema
 uv run kb index                            # walks kb/, embeds it, loads it into Postgres
 ```
 
-`kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); all but
-`index` currently exit with "not implemented until S<n>" naming the milestone that adds
-them.
+`kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); `serve`
+and `catalog` currently exit with "not implemented until S<n>" naming the milestone that
+adds them.
 
 ### `kb index`
 
@@ -413,12 +413,74 @@ matter to get right: `DATABASE_URL_INDEX` (the writer role `kb index` uses) and
 dev up -d db` creates a local Postgres with both roles already set up, matching the defaults
 in `.env.example`.
 
+### `kb search`
+
+```bash
+uv run kb search "per diem rates" --k 8 [--slug handbook] [--text-class clean] [--leg fused]
+```
+
+Runs the same retrieval the (future) MCP server uses and prints one line per hit, followed
+by an indented citation line:
+
+```
+0.0164  sec:handbook:5  pages 12–13  Employee Handbook › Handbook › Per Diem Rates  |  Uxbane...
+    Employee Handbook, Employee Handbook › Handbook › Per Diem Rates (source: handbook.pdf, pages 12–13, dated UNCONFIRMED; blocks handbook:p012:b000…handbook:p013:b002)
+```
+
+Every search runs two independent legs over the indexed chunks and merges them:
+
+- **Lexical** (Postgres full-text search) catches exact tokens -- form numbers, codes,
+  exact phrases -- that an embedding model tends to blur together with similar-looking
+  text.
+- **Vector** (cosine similarity over `nomic-embed-text` embeddings) catches paraphrase --
+  the right passage even when the question uses none of the document's own words.
+
+Neither leg alone is reliable enough on its own, so results are merged with reciprocal
+rank fusion (RRF): each leg contributes independently, and a hit that both legs agree on
+outranks a hit either leg alone thought was best. `--leg lexical` or `--leg vector` runs
+one leg in isolation, for debugging. A query made only of stop words (`"the of and"`) has
+no lexical leg to run (`websearch_to_tsquery` parses it to nothing) and falls back to
+vector-only results rather than erroring.
+
+Every hit is a **section**, never a chunk: chunks are what search matches against
+internally, but what comes back is always a whole readable section with its page range,
+heading path, and a citation you can quote and go check against the original markdown.
+
+### `kb eval`
+
+```bash
+uv run kb eval [--cases eval/retrieval.yaml] [--k 5]
+```
+
+Runs a fixed set of questions with known answers (`eval/retrieval.yaml`) against the index
+and prints a table:
+
+```
+case id                         lexical   vector    fused
+form-token-exact                      1        5        1
+...
+lexical hit@5: 100%
+vector hit@5: 50%
+fused hit@5: 100%
+```
+
+Each row is one case; the number is the rank (1 = top result) of the first section that
+leg returned matching the case's expected document (and, if the case specifies them, an
+expected phrase or page) within the top `--k`. A `-` means that leg never found it. The
+three percentages at the bottom are hit@k across all cases, one per leg.
+
+The committed cases run only against the synthetic fixtures in
+`tests/retrieval/fixtures/kb/` and are checked in the test suite (fused hit@5 must be
+100% there). They say nothing about retrieval quality on the real corpus. **Tim runs `kb
+eval` against the real, indexed corpus and records those numbers here** once that has
+happened; no number for the real corpus is invented in this README or committed by an
+agent.
+
 ### What is deliberately not built yet
 
-Search, the MCP server (stdio and HTTP), the eval harness, and document summaries all come
-later, in the order in `stage2-retrieval-brief.md` §9. This section will grow a real
-quickstart (adding `kb` to Codex and Claude Code, reading the eval table, rotating a token)
-as those land.
+The MCP server (stdio and HTTP) and document summaries come later, in the order in
+`stage2-retrieval-brief.md` §9. This section will grow a real quickstart (adding `kb` to
+Codex and Claude Code, rotating a token) once those land.
 
 ---
 

@@ -120,12 +120,83 @@ def search(
     query: str = typer.Argument(..., help="Search query."),
     k: int = typer.Option(8, "--k"),
     slug: Optional[str] = typer.Option(None, "--slug"),
+    text_class: Optional[str] = typer.Option(None, "--text-class"),
     leg: Optional[str] = typer.Option(None, "--leg", help="lexical|vector|fused"),
     env_file: Optional[Path] = ENV_FILE_OPTION,
 ) -> None:
-    """Search the index. Not implemented until S2."""
-    _load_config(env_file)
-    _not_implemented("search", "S2")
+    """Search the index and print one hit per line, with its citation."""
+    cfg = _load_config(env_file)
+    leg_name = leg or "fused"
+    if leg_name not in ("lexical", "vector", "fused"):
+        typer.secho(
+            f"--leg must be lexical|vector|fused, got {leg_name!r}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=2)
+
+    # Imported lazily: see the note on `index`'s import above.
+    from . import cite as cite_module
+    from . import ids as ids_module
+    from . import search as search_module
+    from .embed import embed_query
+
+    filters = {}
+    if slug:
+        filters["slug"] = slug
+    if text_class:
+        filters["text_class"] = text_class
+
+    async def _run() -> None:
+        import asyncpg
+        from pgvector.asyncpg import register_vector
+
+        dsn = cfg.require_database_url()
+        conn = await asyncpg.connect(dsn)
+        try:
+            await register_vector(conn)
+
+            def embed_fn(q: str) -> list[float]:
+                return embed_query(
+                    q,
+                    base_url=cfg.ollama_base_url,
+                    model=cfg.embed_model,
+                    embed_dim=cfg.embed_dim,
+                )
+
+            hits = await search_module.search(
+                conn,
+                query,
+                k=k,
+                filters=filters or None,
+                embed_query_fn=embed_fn,
+                leg=leg_name,
+            )
+            for h in hits:
+                pages = (
+                    f"{h.page_first}–{h.page_last}" if h.page_first is not None else "n/a"
+                )
+                sec_id = ids_module.sec_id(h.slug, h.section_index)
+                typer.echo(
+                    f"{h.score:.4f}  {sec_id}  pages {pages}  {h.heading_path}  |  {h.snippet}"
+                )
+                source_file = await cite_module.fetch_source_file(conn, h.slug)
+                first_id, last_id = await cite_module.fetch_block_ids(
+                    conn, h.slug, h.block_first, h.block_last
+                )
+                citation = cite_module.build_citation(
+                    title=h.title,
+                    heading_path=h.heading_path,
+                    source_file=source_file,
+                    page_first=h.page_first,
+                    page_last=h.page_last,
+                    doc_date=h.doc_date,
+                    first_block_id=first_id,
+                    last_block_id=last_id,
+                )
+                typer.echo(f"    {citation}")
+        finally:
+            await conn.close()
+
+    asyncio.run(_run())
 
 
 @app.command()
@@ -140,12 +211,48 @@ def serve(
 
 @app.command(name="eval")
 def eval_(
-    cases: Optional[Path] = typer.Option(None, "--cases"),
+    cases: Optional[Path] = typer.Option(
+        None, "--cases", help="Defaults to eval/retrieval.yaml."
+    ),
+    k: int = typer.Option(5, "--k"),
     env_file: Optional[Path] = ENV_FILE_OPTION,
 ) -> None:
-    """Run the retrieval regression eval. Not implemented until S2."""
-    _load_config(env_file)
-    _not_implemented("eval", "S2")
+    """Run the retrieval regression eval and print the hit-rate table."""
+    cfg = _load_config(env_file)
+
+    from . import eval as eval_module
+    from .embed import embed_query
+
+    cases_path = cases or eval_module.DEFAULT_CASES_PATH
+    case_list = eval_module.load_cases(cases_path)
+
+    async def _run() -> eval_module.EvalResult:
+        import asyncpg
+        from pgvector.asyncpg import register_vector
+
+        dsn = cfg.require_database_url()
+        conn = await asyncpg.connect(dsn)
+        try:
+            await register_vector(conn)
+
+            def embed_fn(q: str) -> list[float]:
+                return embed_query(
+                    q,
+                    base_url=cfg.ollama_base_url,
+                    model=cfg.embed_model,
+                    embed_dim=cfg.embed_dim,
+                )
+
+            return await eval_module.run_eval(conn, case_list, k=k, embed_query_fn=embed_fn)
+        finally:
+            await conn.close()
+
+    result = asyncio.run(_run())
+    for line in result.table_lines:
+        typer.echo(line)
+    typer.echo("")
+    for leg_name in eval_module.LEGS:
+        typer.echo(f"{leg_name} hit@{k}: {result.rate(leg_name):.0%}")
 
 
 @app.command()

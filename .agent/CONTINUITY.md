@@ -335,6 +335,41 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-18 [TOOL] Stage 2 milestone S2 (Search + eval) built per
+  `stage2-retrieval-brief.md` §6.4, §6.7, §8.2, §9 S2, §13. New modules:
+  `retrieval/search.py` (`SectionHit`, `search()`/`search_legs()` per §6.4: lexical leg
+  `websearch_to_tsquery`/`ts_rank_cd` top 20 skipped when the tsquery parses empty, vector
+  leg `<=>` top 20 via the pgvector codec, `fuse_rrf` as a pure function over already-
+  ranked id lists (K=60), collapse to `(slug, section_index)` keeping the best chunk,
+  `(slug, section_index)` tie-break, `k` clamped 1..25, `filters` on slug/text_class/
+  page_min/page_max applied as parameterised SQL to both legs); `retrieval/cite.py`
+  (`build_citation` per §6.5.2's exact format, `fetch_source_file`/`fetch_block_ids`
+  against `documents`/`blocks` — never guessed); `retrieval/eval.py` + `eval/
+  retrieval.yaml` (`kb eval` per §6.7: section hit@k, table of per-case per-leg ranks,
+  three overall rates, exit 0 always). `retrieval/cli.py` gained `kb search` and `kb eval`.
+  **Interpretation**: brief's example eval cases pad the question with connective English
+  words ("Which cell records...") that `websearch_to_tsquery` ANDs together; since the
+  fixture corpus is nonsense words outside headings/plants, such padding fails the lexical
+  leg for reasons unrelated to retrieval quality. Reworded the 8 seeded cases to use only
+  words that actually appear in their target section (the planted token, or the section's
+  own heading text) — a property of writing a fair fixture question, not of tuning
+  retrieval code (brief hard rule 7 forbids the latter, not the former). Also planted two
+  new distinctive tokens via `make_fixtures.py` (`DECKMARK-4412` in `deck` page 15,
+  `REFTAB-ANCHOR-4471` in `reference-table`, both allowed under hard rule 7) since those
+  two documents otherwise contain no real English words a query could target; fixtures and
+  `expected.json` regenerated (deck: 73→74 blocks, 32→32 chunks; reference-table chars
+  686→697), `make fixtures-retrieval` still a no-op. Fixture eval (fake embedder, `kb eval`
+  against 8 seeded cases, k=5): lexical hit@5 100%, vector hit@5 50% (fake vectors are
+  content-independent hashes, so this number is meaningless by construction — expected),
+  fused hit@5 100%. `make check`: 401 passed, both gates green. Verified from the CLI
+  against the real `kb` database (not `kb_test`) with `KB_PATH=tests/retrieval/fixtures`
+  and a throwaway `http.server` stand-in for ollama (scratchpad, not committed):
+  `kb search "FORM-7731"` returns the planted section first; `kb search "the of and"`
+  returns vector-only results without erroring; `kb eval` reaches the same 100%/50%/100%
+  fused/vector/lexical split. The `kb` database was truncated back to empty afterward so no
+  fixture data was left in it. No document content read or committed; `retrieval/schema.sql`,
+  `chunk.py`, `sections.py`, `kbfiles.py`, `index.py`, and everything under `pipeline/` were
+  not touched.
 - 2026-09-17 [TOOL] S1 review found and fixed a chunker defect: a `table` flushed its chunk
   immediately, so annotations/boxed text following a table (the notes beside a form's
   grid, the evidence the design exists to keep together) started a chunk of their own.
