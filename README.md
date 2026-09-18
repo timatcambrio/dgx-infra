@@ -443,10 +443,13 @@ structure. Two cuts happen, in order:
    assistant reads: it is never split across a search result.
 2. **Chunks.** Inside a section, blocks (paragraphs, lists, tables, annotations) are
    grouped into runs of about 1,200 characters — a chunk is what search actually matches
-   against, never shown as an answer on its own. A table is never split across two chunks,
-   even an unusually large one; it shares a chunk with its section's heading when it is the
-   first thing under it, otherwise it gets a chunk to itself. A very long paragraph or list
-   (over 2,500 characters) is split at its blank lines rather than mid-sentence. Notes such
+   against, never shown as an answer on its own. A table shares a chunk with its section's
+   heading when it is the first thing under it, otherwise it gets a chunk to itself, and
+   is never split unless it is over 2,500 characters. A larger table is cut only between
+   rows: each piece repeats the table's header row and the last row of the piece before
+   it, so every piece reads as a table on its own, and a single row is never cut however
+   long it is. A very long paragraph or list (over 2,500 characters) is split at its
+   blank lines rather than mid-sentence. Notes such
    as `> **Annotation**` or `> **Boxed text:**` always stay attached to whatever came right
    before them.
 
