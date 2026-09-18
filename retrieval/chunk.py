@@ -3,10 +3,19 @@
 
 Four rules, in priority order:
 
-1. A `table` block is never split. It is glued to the section's heading block when it is
-   the first content under it; otherwise it starts its own chunk. Annotations and boxed
-   text that follow it stay in that chunk (rule 2); the next block of any other kind
-   starts a new chunk. An oversized table is one oversized chunk.
+1. A `table` block is glued to the section's heading block when it is the first content
+   under it; otherwise it starts its own chunk. Annotations and boxed text that follow it
+   stay in that chunk (rule 2); the next block of any other kind starts a new chunk. A
+   table at or under `CHUNK_MAX` is never split. Above it, a pipe table is cut only
+   between rows: every piece re-opens with the header row and its delimiter row, carries
+   the previous piece's last row as one row of overlap, keeps the table's block ordinal,
+   and holds at least one new row (so a single row longer than `CHUNK_MAX` stays whole).
+   A `table` block with no pipe rows has no row boundaries and splits at blank lines like
+   a paragraph (rule 3). Why: the embedding model reads a bounded prefix of a chunk
+   (`embed.py`), so a chunk longer than that is ranked on its head alone; the row is the
+   unit the GFM table format guarantees, and the repeated header keeps every piece
+   readable as a table. Section fetch still returns the whole table; only finding is at
+   stake.
 2. `annotation` and `boxed_text` blocks never start a new chunk; they stay with the block
    before them even if that pushes the chunk past `CHUNK_TARGET`.
 3. Only `paragraph` or `list` blocks longer than `CHUNK_MAX` may be split, at blank lines;
@@ -18,7 +27,7 @@ Four rules, in priority order:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from .kbfiles import Block
@@ -28,6 +37,8 @@ CHUNK_TARGET = 1200
 CHUNK_MAX = 2500
 
 _BLANK_LINE_RE = re.compile(r"\n\s*\n")
+#: GFM delimiter row: cells of one or more hyphens, optional alignment colons.
+_DELIMITER_ROW_RE = re.compile(r"^\s*\|?(\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?\s*$")
 
 
 @dataclass
@@ -58,6 +69,41 @@ def _split_at_blank_lines(text: str, max_chars: int) -> list[str]:
             cur = candidate
     if cur:
         pieces.append(cur)
+    return pieces
+
+
+def _split_table_rows(text: str, max_chars: int) -> Optional[list[str]]:
+    """Cut a pipe table between rows (rule 1). Returns None when `text` is not a pipe
+    table (no header row followed by a delimiter row), so the caller can fall back to
+    blank-line splitting. A line that does not start with `|` continues the row before it
+    and is never a cut point. Each piece = header + delimiter + [overlap row] + rows,
+    filled greedily to `max_chars`; a piece always takes at least one new row."""
+    lines = text.split("\n")
+    if len(lines) < 3 or not lines[0].lstrip().startswith("|"):
+        return None
+    if not _DELIMITER_ROW_RE.match(lines[1]):
+        return None
+    header = f"{lines[0]}\n{lines[1]}"
+    rows: list[str] = []
+    for line in lines[2:]:
+        if rows and not line.lstrip().startswith("|"):
+            rows[-1] += "\n" + line
+        else:
+            rows.append(line)
+    if not rows:
+        return [text]
+    pieces: list[str] = []
+    overlap: Optional[str] = None
+    i = 0
+    while i < len(rows):
+        cur = header if overlap is None else f"{header}\n{overlap}"
+        cur = f"{cur}\n{rows[i]}"
+        i += 1
+        while i < len(rows) and len(cur) + 1 + len(rows[i]) <= max_chars:
+            cur = f"{cur}\n{rows[i]}"
+            i += 1
+        pieces.append(cur)
+        overlap = rows[i - 1]
     return pieces
 
 
@@ -114,7 +160,17 @@ def _chunk_section(section: Section, target: int, max_chars: int) -> list[Chunk]
         if block.kind == "table":
             if cur and not (len(cur) == 1 and cur[0].kind == "heading"):
                 flush()
-            cur.append(block)
+            pieces = [block.text]
+            if len(block.text) > max_chars:
+                pieces = _split_table_rows(block.text, max_chars) or _split_at_blank_lines(
+                    block.text, max_chars
+                )
+            # Every piece keeps the table's ordinal; only the last stays open so that the
+            # annotations and boxed text after the table glue to it (rule 2).
+            for piece in pieces[:-1]:
+                cur.append(replace(block, text=piece))
+                flush()
+            cur.append(replace(block, text=pieces[-1]))
             after_table = True
             continue
 
