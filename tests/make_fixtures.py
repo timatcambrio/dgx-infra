@@ -775,6 +775,12 @@ def xml_comment_docx(path: Path) -> None:
     body.insert(0, etree.Comment("Topic unique_1"))
     body.insert(body.index(paragraphs[2]), etree.Comment("Topic unique_2"))
     body.insert(body.index(paragraphs[3]), etree.ProcessingInstruction("publisher", "marker"))
+    # Inside a paragraph too, and in a header part: Docling walks headers and footers with
+    # the same tag-name lookup, and a nested comment must not survive either.
+    paragraphs[1].insert(0, etree.Comment("inline marker"))
+    header = document.sections[0].header
+    header.paragraphs[0].text = "Supplement running header"
+    header._element.insert(0, etree.Comment("Topic header_1"))
 
     properties = document.core_properties
     properties.created = EPOCH.replace(tzinfo=None)

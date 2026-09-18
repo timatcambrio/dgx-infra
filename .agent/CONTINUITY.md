@@ -363,7 +363,10 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `MsWordDocumentBackend._walk_linear`). Hit on a regulation supplement DOCX carrying
   `<!--Topic unique_N-->` markers between paragraphs; DAFFARS converted, DFARS did not.
   Fixed in `office._strip_non_element_nodes`: comment and processing-instruction nodes are
-  removed from the body before the walk (tail text preserved). Synthetic fixture
+  removed from EVERY WordprocessingML part (body, headers, footers, footnotes, comments)
+  before the walk, reached via the package so no header definition is created as a side
+  effect; tail text preserved. Widened after review: docling walks header/footer parts
+  with the same tag-name lookup, so a body-only strip would have crashed on a header. Synthetic fixture
   `xml_comment.docx` + `test_docx_with_xml_comment_nodes_in_body_converts`. Upstream bug
   in docling, not reported. 439 tests.
 - 2026-09-18 [TOOL] Stage 2 milestone S4 (HTTP on the LAN) built per

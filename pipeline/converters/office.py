@@ -120,36 +120,55 @@ def _load_document(path: Path):
         filename=path.name,
     )
     backend = MsWordDocumentBackend(in_doc=in_doc, path_or_stream=path)
-    _strip_non_element_nodes(backend.docx_obj.element.body)
+    _strip_non_element_nodes(backend.docx_obj)
     return backend.convert()
 
 
-def _strip_non_element_nodes(body) -> int:
-    """Remove XML comment and processing-instruction nodes from a Word body, in place.
+#: Every WordprocessingML part shares this content-type prefix: the main document, headers,
+#: footers, footnotes, endnotes, comments. Docling walks several of them.
+_WML_CONTENT_TYPE_PREFIX = "application/vnd.openxmlformats-officedocument.wordprocessingml."
+
+
+def _strip_non_element_nodes(docx_obj) -> int:
+    """Remove XML comment and processing-instruction nodes from every WordprocessingML part
+    of an opened document, in place. Returns the number removed.
 
     Regulation publishing systems emit `<!--Topic ...-->` markers and processing
-    instructions between body paragraphs. Docling's Word backend walks every child of the
-    body and asks lxml for its tag name; a comment or processing instruction has none, so
-    the walk raised `ValueError: Invalid input tag`. Neither node kind carries document
-    text, so dropping them loses nothing. Returns the number removed.
+    instructions between paragraphs. Docling's Word backend walks the body, and then every
+    header and footer part, asking lxml for each child's tag name; a comment or processing
+    instruction has none, so the walk raised `ValueError: Invalid input tag`.
+
+    The invariant established here is spec-level rather than case-by-case: WordprocessingML
+    carries no document content in XML comments or processing instructions (Word itself
+    discards both on load; reviewer comments are `w:comment` *elements* in a separate part
+    and are untouched), so removing every such node from every WML part loses nothing and
+    leaves Docling a tree it can walk anywhere. Parts are reached through the package, not
+    through `section.header`, because python-docx's header accessors create a definition
+    when one is absent and that would change the document Docling sees.
     """
-    from lxml import etree  # noqa: PLC0415 - lazy, alongside the docling imports
+    from docx.opc.part import XmlPart  # noqa: PLC0415 - lazy, alongside the docling imports
+    from lxml import etree  # noqa: PLC0415
 
     removed = 0
-    for node in list(body.iter(etree.Comment, etree.ProcessingInstruction)):
-        parent = node.getparent()
-        if parent is None:
+    for part in docx_obj.part.package.iter_parts():
+        if not isinstance(part, XmlPart):
             continue
-        # lxml drops a removed node's tail text with it; OOXML tail text between body
-        # children is insignificant whitespace, but keep it anyway to alter nothing else.
-        if node.tail:
-            previous = node.getprevious()
-            if previous is not None:
-                previous.tail = (previous.tail or "") + node.tail
-            else:
-                parent.text = (parent.text or "") + node.tail
-        parent.remove(node)
-        removed += 1
+        if not part.content_type.startswith(_WML_CONTENT_TYPE_PREFIX):
+            continue
+        for node in list(part.element.iter(etree.Comment, etree.ProcessingInstruction)):
+            parent = node.getparent()
+            if parent is None:
+                continue
+            # lxml drops a removed node's tail text with it. Between WML elements that tail
+            # is insignificant whitespace, but it is kept so nothing else changes.
+            if node.tail:
+                previous = node.getprevious()
+                if previous is not None:
+                    previous.tail = (previous.tail or "") + node.tail
+                else:
+                    parent.text = (parent.text or "") + node.tail
+            parent.remove(node)
+            removed += 1
     return removed
 
 

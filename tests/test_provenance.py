@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 
 from pipeline.convert import convert_entry, provenance_path
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 BLOCK = re.compile(r"<!-- dgx:block=([^ ]+) -->")
 
@@ -145,5 +148,28 @@ def test_docx_with_xml_comment_nodes_in_body_converts(config, entry_for):
     data = json.loads(provenance_path(result.output).read_text(encoding="utf-8"))
     kinds = [b["kind"] for b in data["blocks"]]
     assert kinds.count("heading") == 2
-    assert kinds.count("paragraph") == 2
-    assert "Topic unique" not in result.output.read_text(encoding="utf-8")
+    assert kinds.count("paragraph") >= 2
+    text = result.output.read_text(encoding="utf-8")
+    assert "Topic unique" not in text
+    assert "Topic header" not in text
+    assert "inline marker" not in text
+
+
+def test_strip_non_element_nodes_covers_every_wml_part(config):
+    """The invariant, checked directly: after stripping, no WordprocessingML part of the
+    package holds a comment or processing-instruction node, and the count reported equals
+    what the fixture planted (two body comments, one body PI, one inline, one header)."""
+    from docx import Document
+    from docx.opc.part import XmlPart
+    from lxml import etree
+
+    from pipeline.converters.office import _WML_CONTENT_TYPE_PREFIX, _strip_non_element_nodes
+
+    docx_obj = Document(str(FIXTURES / "xml_comment.docx"))
+    assert _strip_non_element_nodes(docx_obj) == 5
+    for part in docx_obj.part.package.iter_parts():
+        if isinstance(part, XmlPart) and part.content_type.startswith(_WML_CONTENT_TYPE_PREFIX):
+            assert not list(part.element.iter(etree.Comment, etree.ProcessingInstruction)), (
+                part.partname
+            )
+    assert _strip_non_element_nodes(docx_obj) == 0
