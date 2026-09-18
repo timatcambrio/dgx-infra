@@ -50,21 +50,42 @@ def index(
     init: bool = typer.Option(
         False, "--init", help="Apply the schema and roles, then exit (no indexing yet)."
     ),
-    force: bool = typer.Option(False, "--force", help="Not implemented until S1."),
+    force: bool = typer.Option(
+        False, "--force", help="Reindex every document, even if its kb_sha256 is unchanged."
+    ),
     reindex_all: bool = typer.Option(
-        False, "--reindex-all", help="Not implemented until S1."
+        False,
+        "--reindex-all",
+        help="Truncate the content tables first (needed after EMBED_MODEL/EMBED_DIM changes).",
     ),
     env_file: Optional[Path] = ENV_FILE_OPTION,
 ) -> None:
-    """Walk kb/ and load it into Postgres. Only --init works until S1."""
+    """Walk kb/ and load it into Postgres."""
     cfg = _load_config(env_file)
 
-    if not init:
-        _not_implemented("index (without --init)", "S1")
+    if init:
+        _run_init(cfg)
+        return
 
+    # Imported lazily: asyncpg/pgvector/httpx live behind the `serve` extra, and a bare
+    # `uv sync` must not need them merely to import retrieval.cli.
+    from . import index as index_module
+
+    try:
+        result = asyncio.run(index_module.run_index(cfg, force=force, reindex_all=reindex_all))
+    except index_module.IndexConfigError as exc:
+        typer.echo(f"kb index: {exc}", err=True)
+        raise typer.Exit(code=2)
+
+    typer.echo(result.summary_line)
+    for f, msg in result.errors:
+        typer.secho(f"  error: {f}: {msg}", fg=typer.colors.RED, err=True)
+    if result.errors:
+        raise typer.Exit(code=1)
+
+
+def _run_init(cfg: Config) -> None:
     async def _init() -> None:
-        # Imported lazily: asyncpg/pgvector live behind the `serve` extra, and a bare
-        # `uv sync` must not need them merely to import retrieval.cli.
         import asyncpg
 
         from . import db as db_module
@@ -80,6 +101,8 @@ def index(
             )
         finally:
             await conn.close()
+
+    from . import db as db_module
 
     try:
         asyncio.run(_init())

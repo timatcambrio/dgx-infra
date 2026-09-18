@@ -335,6 +335,81 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-17 [TOOL] S1 review found and fixed a chunker defect: a `table` flushed its chunk
+  immediately, so annotations/boxed text following a table (the notes beside a form's
+  grid, the evidence the design exists to keep together) started a chunk of their own.
+  `retrieval/chunk.py` now defers the table's flush until a block that is not annotation/
+  boxed_text follows. The brief's own §5.4 pseudo-code had the same defect and is corrected.
+  Regression test `test_annotations_after_a_table_stay_in_the_table_chunk`. Fixture effect:
+  `budget-form` 16 -> 14 chunks (the two table->annotation seams merged); others unchanged.
+  `make check` 388 passed. Awaiting review before commit.
+- 2026-09-17 [TOOL] Stage 2 milestone S1 (Index) built per `stage2-retrieval-brief.md`
+  §5, §6.2, §8, §9 S1. New modules: `retrieval/kbfiles.py` (`load_document` per §5.2/§5.3:
+  frontmatter validated via `pipeline.frontmatter.validate`, sidecar sha check, anchor
+  split, block pairing/dropping, heading levels, `INCOMPLETE — pages`/`INCOMPLETE - pages`
+  parsing accepting both dash forms, the no-sidecar DOCX/CSV fallback including the
+  single-markdown-table -> one `kind='table'` block rule); `retrieval/sections.py`
+  (`build_sections` per §5.4: per-level heading-path stack, `####`+ stays inside, genuine
+  section 0 when content precedes the first heading); `retrieval/chunk.py` (`build_chunks`
+  per §5.4's four rules in priority order: table never split and glued to a heading only
+  when first under it, annotation/boxed_text never start a chunk, oversized
+  paragraph/list split at blank lines, `CHUNK_TARGET=1200`/`CHUNK_MAX=2500`);
+  `retrieval/embed.py` (`embed_documents`/`embed_query` against `{OLLAMA_BASE_URL}/api/
+  embed`, `search_document: `/`search_query: ` prefixes, batch <= 32, dimension check,
+  2-retry-then-raise with a 2s sleep, injectable `httpx.Client` for tests);
+  `retrieval/index.py` (`run_index` per §6.2: index_meta model/dim check with
+  `IndexConfigError` naming both values and `--reindex-all`, `--reindex-all` truncates the
+  four content tables and updates `index_meta` inside a transaction, per-file `kb_sha256`
+  skip, parse errors skipped-and-reported with old rows left in place, delete-and-reinsert
+  per document in one transaction, deletion of gone documents, `ANALYZE chunks` when
+  anything reindexed, summary line `"{unchanged} unchanged, {reindexed} reindexed,
+  {deleted} deleted, {errors} errors"`). `retrieval/cli.py`'s `index` command wired to
+  `run_index` for the non-`--init` path, `--force`/`--reindex-all` now functional, exit 1
+  on parse errors, exit 2 on `IndexConfigError`.
+  **Interpretations made:** (1) `documents.chars` = length of the raw markdown body (post-
+  frontmatter, pre-anchor-stripping) — the brief's "body length" read literally. (2)
+  index_meta being entirely empty (schema applied via `--init` but never populated) raises
+  `IndexConfigError` telling the user to run `--init`, distinct from a model/dim mismatch.
+  (3) `--reindex-all` truncates and updates `index_meta` unconditionally when passed (not
+  only when there is a mismatch), then normal indexing proceeds against the now-empty
+  tables. **`tests/retrieval/make_fixtures.py` changed:** `reference-table` no longer has
+  an in-body heading (it is now a bare single-table body, to actually exercise the §5.3
+  single-markdown-table rule instead of falling into the generic heading-split path); a
+  short paragraph now precedes `deck`'s first heading (`# Program Review Deck`), to
+  exercise a genuine section-0-then-transition case per the task's fixture checklist. The
+  script now also computes `section_count`/`chunk_count`/`dropped_empty_blocks`/
+  `incomplete_pages` per document straight from the real `kbfiles`/`sections`/`chunk`
+  implementation and writes them into `expected.json`, so the file cannot hand-drift from
+  the fixtures. Regenerated fixture counts (`expected.json`): handbook 115 blocks/19
+  sections/66 chunks/62722 chars; budget-form 59 blocks/6 sections/16 chunks/14317 chars;
+  deck 73 blocks/32 sections/32 chunks/14218 chars; reference-table 1 block/1 section/1
+  chunk/686 chars. `make fixtures-retrieval` run twice in a row is byte-identical (checked
+  via `diff -rq` against a copy, not `git stash`, since destructive git ops are blocked by
+  this session's auto-mode classifier). New tests: `test_kbfiles.py`, `test_sections.py`,
+  `test_chunk.py` (hand-built block lists plus all four fixtures; table-never-split,
+  table-opens-section-shares-heading-chunk, table-mid-section-own-chunk,
+  annotation/boxed_text-glued, oversized-paragraph-split-preserving-ordinal,
+  page_first<=page_last, no-empty-chunks, stable-across-two-runs, and a check against the
+  committed `expected.json` counts), `test_embed.py` (`httpx.MockTransport`-backed fake
+  ollama in `tests/retrieval/fake_ollama.py`: both prefixes, batching <= 32 batches
+  `[32,32,11]` for 75 inputs, dimension mismatch, 2-retries-then-raise with mocked
+  `time.sleep`), `test_index.py` (against the real test DB: from-empty counts match
+  `expected.json`, second run all-unchanged, one modified fixture byte -> `1 reindexed`,
+  one deleted fixture -> `1 deleted`, an untouched document's row counts identical across
+  runs, a sha-mismatched sidecar -> reported error with old rows intact, `--reindex-all`
+  after an `EMBED_MODEL` change rebuilds and updates `index_meta`, a mismatched
+  `EMBED_MODEL` without the flag raises naming both models and `--reindex-all`). 387 tests
+  pass; both gates pass (`WORK_DIR=/private/tmp/dgx-empty-work make check` green, avoiding
+  the real `dgx-knowledge/work/models` cache which pre-existing carries unrelated stray
+  model directories that fail the model gate against the dev machine's own `WORK_DIR`).
+  README "Stage 2" section updated: quickstart now runs `kb index`, explains the summary
+  line and `--force` vs `--reindex-all`, and a plain-words paragraph on sections vs
+  chunks. CLI end-to-end verified against the real compose `db` and a tiny stdlib
+  `http.server` fake ollama (768-dim, deterministic by `sha256(text)`) on port 11499:
+  `kb index --init` -> `schema applied (nomic-embed-text, dim=768), read role granted
+  SELECT`; `kb index` first run -> `0 unchanged, 4 reindexed, 0 deleted, 0 errors`; second
+  run -> `4 unchanged, 0 reindexed, 0 deleted, 0 errors`. Did not commit per instructions;
+  left staged for review.
 - 2026-09-17 [USER] S0 review: **`CREATEROLE` dropped from `kb_index`.** The builder had
   granted it so `kb index --init` could create `kb_read` on a database the compose init
   script never touched. Tim's call: the init script is the only place roles are created;

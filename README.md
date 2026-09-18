@@ -340,19 +340,70 @@ Once `kb/` exists, a second, separate command line — `kb` — makes it searcha
 to an AI assistant (Codex, ChatGPT desktop, Claude Code, Claude desktop) over MCP. It lives
 in the same repo, behind its own install step, and does not change anything above.
 
-**Status:** skeleton only. The database schema and `kb index --init` work; indexing,
-search, and serving come in later milestones and are not usable yet.
+**Status:** indexing works. Search, serving over MCP, the eval harness, and document
+summaries come in later milestones and are not usable yet.
 
 ```bash
 uv sync --extra serve                      # installs kb's dependencies; plain `uv sync` does not
 cp .env.example .env                       # then fill in the Stage 2 keys (see below)
 docker compose -f compose/docker-compose.yml --profile dev up -d db
 uv run kb index --init                     # applies the database schema
+uv run kb index                            # walks kb/, embeds it, loads it into Postgres
 ```
 
 `kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); all but
-`index --init` currently exit with "not implemented until S<n>" naming the milestone that
-adds them.
+`index` currently exit with "not implemented until S<n>" naming the milestone that adds
+them.
+
+### `kb index`
+
+Walks every `kb/*.md` file, embeds it with the local `ollama` model named by `EMBED_MODEL`
+(needs `ollama pull nomic-embed-text` and `ollama serve` reachable at `OLLAMA_BASE_URL`),
+and loads it into Postgres. It is idempotent and safe to re-run: a document whose markdown
+file has not changed since the last run is left alone, so running it again after adding one
+new document only embeds that one document.
+
+It prints one summary line:
+
+```
+3 unchanged, 1 reindexed, 0 deleted, 0 errors
+```
+
+`unchanged` — files whose bytes match the last indexed copy, skipped. `reindexed` — files
+that were new or had changed, parsed and reloaded. `deleted` — documents that were indexed
+before but whose file is now gone, removed from the database. `errors` — files that failed
+to parse (bad frontmatter, a sidecar that does not match, a missing block); the file is
+reported and skipped, and whatever was indexed for it before is left in place rather than
+being silently dropped. A run with any errors exits non-zero.
+
+Two flags change what counts as "changed":
+
+- `--force` reindexes every document regardless of whether its file changed — useful after
+  editing `retrieval/chunk.py`'s constants or anything else that changes how a document is
+  cut, without touching the source files themselves.
+- `--reindex-all` additionally **empties** the index first (documents, blocks, sections,
+  chunks — not the roles or the schema) and updates the recorded embedding model. Use it
+  after changing `EMBED_MODEL` or `EMBED_DIM` in `.env`: mixing vectors from two different
+  models in the same table would make search meaningless, so `kb index` refuses to run
+  and names both the old and new model until you pass this flag.
+
+### How a document gets cut up
+
+A document is never searched as one blob, and never chunked without regard for its
+structure. Two cuts happen, in order:
+
+1. **Sections.** Every heading (`#`, `##`, or `###`) starts a new section that runs until
+   the next heading of the same or a shallower level; a `####` heading or deeper does not
+   start a new section, it just stays inside the one it's in. A section is what an
+   assistant reads: it is never split across a search result.
+2. **Chunks.** Inside a section, blocks (paragraphs, lists, tables, annotations) are
+   grouped into runs of about 1,200 characters — a chunk is what search actually matches
+   against, never shown as an answer on its own. A table is never split across two chunks,
+   even an unusually large one; it shares a chunk with its section's heading when it is the
+   first thing under it, otherwise it gets a chunk to itself. A very long paragraph or list
+   (over 2,500 characters) is split at its blank lines rather than mid-sentence. Notes such
+   as `> **Annotation**` or `> **Boxed text:**` always stay attached to whatever came right
+   before them.
 
 ### What the Stage 2 keys in `.env` mean
 
@@ -364,10 +415,10 @@ in `.env.example`.
 
 ### What is deliberately not built yet
 
-Indexing kb/ into the database, search, the MCP server (stdio and HTTP), the eval harness,
-and document summaries all come later, in the order in `stage2-retrieval-brief.md` §9. This
-section will grow a real quickstart (adding `kb` to Codex and Claude Code, reading the eval
-table, rotating a token) as those land.
+Search, the MCP server (stdio and HTTP), the eval harness, and document summaries all come
+later, in the order in `stage2-retrieval-brief.md` §9. This section will grow a real
+quickstart (adding `kb` to Codex and Claude Code, reading the eval table, rotating a token)
+as those land.
 
 ---
 

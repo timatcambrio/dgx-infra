@@ -2,13 +2,13 @@
   "version": 1,
   "source_file": "deck.pdf",
   "source_format": "pdf",
-  "content_sha256": "ef1be91b67c1faf45ab8c61770d24639342e9ed8d02b667823a63eb7ae151014",
+  "content_sha256": "896beac4916c394af3a1684e60392bf6695f7727ec8f1346769bab0639120d5b",
   "converter": "pdfplumber-geometry (model-free)",
   "blocks": [
     {
       "block_id": "deck:p001:b000",
       "page": 1,
-      "kind": "heading",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -20,7 +20,13 @@
     {
       "block_id": "deck:p001:b002",
       "page": 1,
-      "kind": "paragraph",
+      "kind": "heading",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "deck:p001:b003",
+      "page": 1,
+      "kind": "list",
       "confidence": "geometry"
     },
     {
@@ -32,7 +38,7 @@
     {
       "block_id": "deck:p002:b001",
       "page": 2,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -48,6 +54,12 @@
       "confidence": "geometry"
     },
     {
+      "block_id": "deck:p003:b002",
+      "page": 3,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
       "block_id": "deck:p004:b000",
       "page": 4,
       "kind": "heading",
@@ -60,12 +72,6 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "deck:p004:b002",
-      "page": 4,
-      "kind": "paragraph",
-      "confidence": "geometry"
-    },
-    {
       "block_id": "deck:p005:b000",
       "page": 5,
       "kind": "heading",
@@ -74,7 +80,7 @@
     {
       "block_id": "deck:p005:b001",
       "page": 5,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -98,13 +104,7 @@
     {
       "block_id": "deck:p007:b001",
       "page": 7,
-      "kind": "paragraph",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "deck:p007:b002",
-      "page": 7,
-      "kind": "paragraph",
+      "kind": "list",
       "confidence": "geometry"
     },
     {
@@ -120,6 +120,12 @@
       "confidence": "geometry"
     },
     {
+      "block_id": "deck:p008:b002",
+      "page": 8,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
       "block_id": "deck:p009:b000",
       "page": 9,
       "kind": "heading",
@@ -127,12 +133,6 @@
     },
     {
       "block_id": "deck:p009:b001",
-      "page": 9,
-      "kind": "list",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "deck:p009:b002",
       "page": 9,
       "kind": "paragraph",
       "confidence": "geometry"
@@ -145,6 +145,12 @@
     },
     {
       "block_id": "deck:p010:b001",
+      "page": 10,
+      "kind": "list",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "deck:p010:b002",
       "page": 10,
       "kind": "paragraph",
       "confidence": "geometry"
@@ -170,13 +176,7 @@
     {
       "block_id": "deck:p012:b001",
       "page": 12,
-      "kind": "list",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "deck:p012:b002",
-      "page": 12,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -187,6 +187,12 @@
     },
     {
       "block_id": "deck:p013:b001",
+      "page": 13,
+      "kind": "list",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "deck:p013:b002",
       "page": 13,
       "kind": "list",
       "confidence": "geometry"
@@ -228,12 +234,6 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "deck:p016:b002",
-      "page": 16,
-      "kind": "paragraph",
-      "confidence": "geometry"
-    },
-    {
       "block_id": "deck:p017:b000",
       "page": 17,
       "kind": "heading",
@@ -242,13 +242,13 @@
     {
       "block_id": "deck:p017:b001",
       "page": 17,
-      "kind": "paragraph",
+      "kind": "list",
       "confidence": "geometry"
     },
     {
       "block_id": "deck:p017:b002",
       "page": 17,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -296,6 +296,12 @@
     {
       "block_id": "deck:p020:b001",
       "page": 20,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "deck:p020:b002",
+      "page": 20,
       "kind": "list",
       "confidence": "geometry"
     },
@@ -320,13 +326,7 @@
     {
       "block_id": "deck:p022:b001",
       "page": 22,
-      "kind": "paragraph",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "deck:p022:b002",
-      "page": 22,
-      "kind": "paragraph",
+      "kind": "list",
       "confidence": "geometry"
     },
     {
@@ -338,7 +338,13 @@
     {
       "block_id": "deck:p023:b001",
       "page": 23,
-      "kind": "list",
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "deck:p023:b002",
+      "page": 23,
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -366,12 +372,6 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "deck:p025:b002",
-      "page": 25,
-      "kind": "list",
-      "confidence": "geometry"
-    },
-    {
       "block_id": "deck:p026:b000",
       "page": 26,
       "kind": "heading",
@@ -380,7 +380,13 @@
     {
       "block_id": "deck:p026:b001",
       "page": 26,
-      "kind": "paragraph",
+      "kind": "list",
+      "confidence": "geometry"
+    },
+    {
+      "block_id": "deck:p026:b002",
+      "page": 26,
+      "kind": "list",
       "confidence": "geometry"
     },
     {
@@ -392,7 +398,7 @@
     {
       "block_id": "deck:p027:b001",
       "page": 27,
-      "kind": "list",
+      "kind": "paragraph",
       "confidence": "geometry"
     },
     {
@@ -408,12 +414,6 @@
       "confidence": "geometry"
     },
     {
-      "block_id": "deck:p028:b002",
-      "page": 28,
-      "kind": "paragraph",
-      "confidence": "geometry"
-    },
-    {
       "block_id": "deck:p029:b000",
       "page": 29,
       "kind": "heading",
@@ -426,6 +426,12 @@
       "confidence": "geometry"
     },
     {
+      "block_id": "deck:p029:b002",
+      "page": 29,
+      "kind": "paragraph",
+      "confidence": "geometry"
+    },
+    {
       "block_id": "deck:p030:b000",
       "page": 30,
       "kind": "heading",
@@ -435,12 +441,6 @@
       "block_id": "deck:p030:b001",
       "page": 30,
       "kind": "list",
-      "confidence": "geometry"
-    },
-    {
-      "block_id": "deck:p030:b002",
-      "page": 30,
-      "kind": "paragraph",
       "confidence": "geometry"
     }
   ]
