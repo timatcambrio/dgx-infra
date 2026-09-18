@@ -1,7 +1,13 @@
 """Embeddings: ollama, `nomic-embed-text` (brief §6.3).
 
 `POST {OLLAMA_BASE_URL}/api/embed` with `{"model", "input": [...], "truncate": true}`,
-batch <= 32, response `{"embeddings": [[float...], ...]}` one vector per input in order.
+batch <= 32 texts and <= `BATCH_MAX_CHARS` characters (a single longer text travels
+alone), response `{"embeddings": [[float...], ...]}` one vector per input in order. The
+character bound exists because embedding time grows with characters sent, not with the
+number of texts: on the dev Mac (2026-09-18, ollama 0.21, nomic-embed-text on CPU) 32
+texts of 2,500 characters took 63 s against the 60 s read timeout, while 32 texts of
+~1,200 characters took about half. Row-split tables (chunk.py rule 1) produce runs of
+full-size pieces, which is what exposed it.
 
 Prefixes are mandatory: `embed_documents` sends `"search_document: " + t`; `embed_query`
 sends `"search_query: " + q`. A dimension mismatch is a hard error naming the model.
@@ -30,6 +36,9 @@ from typing import Optional
 import httpx
 
 BATCH_SIZE = 32
+#: Characters per request: 32 texts at CHUNK_TARGET (1,200) is ~38k; about 17 s on the
+#: dev Mac at the measured ~1 s per 2,400 characters, well inside the 60 s read timeout.
+BATCH_MAX_CHARS = 40_000
 RETRIES = 2
 RETRY_SLEEP_SECONDS = 2.0
 #: Context-overflow fallback: each step keeps this fraction of the text, down to the floor.
@@ -61,8 +70,21 @@ def _error_text(resp: httpx.Response) -> str:
         return resp.text[:200]
 
 
-def _batched(items: list[str], n: int) -> list[list[str]]:
-    return [items[i : i + n] for i in range(0, len(items), n)]
+def _batched(items: list[str], n: int, max_chars: int = BATCH_MAX_CHARS) -> list[list[str]]:
+    """Consecutive runs of at most `n` items and at most `max_chars` characters in total;
+    an item longer than `max_chars` is a run of its own. Order is preserved."""
+    batches: list[list[str]] = []
+    cur: list[str] = []
+    cur_chars = 0
+    for item in items:
+        if cur and (len(cur) >= n or cur_chars + len(item) > max_chars):
+            batches.append(cur)
+            cur, cur_chars = [], 0
+        cur.append(item)
+        cur_chars += len(item)
+    if cur:
+        batches.append(cur)
+    return batches
 
 
 def _post_batch(
@@ -172,14 +194,15 @@ def _run(
     events: list[Truncation] = truncations if truncations is not None else []
     try:
         out: list[list[float]] = []
-        for start, batch in enumerate(_batched(texts, BATCH_SIZE)):
-            prefixed = [prefix + t for t in batch]
+        offset = 0
+        for batch in _batched([prefix + t for t in texts], BATCH_SIZE):
             out.extend(
                 _embed_batch_guaranteed(
-                    client, base_url, model, prefixed, embed_dim,
-                    offset=start * BATCH_SIZE, truncations=events,
+                    client, base_url, model, batch, embed_dim,
+                    offset=offset, truncations=events,
                 )
             )
+            offset += len(batch)
         return out
     finally:
         if own_client:
