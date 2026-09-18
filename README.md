@@ -353,28 +353,49 @@ No OCR, no LLM calls. Chunking, embeddings, a vector store, retrieval and servin
 
 ---
 
-## Stage 2: search and serve (in progress)
+## Stage 2: search and serve
 
 Once `kb/` exists, a second, separate command line — `kb` — makes it searchable and hands it
 to an AI assistant (Codex, ChatGPT desktop, Claude Code, Claude desktop) over MCP. It lives
 in the same repo, behind its own install step, and does not change anything above.
 
-**Status:** indexing, search, the eval harness and the MCP server over **stdio** work.
-Streamable HTTP (the shared LAN server, bearer tokens, Caddy) and document summaries come
-in later milestones and are not usable yet.
+**Status:** indexing, search, the eval harness, and the MCP server over both **stdio** (the
+developer path) and **streamable HTTP** (the shared server on the LAN, behind Caddy with a
+bearer token) work. Document summaries (`kb catalog --summarize`) are the one piece not yet
+built (S5, optional).
+
+**Quickstart — clone to a working `search` in Codex, over the shared HTTPS server:**
+
+```bash
+cp .env.example .env               # then set KB_PATH (absolute), KB_TOKENS, KB_PUBLIC_HOST, KB_URL_BASE
+make compose-up                    # builds and starts db, ollama, kb-mcp, kb-static, caddy
+make compose-index                 # walks kb/, embeds it, loads it into Postgres
+```
+
+`KB_PATH` must be an absolute path here: the compose stack bind-mounts it, and a relative
+path would be resolved against the `compose/` directory rather than this one. `make
+compose-up` checks and refuses otherwise.
+
+Then add the server to your assistant (Codex/Claude Code snippets below) using
+`https://<KB_PUBLIC_HOST>/mcp` and one of the tokens from `KB_TOKENS`, and ask it a
+question. `make compose-index` needs the embedding model pulled into `ollama` first —
+`docker compose -f compose/docker-compose.yml exec ollama ollama pull nomic-embed-text`
+— which is a separate, manual, one-time step (nothing in `make compose-up` does it, since
+pulling a model is exactly the kind of thing that should not happen silently).
+
+For local development against a host venv instead of the container stack:
 
 ```bash
 uv sync --extra serve                      # installs kb's dependencies; plain `uv sync` does not
 cp .env.example .env                       # then fill in the Stage 2 keys (see below)
-docker compose -f compose/docker-compose.yml --profile dev up -d db
+docker compose -f compose/docker-compose.yml --profile dev up -d db ollama
 uv run kb index --init                     # applies the database schema
 uv run kb index                            # walks kb/, embeds it, loads it into Postgres
-uv run kb serve                            # runs the MCP server over stdio
+uv run kb serve --transport stdio          # runs the MCP server over stdio
 ```
 
-`kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); `serve
---transport http` and `catalog` currently exit with "not implemented until S<n>" naming the
-milestone that adds them.
+`kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); `catalog`
+currently exits with "not implemented until S5".
 
 ### `kb index`
 
@@ -500,14 +521,26 @@ agent.
 ### `kb serve` — the MCP server
 
 ```bash
-uv run kb serve --transport stdio    # the default; --transport is optional
+uv run kb serve --transport stdio    # the default; developer path, nothing on the network
+uv run kb serve --transport http     # the shared server; needs KB_TOKENS (or --allow-anonymous, dev only)
 ```
 
 Runs a read-only [MCP](https://modelcontextprotocol.io) server against the index, over
-**stdio**: the assistant starts `kb serve` itself as a subprocess and talks to it over
-stdin/stdout, so there is nothing to bind or expose on the network. `--transport http` (the
-shared server on the LAN, behind Caddy with a bearer token) is not implemented yet — it
-exits naming the milestone that adds it (S4).
+either:
+
+- **stdio** — the assistant starts `kb serve` itself as a subprocess and talks to it over
+  stdin/stdout, so there is nothing to bind or expose on the network. This is what
+  `uv run kb serve --transport stdio` and the compose `dev` profile are for.
+- **streamable HTTP** — one server, run once (by `kb-mcp` in the compose stack), that every
+  user's assistant talks to over `https://<KB_PUBLIC_HOST>/mcp`. `kb-mcp` itself binds
+  `0.0.0.0:8765` inside the compose network only; `caddy` is what actually terminates TLS
+  and is reachable from the LAN, on 443. Every request under `/mcp*` needs `Authorization:
+  Bearer <token>` where `<token>` is one of the comma-separated values in `KB_TOKENS`; a
+  missing or wrong token gets a 401 with no body. `/health` (`GET /health`, returning
+  `{"ok": true, "documents": <count>, "embed_model": ...}`) needs no token, for monitoring.
+  Starting `--transport http` with `KB_TOKENS` empty refuses to run (exit 2) unless you pass
+  `--allow-anonymous`, which is for local experimentation only and logs a loud warning —
+  never pass it on a network anyone else can reach.
 
 It exposes five tools, each read-only (`readOnlyHint: true`) and documented to the
 assistant in its own instructions:
@@ -532,7 +565,7 @@ args = ["run", "--directory", "/path/to/dgx-infra", "kb", "serve", "--transport"
 startup_timeout_sec = 30
 tool_timeout_sec = 60
 
-# end user, the shared server on the LAN (arrives in S4 — not usable yet)
+# end user, the shared server on the LAN
 [mcp_servers.kb]
 url = "https://kb.internal.example/mcp"
 bearer_token_env_var = "KB_TOKEN"
@@ -540,6 +573,8 @@ tool_timeout_sec = 60
 ```
 
 Equivalent CLI: `codex mcp add kb -- uv run --directory /path/to/dgx-infra kb serve --transport stdio`.
+For the HTTP form, `export KB_TOKEN=<your token>` first and use `kb.internal.example`
+replaced with your real `KB_PUBLIC_HOST`.
 
 #### Use it from Claude Code
 
@@ -548,8 +583,9 @@ claude mcp add --transport stdio kb -- uv run --directory /path/to/dgx-infra kb 
 claude mcp add --transport http kb https://kb.internal.example/mcp --header "Authorization: Bearer $KB_TOKEN"
 ```
 
-The `--transport http` form is for the shared LAN server and arrives in S4 — running it
-against nothing today will simply fail to connect. Use the `--transport stdio` form for now.
+Both forms work today. Use `--transport stdio` for local development against a host venv;
+use `--transport http` (with `KB_TOKEN` exported and `kb.internal.example` replaced with
+your `KB_PUBLIC_HOST`) once `make compose-up` is running.
 
 #### What you should see
 
@@ -567,10 +603,77 @@ whether a table came out flattened or a note got separated from what it is about
 as a pointer, not an answer: the assistant should always `fetch` (or `get_section` with
 `neighbours=1` when a section looks cut off) before quoting anything back to you.
 
-### What is deliberately not built yet
+### Checking a citation against the original — the static `kb/` server
 
-Streamable HTTP transport, bearer-token auth, the static `kb/` file server, and document
-summaries come later, in the order in `stage2-retrieval-brief.md` §9 (S4, S5).
+Every result's `url` (and the `citation` string in `fetch`'s metadata) points at
+`https://<KB_PUBLIC_HOST>/kb/<file>.md#dgx:block=<id>` — the same converted markdown file
+`kb search`/`kb serve` indexed, served read-only by `kb-static` behind Caddy. Opening it in
+a browser is the way to check what the assistant told you against the actual converted
+text (the `#dgx:block=...` fragment does nothing in a browser today — it exists so a future
+viewer can jump straight to the block, and so the URL is unique per citation).
+
+**`/kb/*` needs the same bearer token `/mcp*` does**, and a bare browser has no way to add
+an `Authorization` header to a request. Three practical options: a browser extension that
+adds a fixed header to requests for your `KB_PUBLIC_HOST` origin (e.g. "ModHeader" or
+similar); `curl -H "Authorization: Bearer $KB_TOKEN" https://<host>/kb/<file>.md -o
+file.md` and open the saved file locally; or, if your organisation's Caddy is set up with a
+client TLS certificate instead of `tls internal` (see "TLS" below), some browsers can be
+configured to present it automatically and you drop the header requirement for that one
+origin — that is a Caddy/client-cert configuration choice, not something this repo sets up
+for you.
+
+### Rotating a token
+
+`KB_TOKENS` is a comma-separated list — add a new token, keep the old one for as long as
+you want both to work, then remove the old one. Whether it's one token per user, one per
+team, or one shared token for everyone is a decision `stage2-retrieval-brief.md` §11.2
+leaves to Tim; `KB_TOKENS` supports all three shapes equally. After editing `.env`:
+
+```bash
+docker compose -f compose/docker-compose.yml --profile prod up -d --build caddy kb-mcp
+```
+
+restarts both `caddy` (which regenerates its token matcher from the new `KB_TOKENS` on
+start — see `compose/caddy-entrypoint.sh`) and `kb-mcp` (whose bearer middleware reads
+`KB_TOKENS` at process start too) without touching the database or `ollama`.
+
+### The "flattened table" caveat
+
+Some source tables (merged cells, unusual borders, tables inside scanned images) don't
+survive conversion as a clean grid — Stage 1's converter says so explicitly, either with a
+`Not converted` note or by falling back to a plainer rendering (see "Reading the converted
+markdown" above, and the per-document `LAYOUT NOTES`/`EVIDENCE NOTES` in `pipeline
+report`). If an assistant's answer depends on a specific cell, check the citation against
+the original before trusting it — this is exactly what the static `kb/` server above is
+for. Retrieval does not repair a bad conversion; it only finds and returns what Stage 1
+already wrote down.
+
+### TLS
+
+`compose/Caddyfile` defaults to `tls internal`: Caddy generates its own local CA and a leaf
+certificate for `KB_PUBLIC_HOST` the first time it starts, and terminates HTTPS with it.
+Nothing else has to be configured for the stack to serve valid-looking HTTPS — but every
+user's machine has to be told to trust that CA once, or their assistant/browser will reject
+the connection as self-signed. Fetch the CA certificate from the running container and
+install it as a trusted root using your OS's normal process for that:
+
+```bash
+docker compose -f compose/docker-compose.yml cp caddy:/data/caddy/pki/authorities/local/root.crt ./dgx-kb-ca.crt
+```
+
+Alternatively, set `TLS_CERT` and `TLS_KEY` in `.env` to the paths of a certificate/key
+pair issued by a CA your users' machines already trust (an internal corporate CA, or a
+client-issued cert) — `compose/caddy-entrypoint.sh` uses that pair instead of `tls
+internal` whenever both are set, and no user-side trust step is needed. Which of the two
+is right for a given deployment is `stage2-retrieval-brief.md` §11.1, open for Tim to
+decide; both are supported without any code change.
+
+### What is deliberately not built
+
+A web UI (users bring their own assistant), email intake, answer generation or reranking,
+OAuth or any public/internet-facing endpoint, multi-tenancy or per-user document
+permissions, and document summaries (`kb catalog --summarize`, S5, optional and gated on
+`models.yaml`) — see `stage2-retrieval-brief.md` §10 for the full list and why.
 
 ---
 

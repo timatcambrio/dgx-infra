@@ -144,6 +144,29 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   `tests/fixtures/callout_notes.pdf` is added via `tests/make_fixtures.py`.
 
 ## [DISCOVERIES]
+- 2026-09-18 [TOOL] S4 review fixed two compose defects. (1) `${VAR:?}` required-variable
+  syntax on prod-only services broke `docker compose --profile dev up -d db` with no `.env`
+  (Compose interpolates the whole file regardless of profile); replaced with `:-` defaults,
+  and `kb serve`'s own config check stays the loud failure for a missing KB_URL_BASE.
+  (2) `.env.example` documented `KB_PATH=../dgx-knowledge`, but Compose resolves a relative
+  bind-mount source against `compose/`, so the prod stack would have mounted a nonexistent
+  `dgx-infra/dgx-knowledge` (Docker creates it empty). Now: `make compose-env-check`
+  (prerequisite of `compose-up`/`compose-index`) refuses a missing `.env` or a relative
+  KB_PATH; `.env.example` and README say absolute. Verified: db starts with no `.env`;
+  `--profile prod config` with an absolute KB_PATH resolves both mounts; guard rejects both
+  bad cases. Full suite with DB up re-run after the fix (see below).
+- 2026-09-18 [TOOL] Two S4 Caddyfile bugs only surfaced by actually running the compose
+  stack, not by config validation: (1) `sed -i` renames a temp file over its target, which
+  fails against the `:ro`-mounted `Caddyfile` (`Resource busy`) — fixed by having
+  `caddy-entrypoint.sh` copy it to `/tmp/Caddyfile` first. (2) The substituted
+  `__KB_TOKEN_PATTERN__` regex (`^Bearer (t1)$`) contains a space, and Caddyfile splits
+  unquoted arguments on whitespace — `header_regexp bearer Authorization
+  __KB_TOKEN_PATTERN__` therefore parsed as too many arguments after substitution ("wrong
+  argument count... at Caddyfile:40") until the placeholder was quoted in the Caddyfile
+  (`"__KB_TOKEN_PATTERN__"`). Also: the `ollama/ollama` image has neither `curl` nor
+  `wget` (`command -v` finds neither inside the running container), so the brief's literal
+  `GET /api/tags` healthcheck isn't expressible as `CMD-SHELL`; used `CMD ["ollama",
+  "list"]`, which calls the same endpoint internally.
 - 2026-09-15 [CODE] Removed from the README as STALE, recorded here so the claims are not
   silently resurrected: (a) the M0-M3 milestone table, including "140 tests pass" -- the
   count is now 304; (b) the assertion that "triage showed the corpus is uniformly
@@ -335,6 +358,104 @@ Canonical briefing for the PDF-geometry output-quality task. Facts only.
   the whole block onto one `###` line. Nothing in the converter renders markdown lists.
 
 ## [PROGRESS]
+- 2026-09-18 [TOOL] Stage 2 milestone S4 (HTTP on the LAN) built per
+  `stage2-retrieval-brief.md` §3 (HTTP), §6.5.4-§6.5.6, §7.1-§7.4, §9 S4, §13, Appendix B.
+  New: `retrieval/auth.py` (`BearerMiddleware`, pure ASGI, `hmac.compare_digest` over
+  `KB_TOKENS`, protects only `/mcp*`, `/health` and ASGI `lifespan` messages pass through
+  untouched — the latter is what lets `mcp.streamable_http_app()`'s own
+  `lifespan=lambda app: self.session_manager.run()` fire on uvicorn startup with no
+  explicit session-manager entry needed in this repo's code). `retrieval/server.py`
+  gained `_transport_security(cfg)` and `build_http_app(cfg)`; `build_server(cfg)` now
+  always passes `host`/`port` (from `KB_BIND`), `streamable_http_path="/mcp"`,
+  `json_response=True`, `stateless_http=True`, `transport_security=...` to `FastMCP(...)`
+  — inert under stdio, so one constructor serves both transports. `retrieval/config.py`
+  gained `Config.kb_bind_host`/`kb_bind_port` (parsed from `KB_BIND`). `retrieval/cli.py`
+  `serve` command: `--transport http`, `--allow-anonymous` (exit 2 naming `KB_TOKENS` when
+  empty and the flag is absent; loud stderr warning when present), runs
+  `uvicorn.run(build_http_app(cfg), ...)`. Tests: `tests/retrieval/test_auth.py` (8 cases,
+  minimal ASGI app + `BearerMiddleware`, Starlette `TestClient`), `tests/retrieval/
+  test_server_http.py` (4 cases: `/health` open, `/mcp` 401 without token, full
+  initialize/list_tools/search/fetch round trip via `mcp.client.streamable_http.
+  streamable_http_client` + `ClientSession` against a real subprocess on a free port, and
+  the empty-`KB_TOKENS`-exits-2 case). `tests/retrieval/conftest.py` gained
+  `make_server_config`/`indexed_dsn`/`fake_ollama_http` (moved from `test_server.py`,
+  which imports them back via `from conftest import ...`, so both HTTP and stdio server
+  tests share one indexing pass per session — plain `def` fixtures/helpers in
+  `conftest.py`, importable like any module since `tests/retrieval/` has no `__init__.py`
+  and pytest puts it on `sys.path`).
+- **`mcp.server.transport_security.TransportSecuritySettings`** field names verified
+  directly against the installed source (`mcp/server/transport_security.py`, `mcp==1.30.0`):
+  `enable_dns_rebinding_protection: bool`, `allowed_hosts: list[str]`,
+  `allowed_origins: list[str]` — exactly as the brief names them, no STOP-AND-ASK needed.
+  `FastMCP.__init__`'s `host`/`port`/`streamable_http_path`/`json_response`/
+  `stateless_http`/`transport_security` params and `streamable_http_app()`'s
+  `lifespan=lambda app: self.session_manager.run()` (`mcp/server/fastmcp/server.py`) were
+  also read from source before use, confirming the session manager is entered by
+  Starlette's own ASGI lifespan protocol on uvicorn startup — nothing in this repo calls
+  `mcp.session_manager.run()` directly, and the brief's warning that it "MUST be entered
+  or requests hang" is satisfied by not swallowing `scope["type"] == "lifespan"` in the
+  bearer middleware, not by an explicit call.
+- **Interpretations** (brief left these open or under-specified): (1) `allowed_origins`
+  (brief showed `[...]`) — every origin a legitimate client could present:
+  `https://{KB_PUBLIC_HOST}`, `https://{KB_PUBLIC_HOST}:*`, and http/https loopback on
+  both `localhost`/`127.0.0.1`. (2) The `ollama` healthcheck cannot literally be `GET
+  /api/tags` as a `CMD-SHELL` probe — the `ollama/ollama` image ships neither `curl` nor
+  `wget` (verified: `command -v` finds neither). Used `CMD ["ollama","list"]` instead,
+  which calls that same endpoint internally and fails the same way if the server isn't
+  answering. (3) Caddyfile has no loop construct to turn comma-separated `KB_TOKENS` into
+  a set of header alternatives, so `compose/caddy-entrypoint.sh` builds a `header_regexp`
+  pattern (`^Bearer (t1|t2|...)$`, RE2-escaped per token, quoted in the Caddyfile so the
+  substituted pattern's internal space doesn't split into extra Caddyfile tokens) and
+  substitutes it for a `__KB_TOKEN_PATTERN__` placeholder into a writable copy of the
+  Caddyfile (the mounted one is `:ro`, so `sed -i`'s rename-over-target fails against it)
+  before `caddy run`. An empty `KB_TOKENS` substitutes an unmatchable pattern (NUL bytes
+  can't appear in HTTP headers), so `/kb/*` 401s everything rather than matching a
+  degenerate empty alternation (invalid in RE2 anyway). Same script fills a
+  `__TLS_DIRECTIVE__` placeholder: `internal` by default, or the two bind-mounted
+  `TLS_CERT`/`TLS_KEY` paths when both are set. (4) `db`/`ollama` given `profiles:
+  ["dev","prod"]` (not just `dev`) since the `prod` stack's `kb-mcp` needs both running
+  regardless of the host-venv dev profile; only their `dev`-only host port publication
+  (pre-existing, loopback-bound) is unrelated to `prod` — hard rule 7's "only Caddy
+  publishes a port" is about LAN exposure, which `127.0.0.1:` bindings never are. (5)
+  `compose/Dockerfile`'s `ENTRYPOINT` is `["uv","run"]` (not `["uv","run","kb"]`) with
+  `CMD ["kb","serve","--transport","http"]`, so `docker compose run --rm kb-mcp kb index`
+  (brief's literal invocation, and the Makefile's `compose-index`) doesn't duplicate `kb`.
+  (6) Every Makefile/ad-hoc `docker compose -f compose/docker-compose.yml` invocation in
+  this milestone's own verification needed `--env-file .env` (not `--project-directory
+  .`): Compose resolves the *implicit* `.env` relative to the Compose file's own directory
+  (`compose/`), not the repo root where `.env.example` says to `cp` it, but
+  `--project-directory` would ALSO move where relative bind-mount sources (`./init-db.sh`,
+  `./Caddyfile`, `./caddy-entrypoint.sh`) resolve from — confirmed by reproducing exactly
+  that breakage (docker silently creates an empty directory at a nonexistent bind-mount
+  source) before settling on `--env-file` alone. The Makefile's `COMPOSE` variable does
+  this consistently; the brief's own literal verification commands (`docker compose -f
+  compose/docker-compose.yml --profile dev up -d db`, no `--env-file`) need the same flag
+  added to find a repo-root `.env`, noted here since it isn't optional once `KB_URL_BASE`/
+  `KB_PATH` (both required, no default) are interpolated for `kb-mcp`/`kb-static` even
+  when only `db` is being started under `--profile dev`.
+- **Verification, verbatim outputs of the key checks** (full transcript in the S4 task
+  turn, not reproduced in full here): `curl -s -o /dev/null -w '%{http_code}'
+  http://127.0.0.1:8765/health` → `200`; same for `/mcp` with no header → `401`; with `-H
+  'Authorization: Bearer t1'` a POST `initialize` → `200` and a JSON-RPC `result` with
+  `serverInfo.name: "dgx-kb"`. A Python script using `mcp.client.streamable_http` against
+  that server: `tools: ['fetch', 'get_outline', 'get_section', 'list_documents',
+  'search']`, `search("FORM-7731")` first result id `sec:budget-form:0`. `docker compose
+  build kb-mcp`: image `compose-kb-mcp:latest`, 600MB. Full compose stack (`make
+  compose-up` after fixing two real bugs found only by running it for real — see
+  [DISCOVERIES] — the Caddyfile `:ro` mount vs. `sed -i`, and the unquoted regex argument
+  splitting into extra Caddyfile tokens): `curl -sk https://localhost/health` →
+  `{"ok":true,"documents":4,"embed_model":"nomic-embed-text"}`; `/kb/handbook.md` without
+  token → `401`, with `Authorization: Bearer t1` → `200`. `docker compose run --rm kb-mcp
+  kb index --force` (plain `kb index` was `0 reindexed` — the fixtures were already
+  indexed from earlier host-venv verification against the same persistent `db` volume, so
+  `--force` was needed to actually exercise the embedding call and reach `ollama`) failed
+  as required, reaching `ollama` and erroring clearly: `EmbedError: embedding request to
+  http://ollama:11434/api/embed for model 'nomic-embed-text' failed after 3 attempts:
+  Client error '404 Not Found'` (exit 1) — no model was pulled, per instruction.
+  `WORK_DIR=/private/tmp/dgx-empty-work make check`: `438 passed, 4 warnings in 34.16s`,
+  both gates green. `make compose-down` (no `-v`) and `--profile dev down` both run
+  without removing volumes. Not committed, per instructions; staged for review
+  (`.env` used for verification was a throwaway, gitignored, and deleted afterward).
 - 2026-09-18 [TOOL] Stage 2 milestone S2 (Search + eval) built per
   `stage2-retrieval-brief.md` §6.4, §6.7, §8.2, §9 S2, §13. New modules:
   `retrieval/search.py` (`SectionHit`, `search()`/`search_legs()` per §6.4: lexical leg

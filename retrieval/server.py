@@ -1,8 +1,13 @@
 """The MCP server (brief §6.5): five read-only tools over the indexed `kb/`.
 
-S3 scope: stdio transport only. `build_server(cfg)` returns a configured `FastMCP`; `kb
-serve --transport stdio` (`cli.py`) calls `mcp.run(transport="stdio")`. HTTP transport,
-bearer auth and transport-security settings are S4 and not implemented here.
+`build_server(cfg)` returns a configured `FastMCP`, usable either way:
+
+- `kb serve --transport stdio` (`cli.py`) calls `mcp.run(transport="stdio")` directly.
+- `kb serve --transport http` (S4, brief §9) calls `build_http_app(cfg)` instead, which
+  wraps `mcp.streamable_http_app()` in the bearer middleware (`auth.py`, brief §6.5.6) and
+  hands the result to uvicorn (`cli.py`). The host/port/transport-security settings baked
+  into `build_server` (brief §6.5.5) are inert under stdio — nothing reads them there — so
+  one constructor serves both transports without a second code path.
 
 **stdout is the protocol channel in stdio mode.** Nothing in this module or anything it
 imports at import time or at call time may `print` or otherwise write to stdout. All
@@ -22,10 +27,13 @@ from typing import Any, AsyncIterator, Callable, Optional, TypedDict
 
 import asyncpg
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp
 
+from . import auth as auth_module
 from . import cite as cite_module
 from . import db as db_module
 from . import ids as ids_module
@@ -574,11 +582,43 @@ async def _get_section_any(
 # --------------------------------------------------------------------------------------
 
 
+def _transport_security(cfg: Config) -> TransportSecuritySettings:
+    """Brief §6.5.5: DNS-rebinding protection, explicit because binding `0.0.0.0` (inside
+    the container, S4) disables FastMCP's own auto-enable (which only fires for a literal
+    `127.0.0.1`/`localhost`/`::1` host — brief §13's "Binding 0.0.0.0 disables FastMCP's
+    DNS-rebinding protection" warning). `allowed_hosts` is the brief's list verbatim, plus
+    the bare `KB_PUBLIC_HOST` (no port) since Caddy terminates TLS on 443 and a bare Host
+    header with no port is what a browser/client sends for the default HTTPS port.
+    `allowed_origins` is left to this implementation (brief §6.5.5 says "[...]"): every
+    origin a legitimate client could present — the public HTTPS origin at the default and
+    an explicit port, and loopback for the stdio-adjacent dev path — nothing else.
+    """
+    host = cfg.kb_public_host
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[host, f"{host}:*", "localhost:*", "127.0.0.1:*"],
+        allowed_origins=[
+            f"https://{host}",
+            f"https://{host}:*",
+            "http://localhost:*",
+            "https://localhost:*",
+            "http://127.0.0.1:*",
+            "https://127.0.0.1:*",
+        ],
+    )
+
+
 def build_server(cfg: Config) -> "FastMCP[ServerContext]":
     mcp: "FastMCP[ServerContext]" = FastMCP(
         "dgx-kb",
         instructions=INSTRUCTIONS,
         lifespan=_make_lifespan(cfg),
+        host=cfg.kb_bind_host,
+        port=cfg.kb_bind_port,
+        streamable_http_path="/mcp",
+        json_response=True,
+        stateless_http=True,
+        transport_security=_transport_security(cfg),
     )
 
     @mcp.tool(annotations=RO)
@@ -767,3 +807,14 @@ def build_server(cfg: Config) -> "FastMCP[ServerContext]":
         return JSONResponse({"ok": True, "documents": documents, "embed_model": cfg.embed_model})
 
     return mcp
+
+
+def build_http_app(cfg: Config) -> ASGIApp:
+    """The ASGI app for `kb serve --transport http` (brief §9 S4): `build_server(cfg)`'s
+    `streamable_http_app()` — a Starlette app whose own `lifespan` enters
+    `mcp.session_manager.run()` (see `auth.py`'s module docstring) — wrapped in the bearer
+    middleware (brief §6.5.6). `cli.py` runs the result with uvicorn; it must not be run
+    any other way, or `/mcp*` is served with no auth.
+    """
+    mcp = build_server(cfg)
+    return auth_module.BearerMiddleware(mcp.streamable_http_app(), cfg.kb_tokens)

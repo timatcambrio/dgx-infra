@@ -1,0 +1,55 @@
+# Caddy: TLS termination + reverse proxy for the Stage 2 stack (brief §7.2, §7.4, §9 S4).
+#
+# Routes:
+#   /mcp*, /health  -> kb-mcp:8765    the MCP server. kb-mcp's own bearer middleware
+#                                      (retrieval/auth.py) checks the token on /mcp*;
+#                                      /health is open, same as it is directly on kb-mcp.
+#   /kb/*           -> kb-static:8080 the read-only kb/ file server every citation `url`
+#                                      points at. kb-static has no auth of its own (it is
+#                                      plain `file_server`), so Caddy enforces the same
+#                                      bearer token here before proxying.
+#
+# The __KB_TOKEN_PATTERN__ placeholder below is filled in by compose/caddy-entrypoint.sh
+# at container start, from $KB_TOKENS -- see that script for why (Caddyfile has no loop
+# construct to turn a comma-separated env var into a set of header alternatives).
+#
+# TLS: `tls internal` (Caddy's own local CA) by default. If both TLS_CERT and TLS_KEY are
+# set (paths inside the container -- see docker-compose.yml's `kb_tls` bind mount), Caddy
+# uses that cert/key pair instead -- the __TLS_DIRECTIVE__ placeholder below is filled in
+# by caddy-entrypoint.sh, for the same reason as __KB_TOKEN_PATTERN__: a Caddyfile `tls`
+# line's shape (bare `internal` vs. two file paths) can't be made conditional on whether
+# two env vars are set using `{$VAR}` substitution alone. See the README "TLS" section for
+# what "each user's machine must trust Caddy's root CA once" means in practice, and the
+# client-cert alternative.
+
+{
+	auto_https disable_redirects
+	admin off
+}
+
+{$KB_PUBLIC_HOST:localhost}, localhost, 127.0.0.1 {
+	tls __TLS_DIRECTIVE__
+
+	@mcp path /mcp* /health
+	handle @mcp {
+		reverse_proxy kb-mcp:8765
+	}
+
+	@kb_authorized {
+		path /kb/*
+		header_regexp bearer Authorization "__KB_TOKEN_PATTERN__"
+	}
+	handle @kb_authorized {
+		uri strip_prefix /kb
+		reverse_proxy kb-static:8080
+	}
+
+	handle /kb/* {
+		header Www-Authenticate "Bearer"
+		respond 401
+	}
+
+	handle {
+		respond "not found" 404
+	}
+}

@@ -10,7 +10,8 @@ PYTHON := $(UV) run python
 
 .PHONY: help sync check test gates license-gate model-gate fixtures \
         inventory triage convert report report-json answerability profile clean-work \
-        index search serve eval-retrieval compose-up compose-down fixtures-retrieval
+        index search serve serve-http eval-retrieval compose-up compose-down \
+        compose-index compose-env-check fixtures-retrieval
 
 help:  ## Show this help
 	@grep -hE '^[a-z-]+:.*?##' $(MAKEFILE_LIST) \
@@ -69,17 +70,37 @@ index:  ## Index kb/ into Postgres. Pass flags with ARGS, e.g. make index ARGS=-
 search:  ## Search the index: make search Q="a query"
 	$(UV) run kb search "$(Q)"
 
-serve:  ## Run the MCP server
-	$(UV) run kb serve
+serve:  ## Run the MCP server over stdio (developer path)
+	$(UV) run kb serve --transport stdio
+
+serve-http:  ## Run the MCP server over HTTP from the host venv (needs KB_TOKENS set, or ARGS=--allow-anonymous)
+	$(UV) run kb serve --transport http $(ARGS)
 
 eval-retrieval:  ## Run the retrieval regression eval
 	$(UV) run kb eval
 
-compose-up:  ## Bring up the dev compose stack (db + ollama, published to localhost)
-	docker compose -f compose/docker-compose.yml --profile dev up -d
+# --env-file .env: docker compose otherwise resolves the *implicit* .env relative to the
+# Compose file's own directory (compose/.env), not the repo root where `cp .env.example
+# .env` puts it. --project-directory would also fix that, but it additionally changes
+# where *relative bind-mount sources* (./init-db.sh, ./Caddyfile, ...) resolve from, which
+# must stay relative to compose/ -- so --env-file alone is the correct fix here.
+COMPOSE := docker compose -f compose/docker-compose.yml --env-file .env
 
-compose-down:  ## Tear down the dev compose stack
-	docker compose -f compose/docker-compose.yml --profile dev down
+# The prod stack bind-mounts $KB_PATH. Compose resolves a relative source against compose/,
+# not the repo root, so a relative KB_PATH would silently mount the wrong (nonexistent)
+# directory. Check before invoking Compose rather than after a container fails to start.
+compose-env-check:
+	@test -f .env || { echo "no .env: run 'cp .env.example .env' and set KB_PATH, KB_TOKENS, KB_PUBLIC_HOST, KB_URL_BASE"; exit 2; }
+	@grep -qE '^KB_PATH=/' .env || { echo "KB_PATH in .env must be an ABSOLUTE path for the compose stack"; exit 2; }
+
+compose-up: compose-env-check  ## Bring up the full stack (db, ollama, kb-mcp, kb-static, caddy) behind TLS on :443
+	$(COMPOSE) --profile prod up -d --build
+
+compose-down:  ## Tear down the prod compose stack (keeps volumes -- add ARGS=-v to also remove them)
+	$(COMPOSE) --profile prod down $(ARGS)
+
+compose-index: compose-env-check  ## Index kb/ from inside the compose network (one-off container)
+	$(COMPOSE) run --rm kb-mcp kb index
 
 fixtures-retrieval:  ## Regenerate tests/retrieval/fixtures/kb/ (should be a no-op)
 	$(PYTHON) tests/retrieval/make_fixtures.py

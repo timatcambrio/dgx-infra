@@ -201,17 +201,21 @@ def search(
 
 @app.command()
 def serve(
-    transport: str = typer.Option(
-        "stdio", "--transport", help="stdio|http (streamable HTTP arrives in S4)"
+    transport: str = typer.Option("stdio", "--transport", help="stdio|http"),
+    allow_anonymous: bool = typer.Option(
+        False,
+        "--allow-anonymous",
+        help=(
+            "Start `--transport http` even with KB_TOKENS empty (dev only). Every "
+            "request to /mcp* is then accepted with no authentication."
+        ),
     ),
     env_file: Optional[Path] = ENV_FILE_OPTION,
 ) -> None:
     """Run the MCP server."""
     cfg = _load_config(env_file)
 
-    if transport in ("http", "streamable-http"):
-        _not_implemented("serve --transport http", "S4")
-    if transport != "stdio":
+    if transport not in ("stdio", "http", "streamable-http"):
         typer.secho(
             f"--transport must be stdio|http, got {transport!r}", fg=typer.colors.RED, err=True
         )
@@ -228,8 +232,35 @@ def serve(
     # the `serve` extra.
     from . import server as server_module
 
-    mcp_server = server_module.build_server(cfg)
-    mcp_server.run(transport="stdio")
+    if transport == "stdio":
+        mcp_server = server_module.build_server(cfg)
+        mcp_server.run(transport="stdio")
+        return
+
+    # --transport http|streamable-http (brief §9 S4, hard rule 6): refuse an
+    # unauthenticated HTTP server unless the operator explicitly opts in.
+    if not cfg.kb_tokens:
+        if not allow_anonymous:
+            typer.secho(
+                "kb serve --transport http: KB_TOKENS is empty. Refusing to start an "
+                "unauthenticated HTTP server. Set KB_TOKENS in .env, or pass "
+                "--allow-anonymous to start anyway (dev only).",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        typer.secho(
+            "kb serve --transport http: KB_TOKENS is empty and --allow-anonymous was "
+            "passed. Every request to /mcp* will be accepted with NO authentication. Do "
+            "not run this against a network you do not fully control.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+
+    import uvicorn
+
+    http_app = server_module.build_http_app(cfg)
+    uvicorn.run(http_app, host=cfg.kb_bind_host, port=cfg.kb_bind_port, log_level="info")
 
 
 @app.command(name="eval")

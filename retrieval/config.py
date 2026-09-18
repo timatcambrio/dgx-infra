@@ -94,6 +94,23 @@ class Config:
     def kb_dir(self) -> Path:
         return self.kb_path / "kb"
 
+    @property
+    def kb_bind_host(self) -> str:
+        return self._kb_bind_parts()[0]
+
+    @property
+    def kb_bind_port(self) -> int:
+        return self._kb_bind_parts()[1]
+
+    def _kb_bind_parts(self) -> tuple[str, int]:
+        host, _, port = self.kb_bind.rpartition(":")
+        if not host or not port:
+            raise ConfigError(f"KB_BIND must be HOST:PORT, got {self.kb_bind!r}")
+        try:
+            return host, int(port)
+        except ValueError as exc:
+            raise ConfigError(f"KB_BIND port must be an integer, got {self.kb_bind!r}") from exc
+
     def require_database_url_index(self) -> str:
         if not self.database_url_index:
             raise ConfigError(

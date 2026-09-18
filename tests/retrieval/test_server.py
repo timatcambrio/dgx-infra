@@ -16,113 +16,26 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shutil
-import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import asyncpg
-import httpx
 import pytest
-from fake_ollama import deterministic_vector, fixed_dim_handler
+from conftest import SERVER_KB_URL_BASE, make_server_config
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.shared.memory import create_connected_server_and_client_session
 
-from retrieval import index as index_module
 from retrieval import server as server_module
-from retrieval.config import Config
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "kb"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 EMBED_DIM = 8
 EMBED_MODEL = "fake-embedder"
-KB_URL_BASE = "https://kb.example.test/kb"
-
-
-def _cfg(kb_path: Path, db_dsn: str, **overrides) -> Config:
-    base = dict(
-        kb_path=kb_path,
-        database_url=db_dsn,
-        database_url_index=None,
-        ollama_base_url="http://fake-ollama",
-        embed_model=EMBED_MODEL,
-        embed_dim=EMBED_DIM,
-        llm_base_url="http://localhost:11434/v1",
-        llm_model="granite4:3b",
-        kb_url_base=KB_URL_BASE,
-        kb_bind="127.0.0.1:8765",
-        kb_public_host="localhost",
-        kb_tokens=(),
-        fetch_max_chars=200_000,
-        chunk_target=1200,
-        chunk_max=2500,
-    )
-    base.update(overrides)
-    return Config(**base)
-
-
-@pytest.fixture(scope="session")
-def indexed_dsn(_schema_ready: str, tmp_path_factory: pytest.TempPathFactory) -> str:
-    """The fixtures indexed once per session against `_schema_ready`, with the fake
-    ollama (identical pattern to `test_search.py`)."""
-    kb_dir = tmp_path_factory.mktemp("server-fixtures") / "kb"
-    kb_dir.mkdir(parents=True)
-    for f in FIXTURES.iterdir():
-        if f.name != "expected.json":
-            shutil.copy2(f, kb_dir / f.name)
-
-    cfg = _cfg(kb_dir.parent, _schema_ready, database_url_index=_schema_ready)
-    embed_client = httpx.Client(transport=httpx.MockTransport(fixed_dim_handler(EMBED_DIM)))
-
-    async def _index() -> None:
-        conn = await asyncpg.connect(_schema_ready)
-        try:
-            await conn.execute("TRUNCATE documents CASCADE")
-        finally:
-            await conn.close()
-        result = await index_module.run_index(cfg, embed_client=embed_client)
-        assert result.errors == []
-
-    asyncio.run(_index())
-    return _schema_ready
+KB_URL_BASE = SERVER_KB_URL_BASE
+_cfg = make_server_config
 
 
 def _run(coro_fn):
     return asyncio.run(coro_fn())
-
-
-class _EmbedHandler(BaseHTTPRequestHandler):
-    """A real (loopback) HTTP `/api/embed`, for the subprocess test below — a subprocess
-    cannot share this process's `httpx.MockTransport`, so it needs an actual server to
-    talk to (brief §8.2: "a tiny ... HTTP server on a free port for the CLI tests")."""
-
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-        pass
-
-    def do_POST(self) -> None:  # noqa: N802
-        length = int(self.headers.get("Content-Length", "0"))
-        body = json.loads(self.rfile.read(length))
-        vectors = [deterministic_vector(t, EMBED_DIM) for t in body["input"]]
-        payload = json.dumps({"embeddings": vectors}).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
-
-
-@pytest.fixture(scope="session")
-def fake_ollama_http() -> str:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _EmbedHandler)
-    port = server.server_address[1]
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
 
 
 # ----------------------------------------------------------------------------------------
