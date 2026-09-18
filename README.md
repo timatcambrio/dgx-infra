@@ -516,10 +516,33 @@ three percentages at the bottom are hit@k across all cases, one per leg.
 
 The committed cases run only against the synthetic fixtures in
 `tests/retrieval/fixtures/kb/` and are checked in the test suite (fused hit@5 must be
-100% there). They say nothing about retrieval quality on the real corpus. **Tim runs `kb
-eval` against the real, indexed corpus and records those numbers here** once that has
-happened; no number for the real corpus is invented in this README or committed by an
-agent.
+100% there). They say nothing about retrieval quality on a real corpus.
+
+**Recorded floor, proxy corpus (2026-09-18).** Twelve public documents of the shapes the
+client corpus is expected to contain (reports, slide decks, an annotated form set, two
+acquisition regulations as Word files, one CSV table), indexed with `nomic-embed-text`,
+21 questions worded the way a user would ask them, each answerable from one document and
+checked by an expected phrase and, where the source has pages, an expected page. The
+case file lives outside the repository because its questions describe the documents.
+
+| leg | hit@5 |
+|---|---|
+| lexical | 33% |
+| vector | 67% |
+| fused | 76% |
+
+How to read it: the lexical leg ANDs every non-stop word of the question, so a natural
+question containing one word the right chunk lacks scores zero there; it exists for exact
+tokens (a section number, a form number, a phone number), and it placed every such case
+first. Of the five fused misses, two are slide pages whose large-type fragments each
+convert to a one-line heading and therefore a one-line section; one is a PDF whose word
+spacing was lost in conversion; one is a page holding only bare labels and numbers; one is
+a table the vector leg does not surface. Each is a conversion shape, not a ranking
+parameter. These numbers are a regression floor: a change to chunking, embedding model,
+or fusion is measured against them and must not lower them. They are not tuned toward.
+
+No number for the client's own corpus appears here; the client runs the same command
+against their index and records their own.
 
 ### `kb serve` — the MCP server
 
