@@ -20,6 +20,16 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-09-22 [DECISION] **GPU passthrough decided outside Compose.** `compose/gpu-detect.sh`
+  prints the `-f compose/docker-compose.gpu.yml` overlay (`driver: nvidia`, `count: all`,
+  `capabilities: [gpu]`) when `nvidia-smi` lists a GPU AND Docker can pass one through
+  (`nvidia` runtime registered, or `nvidia-ctk` present for CDI installs); `KB_GPU=auto|on|
+  off` from the environment, else parsed out of `.env` for that one key. stdout is Compose
+  arguments only, verdict on stderr, `--quiet` for the `$(shell)` call. `gpu-check` is a
+  real recipe because `$(shell ...)` swallows a non-zero exit, so `KB_GPU=on` needs it to
+  stop a deploy. `COMPOSE` became recursive (`=`) so `make help` does not probe. Tested with
+  fake `nvidia-smi`/`docker` on PATH plus `docker compose config` assertions that the
+  overlay changes the reservation and nothing else (`tests/test_compose_gpu.py`).
 - 2026-09-18 [DECISION] **Table-row chunking** (`retrieval/chunk.py` rule 1): a table at or
   under `CHUNK_MAX` is never split; above it a pipe table (header row + GFM delimiter row)
   is cut only between rows, each piece = header + delimiter + previous piece's last row +
@@ -115,6 +125,8 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- [MILESTONE] 2026-09-22 GPU passthrough for the compose stack: tests e55bc31, fix ccabf4d.
+  488 tests green, both gates green.
 - [MILESTONE] 2026-09-18 Table-row chunking: tests fcac158, fix 9224229, golden 5d2f4f1
   (handbook fixture 66 → 67 chunks), README dd3af7c. Eval floor recorded f153cb5.
 - [MILESTONE] 2026-09-18 Stage 2 S0–S4 shipped (commits 3ed6f8c and predecessors), plus

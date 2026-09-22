@@ -379,6 +379,27 @@ make compose-index                 # walks kb/, embeds it, loads it into Postgre
 path would be resolved against the `compose/` directory rather than this one. `make
 compose-up` checks and refuses otherwise.
 
+**GPUs.** Docker never hands a GPU to a container unless asked, so `make compose-up` asks
+on your behalf. Before starting anything it checks whether this host has NVIDIA GPUs and
+whether Docker can pass them through, and if both hold it reserves all of them for
+`ollama`; otherwise it starts on the CPU. Either way it prints which it chose. Run the
+check on its own with:
+
+```bash
+make gpu-check
+```
+
+Set `KB_GPU` in `.env` to override the choice. `off` keeps embedding on the CPU. `on`
+makes the GPUs a requirement, so a deployment that is meant to have them refuses to start
+instead of quietly running many times slower. The default, `auto`, is the detection just
+described. Passing GPUs through needs the NVIDIA Container Toolkit installed on the host;
+without it the check finds nothing to use and says so.
+
+Indexing is the part this speeds up, and only the first run over a corpus is slow. An
+embedding model is small enough to sit on a single GPU, so a second and third card do not
+divide that work further; they matter for a larger embedding model and for serving several
+requests at once.
+
 Then add the server to your assistant (Codex/Claude Code snippets below) using
 `https://<KB_PUBLIC_HOST>/mcp` and one of the tokens from `KB_TOKENS`, and ask it a
 question. `make compose-index` needs the embedding model pulled into `ollama` first —
