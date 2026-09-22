@@ -57,9 +57,14 @@ def _fakes(tmp_path: Path, *, gpus: bool, toolkit: bool) -> Path:
     return d
 
 
-def _run(tmp_path: Path, *, mode: str | None, gpus: bool, toolkit: bool):
+def _run(tmp_path: Path, *, mode: str | None, gpus: bool, toolkit: bool, env_file=None):
     fake = _fakes(tmp_path, gpus=gpus, toolkit=toolkit)
-    env = {"PATH": f"{fake}:/usr/bin:/bin"}
+    # Point KB_ENV_FILE somewhere empty by default: the repo's own .env must not be able
+    # to change the result of a test about the probe.
+    env = {
+        "PATH": f"{fake}:/usr/bin:/bin",
+        "KB_ENV_FILE": str(env_file or tmp_path / "absent.env"),
+    }
     if mode is not None:
         env["KB_GPU"] = mode
     return subprocess.run(
@@ -190,3 +195,102 @@ def test_override_changes_nothing_but_the_reservation():
     for name in base["services"]:
         if name != "ollama":
             assert base["services"][name] == with_gpu["services"][name], name
+
+
+# --- where the setting is read from -----------------------------------------------------
+
+
+def _env_file(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "dotenv"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_kb_gpu_is_read_from_the_env_file(tmp_path):
+    """Everything else the operator configures lives in .env, but Compose's --env-file
+    populates Compose's interpolation, not this script's shell. Without this the line
+    would look effective and do nothing."""
+    env_file = _env_file(tmp_path, "KB_PATH=/srv/kb\nKB_GPU=off\n")
+    r = _run(tmp_path, mode=None, gpus=True, toolkit=True, env_file=env_file)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == ""
+    assert "KB_GPU=off" in r.stderr
+
+
+def test_the_environment_beats_the_env_file(tmp_path):
+    env_file = _env_file(tmp_path, "KB_GPU=off\n")
+    r = _run(tmp_path, mode="auto", gpus=True, toolkit=True, env_file=env_file)
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["-f", str(OVERRIDE)]
+
+
+def test_an_env_file_value_may_be_quoted_or_spaced(tmp_path):
+    for body in ('KB_GPU="off"\n', "KB_GPU = off\n", "KB_GPU='off'\n"):
+        env_file = _env_file(tmp_path, body)
+        r = _run(tmp_path, mode=None, gpus=True, toolkit=True, env_file=env_file)
+        assert r.stdout.strip() == "", body
+
+
+def test_an_env_file_without_the_key_leaves_the_default(tmp_path):
+    env_file = _env_file(tmp_path, "KB_PATH=/srv/kb\nKB_TOKENS=abc\n")
+    r = _run(tmp_path, mode=None, gpus=True, toolkit=True, env_file=env_file)
+    assert r.stdout.split() == ["-f", str(OVERRIDE)]
+
+
+def test_the_env_file_is_never_executed(tmp_path):
+    """.env holds the database password; sourcing it would also run whatever is in it."""
+    marker = tmp_path / "executed"
+    env_file = _env_file(tmp_path, f"KB_GPU=off\ntouch {marker}\n")
+    _run(tmp_path, mode=None, gpus=True, toolkit=True, env_file=env_file)
+    assert not marker.exists()
+
+
+# --- the Makefile actually uses the decision --------------------------------------------
+
+
+def _make(tmp_path: Path, target: str, *, gpus: bool, toolkit: bool, mode: str | None = None):
+    fake = _fakes(tmp_path, gpus=gpus, toolkit=toolkit)
+    env = {
+        "PATH": f"{fake}:/usr/bin:/bin",
+        "KB_ENV_FILE": str(tmp_path / "absent.env"),
+    }
+    if mode is not None:
+        env["KB_GPU"] = mode
+    return subprocess.run(
+        ["make", "-n", target], capture_output=True, text=True, env=env, cwd=str(REPO)
+    )
+
+
+def test_compose_up_passes_the_override_when_the_gpus_are_usable(tmp_path):
+    r = _make(tmp_path, "compose-up", gpus=True, toolkit=True)
+    assert r.returncode == 0, r.stderr
+    assert f"-f {OVERRIDE}" in r.stdout
+
+
+def test_compose_up_passes_no_override_on_a_cpu_host(tmp_path):
+    r = _make(tmp_path, "compose-up", gpus=False, toolkit=False)
+    assert r.returncode == 0, r.stderr
+    assert "docker-compose.gpu.yml" not in r.stdout
+
+
+def test_compose_index_uses_the_same_decision(tmp_path):
+    r = _make(tmp_path, "compose-index", gpus=True, toolkit=True)
+    assert r.returncode == 0, r.stderr
+    assert f"-f {OVERRIDE}" in r.stdout
+
+
+def test_gpu_check_fails_the_build_when_required_gpus_are_missing(tmp_path):
+    """`$(shell ...)` swallows a non-zero exit, so KB_GPU=on needs a real recipe to stop
+    a deploy that asked for the GPUs and would not get them."""
+    fake = _fakes(tmp_path, gpus=False, toolkit=False)
+    r = subprocess.run(
+        ["make", "gpu-check"],
+        capture_output=True, text=True, cwd=str(REPO),
+        env={
+            "PATH": f"{fake}:/usr/bin:/bin",
+            "KB_GPU": "on",
+            "KB_ENV_FILE": str(tmp_path / "absent.env"),
+        },
+    )
+    assert r.returncode != 0
+    assert "KB_GPU=on" in r.stderr

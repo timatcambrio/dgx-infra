@@ -1,0 +1,24 @@
+# GPU overlay for the compose stack. Added by `compose/gpu-detect.sh`, never used alone:
+#
+#   docker compose -f compose/docker-compose.yml -f compose/docker-compose.gpu.yml ...
+#
+# Docker does not pass a GPU into a container implicitly, and Compose has no conditional
+# device reservation -- this either applies or it does not. Applying it on a host without
+# the NVIDIA Container Toolkit makes `ollama` fail to start ("could not select device
+# driver"), which is why the decision is made before Compose runs rather than here.
+#
+# `count: all` is deliberate: the host's whole set, so the same file fits a one-card
+# workstation and an eight-V100 DGX without enumerating device ids that would go stale.
+# Note what this does and does not buy. A 137M-parameter embedding model such as
+# `nomic-embed-text` is loaded onto ONE device, so indexing throughput comes from that
+# device, not from eight; the rest of the set matters for a larger embedding model, for
+# concurrent requests, and for the LLM phase of this platform.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
