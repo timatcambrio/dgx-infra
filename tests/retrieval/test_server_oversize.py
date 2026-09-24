@@ -66,10 +66,49 @@ def _big_markdown() -> str:
     )
 
 
+#: The deep-outline document: enough level-3 headings that listing them all is over the cap
+#: a test sets, few enough level-2 headings that listing only those is under it.
+_DEEP_PARENTS = 40
+_DEEP_CHILDREN = 8
+
+
+def _deep_markdown() -> str:
+    """A document whose *outline listing* is the thing that exceeds the cap, not any one
+    section: `_DEEP_PARENTS * (1 + _DEEP_CHILDREN)` sections, all of them small."""
+    body_parts = ["# Deep Outline", ""]
+    for parent in range(_DEEP_PARENTS):
+        body_parts += [f"## Subpart {parent:02d} — Contracting Authority And Responsibilities", ""]
+        for child in range(_DEEP_CHILDREN):
+            body_parts += [
+                f"### MP53{parent:02d}.{child} Approval Authority For This Numbered Matter",
+                "",
+                _paragraph(parent * _DEEP_CHILDREN + child),
+                "",
+            ]
+    body = "\n".join(body_parts)
+    sha = hashlib.sha256(body.encode()).hexdigest()
+    return (
+        "---\n"
+        "title: Deep Outline\n"
+        "source_file: deep-outline.docx\n"
+        "source_format: docx\n"
+        "source_url: null\n"
+        "doc_date: UNCONFIRMED\n"
+        "retrieved: '2026-09-24'\n"
+        "converter: libreoffice-docx\n"
+        "text_coverage: null\n"
+        "text_class: clean\n"
+        "needs_ocr: false\n"
+        f"content_sha256: {sha}\n"
+        "---\n\n" + body + "\n"
+    )
+
+
 @pytest.fixture(scope="module")
 def oversize_cfg(indexed_dsn: str, tmp_path_factory: pytest.TempPathFactory):
     """The generated document indexed *alongside* the committed fixtures, into the same
-    session database — additively, so nothing another module indexed is disturbed (the kb
+    session database, with the deep-outline document beside it — additively, so nothing
+    another module indexed is disturbed (the kb
     directory holds the fixtures too, since `kb index` prunes slugs it does not find, and
     they index as `unchanged`), and dropped again afterwards so a module that asserts on
     the fixture document *count* sees the same four however the files are ordered."""
@@ -88,6 +127,7 @@ def oversize_cfg(indexed_dsn: str, tmp_path_factory: pytest.TempPathFactory):
         if f.name != "expected.json":
             shutil.copy2(f, kb_dir / f.name)
     (kb_dir / "oversize.md").write_text(_big_markdown(), encoding="utf-8")
+    (kb_dir / "deep-outline.md").write_text(_deep_markdown(), encoding="utf-8")
 
     cfg = make_server_config(kb_dir.parent, indexed_dsn, database_url_index=indexed_dsn)
     embed_client = httpx.Client(transport=httpx.MockTransport(fixed_dim_handler(8)))
@@ -102,7 +142,10 @@ def oversize_cfg(indexed_dsn: str, tmp_path_factory: pytest.TempPathFactory):
     async def _drop() -> None:
         conn = await asyncpg.connect(indexed_dsn)
         try:
-            await conn.execute("DELETE FROM documents WHERE slug = 'oversize'")
+            await conn.execute(
+                "DELETE FROM documents WHERE slug = ANY($1::text[])",
+                ["oversize", "deep-outline"],
+            )
         finally:
             await conn.close()
 
@@ -187,3 +230,27 @@ def test_document_refusal_says_which_sections_are_themselves_over_the_cap(oversi
     assert fetched["metadata"]["truncated"] is True
     assert len(fetched["text"]) <= cfg.fetch_max_chars
     assert "over the cap" in fetched["text"]
+
+
+def test_document_outline_drops_deeper_headings_before_it_is_cut(oversize_cfg) -> None:
+    """A document can have too many *headings* to list, not just too much text: 360 outline
+    entries are over this cap where the 40 level-2 entries are not. Trimming by depth has
+    to come before cutting the list short — a caller handed the top two levels can still
+    `get_outline` for the rest, and the reply says the deeper ones are missing either way.
+    """
+    cfg = make_server_config(
+        oversize_cfg.kb_path, oversize_cfg.database_url, fetch_max_chars=10_000
+    )
+
+    fetched = _call(cfg, "fetch", {"id": "doc:deep-outline"})
+    text = fetched["text"]
+
+    assert fetched["metadata"]["truncated"] is True
+    assert len(text) <= cfg.fetch_max_chars
+    assert "Headings deeper than level 2 are left out" in text
+    # Trimming was enough on its own; nothing was cut off the end.
+    assert "Listing cut here" not in text
+    # Every level-2 section is still named (plus the level-1 title section), and the
+    # level-3 ones are gone.
+    assert text.count("- sec:deep-outline:") == _DEEP_PARENTS + 1
+    assert "Approval Authority For This Numbered Matter" not in text
