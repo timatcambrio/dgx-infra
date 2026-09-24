@@ -20,6 +20,26 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-09-24 [DECISION] **FETCH_MAX_CHARS is a ceiling on every fetch path, and a section
+  is not a bounded unit.** `_oversize_response` (retrieval/server.py) answers an over-cap
+  section, section range, page or chunk the way `_fetch_document` has always answered an
+  over-cap document: `truncated: true`, and in place of the text the block range declined
+  plus the chunk ids covering it *as an index range* (every index in it a valid id, so the
+  reply does not grow with the section) and one landmark line from a dozen sampled chunks.
+  Why it was needed: `cfg.fetch_max_chars` was read in one place only, and `sec:daffars:523`
+  = 538,454 chars / `sec:gsam:70` = 513,530 came back whole — 2.5–2.7× the cap at which the
+  document path refuses, whose refusal said "fetch the section ids below instead", so
+  following the server's own advice returned more than it had just declined. One DOCX
+  heading spans 1,162 blocks. Consequences, all deliberate: (1) a `chunk:` fetch returns
+  that chunk alone instead of widening to its section — the chunk is the only sub-unit
+  below a section in these page-less documents, so a widening chunk id would loop the
+  breakdown back to itself; `search` still returns section ids only and `get_section` is
+  still the wider read; (2) `metadata.kind` gains `"chunk"`, a fourth value where brief
+  §6.5.2 lists three; (3) the document refusal now prints each section's size and marks the
+  over-cap ones, and only offers a page id when the range spans more than one page (one
+  page containing an over-cap unit is at least as large as it); (4) the outline listing is
+  bounded too — deeper heading levels drop out before the list is cut, and both say so.
+  Tests d5674df (failing first, a generated 320,000-char fixture document), fix 5de0de0.
 - 2026-09-23 [DECISION] **A heading is never one cell of a row, whatever size it is set in.**
   `pdf_geometry._reads_as_cell` refuses heading promotion for a line that a neighbour
   corroborates as part of a row: `_shares_columns` (the line directly above or below splits
@@ -189,6 +209,14 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-09-24 [TOOL] **Fetch size ceiling applied to every path** (branch
+  `fix/fetch-size-ceiling-all-paths`, tests d5674df, fix 5de0de0; see [DECISIONS]).
+  `fetch("sec:daffars:523")` 540,776 → 2,330 chars; `sec:gsam:70` → 2,100. 505 tests green
+  (500 before). `scripts/mcp_probe.py` against `~/Dropbox/Cambrio/dgx-eval/mcp-cases.yaml`
+  unchanged at 69 mechanical checks with the same single failure as before the change
+  (`intact-table-captains`, evidence `5,913` absent from a 310-char section fetch —
+  pre-existing, a sectioniser/retrieval matter, not a size matter). Retrieval ranking is
+  untouched, so the 36-case eval floor is unaffected and was not re-run.
 - [MILESTONE] 2026-09-22 GPU passthrough for the compose stack: tests e55bc31, fix ccabf4d.
   488 tests green, both gates green.
 - [MILESTONE] 2026-09-18 Table-row chunking: tests fcac158, fix 9224229, golden 5d2f4f1
