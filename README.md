@@ -530,6 +530,8 @@ vector-only results rather than erroring.
 Every hit is a **section**, never a chunk: chunks are what search matches against
 internally, but what comes back is always a whole readable section with its page range,
 heading path, and a citation you can quote and go check against the original markdown.
+(Chunk ids exist and `fetch` accepts one, but only as a way *down* from a section too large
+to return whole — see `kb serve` below.)
 
 ### `kb eval`
 
@@ -663,13 +665,26 @@ assistant in its own instructions:
 
 - **`search(query, k=8, slug=None, text_class=None)`** — find candidate sections for a
   question; returns ids, titles, snippets and citation urls, never full text.
-- **`fetch(id)`** — read the whole section, page, or document named by an id from
+- **`fetch(id)`** — read the whole section, page, chunk, or document named by an id from
   `search`, `list_documents`, or `get_outline`.
 - **`list_documents(text_class=None, title_contains=None)`** — every indexed document,
   sorted by title, with its size and section count.
 - **`get_outline(id)`** — the section-by-section table of contents for one document.
 - **`get_section(id, neighbours=0)`** — like `fetch` on a section or page, but also pulls
   in `neighbours` sections before and after it, concatenated in reading order.
+
+No reply carries more than `FETCH_MAX_CHARS` (200,000 by default) of text. That ceiling is
+not only for a whole document: a **section is not a bounded unit** — in a DOCX-derived
+manual one heading can span thousands of blocks, and this corpus has sections of over half
+a million characters, more than the document path already declines to send. So `fetch` and
+`get_section` answer an over-cap section, page or chunk the same way the document path
+answers an over-cap document: `metadata.truncated: true`, and in place of the text, the
+block range it declined plus the smaller ids that cover it — the chunk ids (and page ids
+where the document has pages), with one line sampled from a dozen chunks as landmarks for
+choosing between them. Fetching one of those chunk ids returns that chunk and nothing else.
+An outline listing is bounded the same way: for a document with too many headings to list,
+the deeper levels drop out and the reply says so rather than growing without limit. Nothing
+is silently cut: every one of these replies says what it left out and which id returns it.
 
 #### Use it from Codex
 
