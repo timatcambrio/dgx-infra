@@ -46,7 +46,7 @@ TABLE_ROWS = [
 ]
 
 
-def _canvas(path: Path):
+def _canvas(path: Path, pagesize: tuple[float, float] | None = None):
     from reportlab import rl_config
 
     # Must be set before the canvas is constructed: it fixes both the /CreationDate and the
@@ -56,7 +56,7 @@ def _canvas(path: Path):
     from reportlab.lib.pagesizes import LETTER
     from reportlab.pdfgen.canvas import Canvas
 
-    return Canvas(str(path), pagesize=LETTER, invariant=1)
+    return Canvas(str(path), pagesize=pagesize or LETTER, invariant=1)
 
 
 def _draw_heading(canvas, text: str, y: int) -> int:
@@ -594,6 +594,128 @@ def callout_notes(path: Path) -> None:
     canvas.save()
 
 
+#: A 16:9 slide, in points, as a deck exported from PowerPoint measures one.
+SLIDE_PAGE = (960, 540)
+
+#: Sizes for `slide_table`, taken from the page they reproduce: body prose is the *smallest*
+#: type on the slide and every cell of the table is set larger than it, so size alone cannot
+#: separate the two.
+SLIDE_BODY_SIZE = 18
+SLIDE_TITLE_SIZE = 44
+SLIDE_HEADER_SIZE = 20
+SLIDE_VALUE_SIZE = 24
+SLIDE_YEAR_SIZE = 28
+
+#: `(year, single, family)` per row of the slide's table.
+SLIDE_TABLE_ROWS = [("2025", "$4,300", "$8,550"), ("2026", "$4,400", "$8,750")]
+
+#: The callout beside the table, in the slide's right-hand column. Its last line shares a
+#: baseline with the table's second row, so grouping words by baseline across the whole page
+#: welds the two together: the real deck produced the cell "2026 2026!", which is text
+#: neither column contains.
+SLIDE_CALLOUT = [
+    "There is still time to max",
+    "out your account for the",
+    "earlier year. Contributions",
+    "count up to the deadline.",
+    "Ask before April 15,",
+    "2026!",
+]
+
+#: Prose to outweigh the table, so that 18pt is the document's body size. Without it the
+#: largest of the cell sizes becomes the baseline and the fixture proves nothing.
+SLIDE_BODY_TEXT = (
+    "Account holders may contribute up to the annual maximum set by the Internal Revenue "
+    "Service. The limit depends on whether the account holder is enrolled in single "
+    "coverage or in family coverage, and it is published again each calendar year. "
+    "Contributions made after the end of a year but before the filing deadline may be "
+    "applied to the earlier year."
+)
+
+
+def slide_table(path: Path) -> None:
+    """A presentation slide whose table is drawn with type and whitespace alone.
+
+    The shape that broke an HSA deck: a small table of contribution limits by year and plan
+    type, with a rule above and below it and no vertical rules at all, so pdfplumber finds
+    no table. Every cell is set larger than the slide's body prose and most of them in a
+    bold face, so each one clears both of the heading tests on its own, and the table came
+    out as a run of `###` lines that cut the slide into eight sections.
+
+    Two further details are deliberate, because both are what the real slide does and both
+    defeat the borderless-table recovery that would otherwise catch this:
+
+    * the year cell is set larger than the value cells beside it, so its top sits more than
+      `PDF_LINE_TOLERANCE` from theirs and the row does not group into one line;
+    * the header is stacked as two lines ("SINGLE" / "PLAN"), so no three consecutive lines
+      share a cell count.
+
+    Nothing here is recoverable as a grid by measurement. What the converter must not do is
+    assert section boundaries in its place.
+    """
+    canvas = _canvas(path, pagesize=SLIDE_PAGE)
+    height = SLIDE_PAGE[1]
+
+    canvas.setFont("Helvetica-Bold", SLIDE_TITLE_SIZE)
+    canvas.drawString(46, height - 104, "IRS Contribution Limits")
+
+    single_x, family_x, year_x, label_x = 341, 477, 231, 46
+
+    canvas.setFont("Helvetica-Bold", SLIDE_HEADER_SIZE)
+    for index, text in enumerate(("SINGLE", "PLAN")):
+        canvas.drawString(single_x, height - 209 - index * 24, text)
+    for index, text in enumerate(("FAMILY", "PLAN")):
+        canvas.drawString(family_x, height - 209 - index * 24, text)
+
+    # The rules a reader sees as the table. Horizontal only: with no verticals pdfplumber
+    # will not call this a table, which is the whole point of the fixture.
+    canvas.setLineWidth(1)
+    canvas.line(45, height - 246, 549, height - 246)
+    canvas.line(45, height - 451, 555, height - 451)
+
+    canvas.setFont("Helvetica", SLIDE_BODY_SIZE)
+    canvas.drawString(label_x, height - 349, "Maximum")
+    canvas.drawString(label_x, height - 371, "contribution limit")
+
+    for index, (year, single, family) in enumerate(SLIDE_TABLE_ROWS):
+        baseline = height - 316 - index * 98
+        canvas.setFont("Helvetica-Bold", SLIDE_VALUE_SIZE)
+        canvas.drawString(single_x + 4, baseline, single)
+        canvas.drawString(family_x - 12, baseline, family)
+        # Larger type, and a baseline low enough that the year does not group with the
+        # values it belongs to. This is the offset the real slide has.
+        canvas.setFont("Helvetica-Bold", SLIDE_YEAR_SIZE)
+        canvas.drawString(year_x, baseline - 7, year)
+
+    # The right-hand column, across a gutter wide enough to be one. Its baselines are set so
+    # that the last line lands level with the table's second row.
+    canvas.setFont("Helvetica-Bold", SLIDE_VALUE_SIZE)
+    canvas.drawString(622, height - 246, "Don't Miss Out!")
+    for index, text in enumerate(SLIDE_CALLOUT):
+        canvas.setFont(
+            "Helvetica-Bold" if text.endswith("!") else "Helvetica", SLIDE_BODY_SIZE
+        )
+        canvas.drawString(622, height - 300 - index * 23, text)
+
+    canvas.showPage()
+
+    canvas.setFont("Helvetica-Bold", SLIDE_TITLE_SIZE)
+    canvas.drawString(46, height - 104, "How The Limit Is Set")
+    canvas.setFont("Helvetica", SLIDE_BODY_SIZE)
+    y = height - 180
+    words, line = SLIDE_BODY_TEXT.split(), []
+    for word in words:
+        line.append(word)
+        if len(" ".join(line)) > 70:
+            canvas.drawString(46, y, " ".join(line[:-1]))
+            y -= 28
+            line = [word]
+    if line:
+        canvas.drawString(46, y, " ".join(line))
+    canvas.showPage()
+    canvas.save()
+
+
 def simple_docx(path: Path) -> None:
     """Headings, a list, and a table."""
     from docx import Document
@@ -891,6 +1013,7 @@ GENERATORS = {
     "screenshot_form.pdf": screenshot_form,
     "boxed_notes.pdf": boxed_notes,
     "callout_notes.pdf": callout_notes,
+    "slide_table.pdf": slide_table,
 }
 
 
