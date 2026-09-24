@@ -383,6 +383,103 @@ def detect_columns(words: list[dict], page_width: float, gap_fraction: float) ->
     return 2 if find_column_gutter(words, page_width, gap_fraction) else 1
 
 
+def _cell_box(box) -> tuple[float, float, float, float]:
+    x0, top, x1, bottom = (float(value) for value in box)
+    return (x0, top, x1, bottom)
+
+
+def _column_spans(table) -> list[tuple[float, float] | None]:
+    """Left and right edge of each column, measured from the rows that are fully ruled.
+
+    A cell exists for pdfplumber only where a rule bounds it on every side. A banded table
+    draws a box around its shaded rows and nothing around the rest, so the unshaded rows
+    have no outer vertical at all and their first and last cells come back `None` -- with
+    their text dropped, not merely unplaced. The columns those cells belong to are still
+    measured, just by the neighbouring rows, which is what this recovers.
+
+    The median rather than the extremes: one row whose rule is drawn a point wide of the
+    others should not widen the column for everybody.
+    """
+    width = max((len(row.cells) for row in table.rows), default=0)
+    spans: list[tuple[float, float] | None] = []
+    for index in range(width):
+        boxes = [
+            row.cells[index]
+            for row in table.rows
+            if index < len(row.cells) and row.cells[index] is not None
+        ]
+        if not boxes:
+            spans.append(None)
+            continue
+        spans.append(
+            (
+                statistics.median(float(box[0]) for box in boxes),
+                statistics.median(float(box[2]) for box in boxes),
+            )
+        )
+    return spans
+
+
+def _cell_text(words: list[dict]) -> str:
+    """Words of one recovered cell, in reading order, lines kept the way pdfplumber keeps them."""
+    lines: list[list[dict]] = []
+    for word in sorted(words, key=lambda w: (float(w["top"]), float(w["x0"]))):
+        height = float(word["bottom"]) - float(word["top"])
+        if lines and abs(float(word["top"]) - float(lines[-1][0]["top"])) <= height / 2:
+            lines[-1].append(word)
+        else:
+            lines.append([word])
+    return "\n".join(
+        " ".join(str(word["text"]) for word in line).strip() for line in lines
+    ).strip()
+
+
+def _table_rows(page, table) -> list[tuple[Any, list[str], list[tuple | None]]]:
+    """`(row, texts, cell boxes)` per row, with cells no rule bounds filled back in.
+
+    Only cells pdfplumber returned as `None` are filled, and only from words no ruled cell
+    of the same row already claimed: a blank cell on a form stays blank, and a cell spanning
+    two columns is not duplicated into both. The filled box is the column's span crossed with
+    the row's own band, so a callout anchored to a recovered cell lands where it is drawn.
+    """
+    extracted = table.extract()
+    spans = _column_spans(table)
+    words: list[dict] | None = None
+    rows: list[tuple[Any, list[str], list[tuple | None]]] = []
+    for row, raw in zip(table.rows, extracted):
+        texts = [(text or "").strip() for text in raw]
+        cells: list[tuple | None] = list(row.cells) + [None] * (len(texts) - len(row.cells))
+        missing = [
+            index
+            for index in range(len(texts))
+            if index < len(spans) and cells[index] is None and spans[index] is not None
+        ]
+        if missing:
+            if words is None:
+                words = page.extract_words()
+            claimed = {
+                id(word)
+                for box in cells
+                if box is not None
+                for word in _words_inside(words, _cell_box(box))
+            }
+            top, bottom = float(row.bbox[1]), float(row.bbox[3])
+            for index in missing:
+                x0, x1 = spans[index]  # type: ignore[misc]
+                box = (x0, top, x1, bottom)
+                cells[index] = box
+                if not texts[index]:
+                    texts[index] = _cell_text(
+                        [
+                            word
+                            for word in _words_inside(words, box)
+                            if id(word) not in claimed
+                        ]
+                    )
+        rows.append((row, texts, cells))
+    return rows
+
+
 def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[list[str]]]]:
     """Ruled tables only.
 
@@ -393,9 +490,9 @@ def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[l
     regions = []
     for table in page.find_tables():
         rows = [
-            [(cell or "").strip() for cell in row]
-            for row in table.extract()
-            if any((cell or "").strip() for cell in row)
+            texts
+            for _, texts, _ in _table_rows(page, table)
+            if any(texts)
         ]
         if len(rows) >= 2 and len(rows[0]) >= 2:
             regions.append((table.bbox, rows))
@@ -465,8 +562,9 @@ def _table_cells(page) -> list[Cell]:
     Built from the same `find_tables` call that `_table_regions` filters for rendering, but
     without the filtering: a row that is empty of text is dropped from the rendered table and
     is still somewhere a callout can point, and an empty *cell* is the normal case on a blank
-    form. Row and cell geometry come from pdfplumber directly rather than being reconstructed
-    from the rendered rows, so the two cannot drift apart.
+    form. Row and cell geometry come from pdfplumber directly, through the same `_table_rows`
+    the renderer uses, so a recovered cell is in both or in neither and the two cannot drift
+    apart.
     """
     cells: list[Cell] = []
     try:
@@ -476,17 +574,16 @@ def _table_cells(page) -> list[Cell]:
 
     for table in tables:
         try:
-            extracted = table.extract()
+            rows = _table_rows(page, table)
         except Exception:  # noqa: BLE001 - skip this table, keep the rest of the page
             continue
         table_top = float(table.bbox[1])
-        for row, texts in zip(table.rows, extracted):
-            row_texts = [(text or "").strip() for text in texts]
+        for _, row_texts, boxes in rows:
             row_label = next((text for text in row_texts if text), "")
-            for box, text in zip(row.cells, row_texts):
+            for box, text in zip(boxes, row_texts):
                 if box is None:
                     continue
-                x0, top, x1, bottom = (float(value) for value in box)
+                x0, top, x1, bottom = _cell_box(box)
                 cells.append(
                     Cell(
                         top=top,
