@@ -39,7 +39,9 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   over-cap ones, and only offers a page id when the range spans more than one page (one
   page containing an over-cap unit is at least as large as it); (4) the outline listing is
   bounded too — deeper heading levels drop out before the list is cut, and both say so.
-  Tests d5674df (failing first, a generated 320,000-char fixture document), fix 5de0de0.
+  Tests d5674df (failing first, a generated 320,000-char fixture document), fix 5de0de0,
+  outline-trimming test 08e5271. Brief §6.5.1/§6.5.2 updated in the design repo to match,
+  so `"chunk"` and the ceiling are spec, not an undocumented deviation.
 - 2026-09-23 [DECISION] **A heading is never one cell of a row, whatever size it is set in.**
   `pdf_geometry._reads_as_cell` refuses heading promotion for a line that a neighbour
   corroborates as part of a row: `_shares_columns` (the line directly above or below splits
