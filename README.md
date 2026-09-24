@@ -270,6 +270,17 @@ one or more of these, the body also opens with an INCOMPLETE note giving the cou
 Ruled tables come from their ruling lines. Borderless ones are recovered from column
 alignment and flagged in LAYOUT NOTES for a spot-check.
 
+A cell counts as ruled only where a line bounds it on every side, which is less often than
+it looks. A table banded with shading typically draws a box around its shaded rows and
+nothing around the rest, so on every other row the first and last cells have no outer rule
+and their text is dropped — a table of numbers with no labels, which reads as plausible.
+Those cells are recovered by measuring the column from the rows that are ruled and taking
+the words the page draws inside it. The recovery refuses three cases rather than guess:
+a column the ruled rows do not agree on (a merged cell), a grid where any column cannot be
+measured that way at all (which is what a bar chart's axis labels look like), and a cell
+overlapping another table or a taller row that already renders the same words. A cell that
+is ruled and empty is never filled — a blank box on a form is a fact about the form.
+
 A table that meets neither test — a slide's table, drawn with type, whitespace and a rule
 above and below — is left as text. What it must not become is headings. Its cells are set
 large and bold, so each one passes every test a heading has, and a run of them cuts the
