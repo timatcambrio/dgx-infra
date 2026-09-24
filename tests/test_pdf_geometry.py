@@ -423,3 +423,167 @@ def test_a_double_hyphen_is_not_a_list_marker(config):
     lines = [line("-- None --", size=9.45)]
 
     assert paragraphs(lines, body=9.45, heading_sizes=[12.0], config=config) == ["-- None --"]
+
+
+# --------------------------------------------------------------- slide tables as headings
+
+
+def slide_blocks(fixtures_dir, config, page: int = 1):
+    return [
+        block
+        for block in pdf_geometry.to_blocks(fixtures_dir / "slide_table.pdf", config)
+        if block.page_number == page
+    ]
+
+
+def test_a_slide_table_is_not_detected_as_a_table_at_all(fixtures_dir, config):
+    """The premise of the other tests here: no grid to fall back on.
+
+    The slide's table has horizontal rules only, so pdfplumber finds nothing, and no three
+    consecutive lines share a cell count, so the borderless recovery finds nothing either.
+    Both refusals are correct — inventing this grid would take guessing. The question the
+    remaining tests answer is what the converter does *instead*.
+    """
+    import pdfplumber
+
+    with pdfplumber.open(fixtures_dir / "slide_table.pdf") as pdf:
+        page = pdf.pages[0]
+        assert page.find_tables() == []
+        lines = pdf_geometry._group_words_into_lines(
+            page.extract_words(extra_attrs=pdf_geometry._WORD_ATTRS), config
+        )
+    assert find_aligned_table_runs(lines, config) == []
+
+
+def test_slide_table_cells_do_not_become_headings(fixtures_dir, config):
+    """Every cell is larger than body text and most are bold; none is a heading.
+
+    Before this the slide came out as a heading per cell, and the sectioniser cut it into a
+    section per cell — one holding `$8,750` and the next holding the `2026` it belongs to.
+    """
+    headings = [block.text for block in slide_blocks(fixtures_dir, config)
+                if block.kind == "heading"]
+
+    assert "# IRS Contribution Limits" in headings
+    for cell in ("$4,300", "$8,550", "$4,400", "$8,750", "SINGLE", "FAMILY"):
+        assert not any(cell in heading for heading in headings), heading_failure(headings, cell)
+
+
+def heading_failure(headings: list[str], cell: str) -> str:
+    return f"{cell!r} was promoted to a heading; headings were {headings}"
+
+
+def test_a_line_does_not_cross_the_gutter(fixtures_dir, config):
+    """Words are grouped into lines per column, not across the page.
+
+    The slide's callout ends level with the table's second row, so grouping by baseline
+    alone welds the two together. The real deck produced the cell `2026 2026!` that way —
+    text neither column contains, and neither a reader nor an embedding can do anything
+    with it.
+    """
+    text = pdf_geometry.to_markdown(fixtures_dir / "slide_table.pdf", config)
+
+    assert "2026 2026!" not in text
+    assert "$4,400 $8,750 2026" in text
+
+
+def test_a_slide_table_row_keeps_its_figure_and_its_year_together(fixtures_dir, config):
+    """What the sectioniser needs: the answer stated somewhere in one piece."""
+    text = "\n".join(block.text for block in slide_blocks(fixtures_dir, config))
+
+    assert "$8,750" in text and "2026" in text
+    for block in slide_blocks(fixtures_dir, config):
+        if "$8,750" in block.text:
+            assert "2026" in block.text
+            break
+    else:  # pragma: no cover - the assertion above has already failed if we get here
+        raise AssertionError("no block holds $8,750")
+
+
+def test_the_slide_title_is_still_a_heading(fixtures_dir, config):
+    """The demotion is targeted: a title with nothing beside it keeps its `#`."""
+    text = pdf_geometry.to_markdown(fixtures_dir / "slide_table.pdf", config)
+
+    assert "# How The Limit Is Set" in text
+
+
+def test_two_lines_sharing_columns_are_not_headings(config):
+    """A heading is one run of text; these are two rows, whatever size they are set in."""
+    lines = [
+        cells_line([(340.0, "SINGLE"), (477.0, "FAMILY")], top=100, size=20.0),
+        cells_line([(340.0, "PLAN"), (477.0, "PLAN")], top=124, size=20.0),
+    ]
+
+    assert paragraphs(lines, body=10.0, heading_sizes=[20.0], config=config) == [
+        "SINGLE FAMILY PLAN PLAN"
+    ]
+
+
+def test_a_numbered_heading_is_still_a_heading(config):
+    """The rule above must not fire on `1.1<tab>Purpose`.
+
+    A tab between a section number and its title opens a gap as wide as any table's, so the
+    line splits into two cells exactly like a row does. What it does not have is a line
+    above or below it splitting the same way -- which is why the rule asks for one.
+    """
+    lines = [
+        cells_line([(72.0, "1.1"), (133.2, "Purpose")], top=100, size=15.0),
+        line("This document describes the auxiliary data required by the", top=124, size=12.0),
+    ]
+
+    blocks = paragraphs(lines, body=12.0, heading_sizes=[15.0], config=config)
+
+    assert blocks[0] == "# 1.1 Purpose"
+
+
+def test_two_numbered_headings_in_a_row_are_still_headings(config):
+    """Consecutive numbered headings share a tab stop but are not adjacent lines.
+
+    A heading has its content under it, so the line below a heading is prose. This pins the
+    case down anyway, because the cost of getting it wrong is a whole document's structure.
+    """
+    lines = [
+        cells_line([(72.0, "1.1"), (133.2, "Purpose")], top=100, size=15.0),
+        line("Body text under the first heading.", top=124, size=12.0),
+        cells_line([(72.0, "1.2"), (133.2, "Scope")], top=160, size=15.0),
+        line("Body text under the second heading.", top=184, size=12.0),
+    ]
+
+    blocks = paragraphs(lines, body=12.0, heading_sizes=[15.0], config=config)
+
+    assert blocks[0] == "# 1.1 Purpose"
+    assert blocks[2] == "# 1.2 Scope"
+
+
+def test_a_line_standing_beside_another_is_not_a_heading(config):
+    """One cell per line, but they share a row: different sizes, same band of the page."""
+    lines = [
+        line("$4,400", top=290.0, size=24.0, words=((345.0, 419.0, "$4,400"),), bold=True),
+        line("2026", top=294.0, size=28.0, words=((231.0, 299.0, "2026"),), bold=True),
+    ]
+
+    assert paragraphs(lines, body=10.0, heading_sizes=[28.0, 24.0], config=config) == [
+        "$4,400 2026"
+    ]
+
+
+def test_stacked_prose_is_not_read_as_side_by_side(config):
+    """The guard rail on the rule above: consecutive lines of one paragraph overlap in x."""
+    first = line("Contributions are capped", top=100.0, size=12.0)
+    second = line("each calendar year", top=116.0, size=12.0)
+
+    assert not pdf_geometry._side_by_side(first, second)
+
+
+def test_a_heading_with_a_wide_margin_note_beside_it_is_demoted(config):
+    """Stated as the cost of the rule, not as a happy outcome.
+
+    Horizontally disjoint and sharing a row is the only evidence geometry has, and a
+    margin note beside a heading matches it. The text survives; only the `#` is lost,
+    which is the cheaper of the two errors.
+    """
+    heading = line("Annual Limits", top=100.0, size=20.0, words=((72.0, 200.0, "Annual"),
+                                                                 (205.0, 260.0, "Limits")))
+    note = line("revised", top=102.0, size=20.0, words=((480.0, 540.0, "revised"),))
+
+    assert pdf_geometry._side_by_side(heading, note)

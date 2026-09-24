@@ -20,6 +20,24 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-09-23 [DECISION] **A heading is never one cell of a row, whatever size it is set in.**
+  `pdf_geometry._reads_as_cell` refuses heading promotion for a line that a neighbour
+  corroborates as part of a row: `_shares_columns` (the line directly above or below splits
+  into the same number of cells at the same left edges, set in the same size and weight) or
+  `_side_by_side` (a line horizontally disjoint from it overlapping it by ≥50% of the
+  shorter one's height). Both conditions are measurements; neither asserts a table.
+  Corroboration is what keeps the rule off a numbered heading — `1.1<tab>Purpose` splits into
+  two cells like any row, and matching type is what keeps it off `4 L1 PROCESSOR PARAMETERS`
+  followed by `4.1 Overview`, which share a tab stop but never a size. The asymmetry is
+  deliberate: two rows are too little evidence to *reconstruct* a grid (`PDF_MIN_TABLE_ROWS`
+  stays 3) and enough to decline to call one of them a section title, because refusing a
+  heading costs a `#` while asserting a table costs the text.
+- 2026-09-23 [DECISION] **A line never crosses a gutter.** Where `find_column_gutter` (the
+  old `detect_columns` body, now returning the gutter's edges) finds one, `to_blocks` groups
+  words into lines per column and emits the left column first; `_render_page` orders by the
+  gutter instead of the page midpoint, which was wrong whenever the gutter was not at 50%.
+  No setting changed. Nothing was tuned: `PDF_HEADING_SIZE_RATIO`, `PDF_MIN_TABLE_ROWS`,
+  chunk sizes, `k` and the RRF constant are all untouched.
 - 2026-09-22 [DECISION] **GPU passthrough decided outside Compose.** `compose/gpu-detect.sh`
   prints the `-f compose/docker-compose.gpu.yml` overlay (`driver: nvidia`, `count: all`,
   `capabilities: [gpu]`) when `nvidia-smi` lists a GPU AND Docker can pass one through
@@ -66,6 +84,32 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-09-23 [TOOL] **The slide table was never detected as a table, and could not have
+  been.** `pebp-…-hsa-education-101-slide-deck.pdf` p11 (960×540): `find_tables` returns 0
+  — the table has two horizontal rules and no verticals — and `find_aligned_table_runs`
+  returns none, because the year cell is set 28pt beside 24pt values so its top sits 3.4pt
+  from theirs (over `PDF_LINE_TOLERANCE` 3.0) and the row does not group into one line,
+  while the header is stacked `SINGLE`/`PLAN` over two lines. No three consecutive lines
+  share a cell count. Lowering `PDF_MIN_TABLE_ROWS` to 2 would not have recovered it and
+  would make hallucinated tables likelier, so it was left at 3. What was wrong was the
+  fallback: every cell cleared a heading test (24 and 28pt over 18pt body × 1.15; the 20pt
+  bold header via the bold-and-at-least-body fallback) and the slide became 8 blocks, 7 of
+  them headings.
+- 2026-09-23 [TOOL] **`detect_columns` said 2 while lines were built across the gutter.**
+  Page 11's gutter is at x 555–622 on a 960pt page; words were grouped into lines by
+  baseline over the whole page, so the table cell `2026` and the callout fragment `2026!`
+  became the line `2026 2026!` — text neither column contains. `_render_page` then split
+  columns at the page *midpoint* (480), which puts `$8,550` (centre 502) in the right-hand
+  column. Both fixed; fixture `slide_table.pdf` reproduces the shape, callout column
+  included.
+- 2026-09-23 [TOOL] **Two false-positive classes found by running the real corpus, not by
+  the fixtures.** A first version demoted any multi-cell line: it killed `1.1 Purpose` and
+  every numbered heading in the Sentinel spec (236 → 113 headings), because a tab between
+  number and title opens a table-width gap. Requiring an adjacent line with the same
+  columns still killed `2 DOCUMENTS` / `2.1 Applicable Documents` pairs. Requiring matching
+  size and weight as well leaves the spec at 236 headings — exactly what it had before, the
+  only five differences being TOC lines whose dotted leaders now collapse to `…`. Lesson: a
+  synthetic fixture cannot find this class; convert the corpus and diff the heading lists.
 - 2026-09-18 [TOOL] **Embedding time is per character, not per text.** Host ollama 0.21 +
   nomic-embed-text on the Intel dev Mac: 1 × 2,358 chars = 1.0 s, 8 = 7.2 s, 32 = 62.6 s,
   over the 60 s `httpx` read timeout; `make index --force` failed twice on the regulation
@@ -145,6 +189,24 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   with `callout_notes.pdf` fixture; conftest scrubs `PDF_*` env vars.
 
 ## [OUTCOMES]
+- 2026-09-23 [TOOL] **Slide-table fix measured.** `WORK_DIR=/private/tmp/dgx-empty-work make
+  check` green at 500 tests (was 488; +12, and `slide_table.md` golden added). Corpus
+  re-converted and re-indexed (8 of 12 reindexed). `kb eval` on the 21 proxy cases:
+  lexical 33% / vector 67% / fused 76% — **unchanged in total**. `hsa-2026-limits` went from
+  a miss on all three legs to vector 1 / fused 1: p11 is now 2 sections, and `$8,750`, `2026`
+  and `$4,400` sit in one block. `forms-equipment-threshold` went the other way, from a
+  fused hit to fused rank 6; its target section is byte-identical, a one-line heading
+  section (`### List items and dollar amount for each item exceeding $5,000`, p10 b002 to
+  b002), displaced by two new sections on p11 of the same form that appeared when the form's
+  row-label lines were demoted. That shape — a form's labels promoted to headings, each its
+  own one-line section — is the remaining conversion defect behind three of the five
+  standing misses. NOT chased: nothing was tuned toward the score.
+- 2026-09-23 [TOOL] Heading counts before → after across the proxy corpus, with distinct
+  heading texts lost/gained: `27.5051` presentation 183 → 142 (47/6), HSA deck 84 → 75
+  (10/1), new-hire deck 70 → 61 (9/0), `Ch 05_b` 74 → 71 (4/1), 2023 report 71 → 70 (1/0),
+  annotated forms 112 → 113 (1/2), Sentinel spec 236 → 236 (5/5, the same five TOC lines
+  either side of the leader collapse). Every drop is on a deck or a chart page; the two
+  regulations (Word) and the specification are untouched.
 - 2026-09-18 [TOOL] Proxy-corpus eval, 21 cases, chunker before row splitting: lexical 33%,
   vector 67%, fused 76% hit@5 (README "Recorded floor"). After row splitting + bounded batches, re-embedded
   (12 reindexed, 18 truncations): identical rates, CSV case vector rank 3 → 1; 3,854
