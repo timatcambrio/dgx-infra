@@ -9,6 +9,11 @@
   into `build_server` (brief §6.5.5) are inert under stdio — nothing reads them there — so
   one constructor serves both transports without a second code path.
 
+**No fetch path returns unbounded text.** `FETCH_MAX_CHARS` is a ceiling on every
+`FetchResponse.text`, not only on a whole-document fetch: `_oversize_response` is where a
+section, page or chunk over the cap goes instead, and a document's outline listing is
+bounded the same way. A section is *not* a bounded unit — see `_oversize_response`.
+
 **stdout is the protocol channel in stdio mode.** Nothing in this module or anything it
 imports at import time or at call time may `print` or otherwise write to stdout. All
 logging — including the one-JSON-line-per-call log (brief §6.5.3) — goes to stderr.
@@ -105,7 +110,10 @@ flattened, fetch the enclosing page (`page:<slug>:pNNN`) or use `get_section` wi
 `get_outline`, and fetch sections directly. Always quote the `citation` string from
 `metadata` verbatim in your answer. Converted text may contain flattened tables and
 `> **INCOMPLETE**` notes; treat reconstructed structure as an inference and say so.
-`doc_date: UNCONFIRMED` means no reliable date was found; do not invent one.\
+`doc_date: UNCONFIRMED` means no reliable date was found; do not invent one. A fetch of
+anything over FETCH_MAX_CHARS comes back with `metadata.truncated: true` and, in place of
+the text, the smaller ids that cover it (chunk ids, and page ids where the document has
+pages) — fetch one of those; never quote such a reply as the document's words.\
 """
 
 RO = ToolAnnotations(
@@ -169,7 +177,7 @@ class SearchResponse(TypedDict):
 
 
 class FetchMeta(TypedDict):
-    kind: str  # "section" | "page" | "document"
+    kind: str  # "section" | "page" | "document" | "chunk"
     slug: str
     pages: Optional[list[int]]
     block_ids: Optional[list[str]]
@@ -280,27 +288,243 @@ def _build_citation(doc: asyncpg.Record, *, heading_path: str, page_first, page_
     )
 
 
+#: Chunk ids an oversize breakdown names as landmarks. The breakdown has to be bounded
+#: whatever the unit's size, so it names the chunk index *range* (every index in it is a
+#: valid id) and samples only this many of them.
+_OVERSIZE_SIGNPOSTS = 12
+
+
+def _landmark(text: str, limit: int = 110) -> str:
+    """One line of `text`, clipped to `limit` characters, chosen to tell this chunk from
+    its neighbours: the first line normally, but the *last* row of a pipe table, because
+    table-row chunking repeats the header row (and the previous piece's last row) on every
+    piece — so every piece of one table opens identically. Runs of whitespace collapse: a
+    table row is mostly column padding, and 110 characters of padding say nothing.
+    """
+    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    line = lines[-1] if lines[0].startswith("|") else lines[0]
+    return line[: limit - 1] + "…" if len(line) > limit else line
+
+
+async def _section_chars(conn: asyncpg.Connection, slug: str) -> dict[int, int]:
+    """`{section_index: length of the text a section fetch would return}` — the same join
+    `get_outline` reports `chars` from, so the two agree."""
+    rows = await conn.fetch(
+        """
+        SELECT s.section_index,
+               length(coalesce(string_agg(b.text, E'\\n\\n' ORDER BY b.ordinal), '')) AS chars
+        FROM sections s
+        LEFT JOIN blocks b
+          ON b.slug = s.slug AND b.ordinal BETWEEN s.block_first AND s.block_last
+        WHERE s.slug = $1
+        GROUP BY s.section_index
+        """,
+        slug,
+    )
+    return {r["section_index"]: r["chars"] for r in rows}
+
+
+async def _oversize_response(
+    conn: asyncpg.Connection,
+    cfg: Config,
+    doc: asyncpg.Record,
+    *,
+    response_id: str,
+    title: str,
+    kind: str,
+    heading_path: str,
+    blocks: list[asyncpg.Record],
+    chars: int,
+    page_first: Optional[int],
+    page_last: Optional[int],
+    narrow_to_chunks: bool = True,
+    extra_notes: tuple[str, ...] = (),
+) -> FetchResponse:
+    """The bounded stand-in for a unit whose own text is over `FETCH_MAX_CHARS`.
+
+    `_fetch_document` has always refused an over-cap document, but a *section* is not a
+    bounded unit: in the DOCX-derived documents one heading can span thousands of blocks,
+    and sections of over half a million characters exist — more than the document path
+    declines to send, while that refusal recommends section ids. So every fetch path ends
+    here instead when its joined text crosses the cap, and returns what the caller needs
+    to ask a smaller question: the block range it declined, the chunk ids that cover it
+    (`fetch` on one returns that chunk alone), and a landmark line from a sample of them.
+    The reply is bounded by construction — a fixed number of landmark lines, never one
+    line per block or per chunk.
+    """
+    slug = doc["slug"]
+    block_first = blocks[0]["ordinal"]
+    block_last = blocks[-1]["ordinal"]
+    first_block_id = blocks[0]["block_id"]
+    last_block_id = blocks[-1]["block_id"]
+
+    chunks: list[asyncpg.Record] = []
+    if narrow_to_chunks:
+        chunks = list(
+            await conn.fetch(
+                "SELECT chunk_index, page_first, page_last, length(text) AS chars, text "
+                "FROM chunks WHERE slug = $1 AND block_last >= $2 AND block_first <= $3 "
+                "ORDER BY chunk_index",
+                slug,
+                block_first,
+                block_last,
+            )
+        )
+
+    lines = [
+        f"# {title} — too large to fetch",
+        "",
+        (
+            f"This {kind} is {chars:,} characters, over FETCH_MAX_CHARS "
+            f"({cfg.fetch_max_chars:,}), so its text was not returned. It is blocks "
+            f"{first_block_id}…{last_block_id} ({block_last - block_first + 1} blocks). "
+            "Fetch a smaller unit:"
+        ),
+        "",
+    ]
+    if chunks:
+        lo = chunks[0]["chunk_index"]
+        hi = chunks[-1]["chunk_index"]
+        lines.append(
+            f"- **Chunks** `{ids_module.chunk_id(slug, lo)}` … "
+            f"`{ids_module.chunk_id(slug, hi)}` — {len(chunks)} chunks, every index in "
+            "that range a valid id. `fetch` on a chunk id returns that chunk alone."
+        )
+    if page_first is not None and page_last is not None and page_last > page_first:
+        # Only a *range* of pages is worth naming. One page containing an over-cap unit is
+        # at least as large as it, so its own fetch would come back here again.
+        lines.append(
+            f"- **Pages** `{ids_module.page_id(slug, page_first)}` … "
+            f"`{ids_module.page_id(slug, page_last)}`."
+        )
+    lines.extend(f"- {note}" for note in extra_notes)
+    if not chunks and not any(line.startswith("- **Pages**") for line in lines):
+        lines.append(
+            "- Nothing smaller is indexed for this id. Read the markdown at the `url` in "
+            "this response instead, and do not treat this reply as the text."
+        )
+
+    if chunks:
+        step = max(1, -(-len(chunks) // _OVERSIZE_SIGNPOSTS))
+        sampled = chunks[::step]
+        lines += [
+            "",
+            (
+                f"One line from each of {len(sampled)} chunks sampled across the range, "
+                "as landmarks for choosing one:"
+            ),
+            "",
+        ]
+        for c in sampled:
+            pages_note = (
+                f", pages {c['page_first']}–{c['page_last']}"
+                if c["page_first"] is not None
+                else ""
+            )
+            lines.append(
+                f"- `{ids_module.chunk_id(slug, c['chunk_index'])}` "
+                f"({c['chars']:,} chars{pages_note}) — {_landmark(c['text'])}"
+            )
+
+    text = "\n".join(lines)
+    return FetchResponse(
+        id=response_id,
+        title=title,
+        text=text,
+        url=_url(cfg, doc["rel_path"], first_block_id),
+        metadata=FetchMeta(
+            kind=kind,
+            slug=slug,
+            pages=[page_first, page_last] if page_first is not None else None,
+            block_ids=[first_block_id, last_block_id],
+            doc_date=doc["doc_date"],
+            text_class=doc["text_class"],
+            incomplete_pages=list(doc["incomplete_pages"] or []),
+            source_file=doc["source_file"],
+            source_url=doc["source_url"],
+            citation=_build_citation(
+                doc,
+                heading_path=heading_path,
+                page_first=page_first,
+                page_last=page_last,
+                first_block_id=first_block_id,
+                last_block_id=last_block_id,
+            ),
+            chars=len(text),
+            truncated=True,
+        ),
+    )
+
+
 async def _fetch_document(conn: asyncpg.Connection, cfg: Config, doc: asyncpg.Record) -> FetchResponse:
     slug = doc["slug"]
     if doc["chars"] > cfg.fetch_max_chars:
         outline = json.loads(doc["outline"])
+        chars_by_index = await _section_chars(conn, slug)
         lines = [
             f"# {doc['title']} — outline only",
             "",
             (
-                f"This document is {doc['chars']} characters, over FETCH_MAX_CHARS "
-                f"({cfg.fetch_max_chars}). Fetch the section ids below instead of the "
-                "whole document."
+                f"This document is {doc['chars']:,} characters, over FETCH_MAX_CHARS "
+                f"({cfg.fetch_max_chars:,}). Fetch the section ids below instead of the "
+                "whole document. A section marked **over the cap** is itself larger than "
+                "FETCH_MAX_CHARS: fetching it returns a breakdown of smaller ids, not its "
+                "text — prefer a section under the cap, or narrow with `search`."
             ),
             "",
         ]
-        for entry in outline:
+
+        def _entry_line(entry: dict) -> str:
             heading = entry.get("heading") or "(no heading)"
             pf, pl = entry.get("page_first"), entry.get("page_last")
             pages_note = f" (pages {pf}–{pl})" if pf is not None else ""
             sec_id = ids_module.sec_id(slug, entry["section_index"])
-            lines.append(f"- {sec_id}: {heading}{pages_note}")
-        text = "\n".join(lines)
+            sec_chars = chars_by_index.get(entry["section_index"], 0)
+            size_note = f" — {sec_chars:,} chars"
+            if sec_chars > cfg.fetch_max_chars:
+                size_note += ", **over the cap**"
+            return f"- {sec_id}: {heading}{pages_note}{size_note}"
+
+        # The outline is not bounded either: a 1,500-section manual's full listing can
+        # itself approach the cap. Drop to shallower headings until it fits, and only then
+        # cut the list — a caller given the top two levels can still `get_outline` for the
+        # rest, which a silently clipped listing would not tell them.
+        entries = list(outline)
+        text = "\n".join(lines + [_entry_line(e) for e in entries])
+        for max_level in (6, 5, 4, 3, 2, 1):
+            if len(text) <= cfg.fetch_max_chars:
+                break
+            deeper = [e for e in entries if e["level"] <= max_level]
+            if not deeper or len(deeper) == len(entries):
+                continue
+            entries = deeper
+            text = "\n".join(
+                lines
+                + [
+                    f"Headings deeper than level {max_level} are left out; "
+                    f"`get_outline` on `{ids_module.doc_id(slug)}` lists every section.",
+                    "",
+                ]
+                + [_entry_line(e) for e in entries]
+            )
+        if len(text) > cfg.fetch_max_chars:
+            # Cut whole entries off the end, never mid-line, and never all of them: a
+            # refusal that names no section id at all leaves the caller with nowhere to go.
+            cut = (
+                f"\n\n(Listing cut here; `get_outline` on `{ids_module.doc_id(slug)}` "
+                "lists every section, and `search` finds one directly.)"
+            )
+            head = "\n".join(lines)
+            entry_lines = [_entry_line(e) for e in entries]
+            kept = entry_lines[:1]
+            budget = cfg.fetch_max_chars - len(head) - len(cut)
+            for line in entry_lines[1:]:
+                if sum(len(k) + 1 for k in kept) + len(line) + 1 > budget:
+                    break
+                kept.append(line)
+            text = "\n".join([head, *kept]) + cut
 
         first_block = await conn.fetchval(
             "SELECT block_id FROM blocks WHERE slug = $1 ORDER BY ordinal LIMIT 1", slug
@@ -431,9 +655,33 @@ async def _fetch_section_range(
     last_block_id = blocks[-1]["block_id"] if blocks else None
 
     title = _section_title(doc["title"], center["heading_path"])
+    response_id = ids_module.sec_id(slug, center["section_index"])
+
+    if len(text) > cfg.fetch_max_chars and blocks:
+        extra_notes: tuple[str, ...] = ()
+        if len(sections) > 1:
+            extra_notes = (
+                f"**Fewer neighbours** — this range is {len(sections)} sections; "
+                f"`get_section` on `{response_id}` with a smaller `neighbours` (or `fetch` "
+                "on it, which is `neighbours=0`) returns less.",
+            )
+        return await _oversize_response(
+            conn,
+            cfg,
+            doc,
+            response_id=response_id,
+            title=title,
+            kind=kind,
+            heading_path=center["heading_path"],
+            blocks=list(blocks),
+            chars=len(text),
+            page_first=page_first,
+            page_last=page_last,
+            extra_notes=extra_notes,
+        )
 
     return FetchResponse(
-        id=ids_module.sec_id(slug, center["section_index"]),
+        id=response_id,
         title=title,
         text=text,
         url=_url(cfg, doc["rel_path"], first_block_id),
@@ -477,6 +725,21 @@ async def _fetch_page(conn: asyncpg.Connection, cfg: Config, doc: asyncpg.Record
     last_block_id = blocks[-1]["block_id"]
     title = f"{doc['title']} — page {page}"
 
+    if len(text) > cfg.fetch_max_chars:
+        return await _oversize_response(
+            conn,
+            cfg,
+            doc,
+            response_id=ids_module.page_id(slug, page),
+            title=title,
+            kind="page",
+            heading_path=f"page {page}",
+            blocks=list(blocks),
+            chars=len(text),
+            page_first=page,
+            page_last=page,
+        )
+
     return FetchResponse(
         id=ids_module.page_id(slug, page),
         title=title,
@@ -506,6 +769,99 @@ async def _fetch_page(conn: asyncpg.Connection, cfg: Config, doc: asyncpg.Record
     )
 
 
+async def _fetch_chunk(
+    conn: asyncpg.Connection, cfg: Config, doc: asyncpg.Record, chunk_index: int, raw_id: str
+) -> FetchResponse:
+    """One chunk, and nothing else.
+
+    A `chunk:` fetch used to widen to the whole enclosing section, on the grounds that a
+    section is the readable unit. It cannot: a section is unbounded (see
+    `_oversize_response`), so an over-cap section's breakdown — whose only sub-unit to
+    offer is the chunk — would hand back ids that widen straight to the breakdown again.
+    A chunk is what the index bounds (`CHUNK_MAX`, bar a single table row larger than it),
+    so it is what a caller can narrow *to*. `get_section` on the section id is still there
+    for the wider read.
+    """
+    slug = doc["slug"]
+    chunk = await conn.fetchrow(
+        "SELECT chunk_index, section_index, block_first, block_last, page_first, page_last, "
+        "text FROM chunks WHERE slug = $1 AND chunk_index = $2",
+        slug,
+        chunk_index,
+    )
+    if chunk is None:
+        raise ValueError(f"unknown id: {raw_id}")
+
+    section = await conn.fetchrow(
+        "SELECT heading_path FROM sections WHERE slug = $1 AND section_index = $2",
+        slug,
+        chunk["section_index"],
+    )
+    heading_path = section["heading_path"] if section else doc["title"]
+    title = _section_title(doc["title"], heading_path)
+
+    blocks = await conn.fetch(
+        "SELECT ordinal, block_id, page, text FROM blocks WHERE slug = $1 AND ordinal "
+        "BETWEEN $2 AND $3 ORDER BY ordinal",
+        slug,
+        chunk["block_first"],
+        chunk["block_last"],
+    )
+    first_block_id = blocks[0]["block_id"] if blocks else None
+    last_block_id = blocks[-1]["block_id"] if blocks else None
+    text = chunk["text"]
+
+    if len(text) > cfg.fetch_max_chars and blocks:
+        # A chunk over the cap is one indivisible table row (brief §6.7's exception); there
+        # is no smaller id to offer, and saying so is better than sending the text.
+        return await _oversize_response(
+            conn,
+            cfg,
+            doc,
+            response_id=ids_module.chunk_id(slug, chunk_index),
+            title=title,
+            kind="chunk",
+            heading_path=heading_path,
+            blocks=list(blocks),
+            chars=len(text),
+            page_first=chunk["page_first"],
+            page_last=chunk["page_last"],
+            narrow_to_chunks=False,
+        )
+
+    return FetchResponse(
+        id=ids_module.chunk_id(slug, chunk_index),
+        title=title,
+        text=text,
+        url=_url(cfg, doc["rel_path"], first_block_id),
+        metadata=FetchMeta(
+            kind="chunk",
+            slug=slug,
+            pages=(
+                [chunk["page_first"], chunk["page_last"]]
+                if chunk["page_first"] is not None
+                else None
+            ),
+            block_ids=[first_block_id, last_block_id] if first_block_id else None,
+            doc_date=doc["doc_date"],
+            text_class=doc["text_class"],
+            incomplete_pages=list(doc["incomplete_pages"] or []),
+            source_file=doc["source_file"],
+            source_url=doc["source_url"],
+            citation=_build_citation(
+                doc,
+                heading_path=heading_path,
+                page_first=chunk["page_first"],
+                page_last=chunk["page_last"],
+                first_block_id=first_block_id,
+                last_block_id=last_block_id,
+            ),
+            chars=len(text),
+            truncated=False,
+        ),
+    )
+
+
 async def _fetch_any(conn: asyncpg.Connection, cfg: Config, raw_id: str) -> FetchResponse:
     try:
         kind, slug, n = ids_module.parse_id(raw_id)
@@ -525,13 +881,7 @@ async def _fetch_any(conn: asyncpg.Connection, cfg: Config, raw_id: str) -> Fetc
         return await _fetch_page(conn, cfg, doc, n, raw_id)
     if kind == "chunk":
         assert n is not None
-        chunk = await conn.fetchrow(
-            "SELECT section_index FROM chunks WHERE slug = $1 AND chunk_index = $2", slug, n
-        )
-        if chunk is None:
-            raise ValueError(f"unknown id: {raw_id}")
-        sec_idx = chunk["section_index"]
-        return await _fetch_section_range(conn, cfg, doc, sec_idx, sec_idx, requested_idx=sec_idx)
+        return await _fetch_chunk(conn, cfg, doc, n, raw_id)
 
     raise ValueError(f"unknown id: {raw_id}")  # pragma: no cover — parse_id covers every kind
 
@@ -677,8 +1027,9 @@ def build_server(cfg: Config) -> "FastMCP[ServerContext]":
 
     @mcp.tool(annotations=RO)
     async def fetch(id: str, *, ctx: Context) -> FetchResponse:
-        """Fetch the whole section, page, or document named by `id` (from `search`,
-        `list_documents`, or `get_outline`)."""
+        """Fetch the whole section, page, chunk, or document named by `id` (from `search`,
+        `list_documents`, or `get_outline`). Anything over FETCH_MAX_CHARS comes back as
+        `truncated` with the smaller ids that cover it instead of its text."""
         sc: ServerContext = ctx.request_context.lifespan_context
         with _CallTimer("fetch", {"id": id}) as timer:
             async with sc.pool.acquire() as conn:
@@ -743,19 +1094,7 @@ def build_server(cfg: Config) -> "FastMCP[ServerContext]":
 
             async with sc.pool.acquire() as conn:
                 doc = await _require_document(conn, slug, id)
-                chars_rows = await conn.fetch(
-                    """
-                    SELECT s.section_index,
-                           length(coalesce(string_agg(b.text, E'\\n\\n' ORDER BY b.ordinal), '')) AS chars
-                    FROM sections s
-                    LEFT JOIN blocks b
-                      ON b.slug = s.slug AND b.ordinal BETWEEN s.block_first AND s.block_last
-                    WHERE s.slug = $1
-                    GROUP BY s.section_index
-                    """,
-                    slug,
-                )
-            chars_by_index = {r["section_index"]: r["chars"] for r in chars_rows}
+                chars_by_index = await _section_chars(conn, slug)
             outline = json.loads(doc["outline"])
             sections = [
                 OutlineSection(
