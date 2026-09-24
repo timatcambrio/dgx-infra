@@ -66,6 +66,31 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-09-23 [TOOL] **Slide tables are converted into runs of pseudo-headings, which
+  fragments sections and hides answers.** `kb eval` on the 21 proxy cases scores
+  lexical 33% / vector 67% / fused 76% hit@5. Case `hsa-2026-limits` is scored a miss even
+  though the top two fused hits are the right document AND the expected page (11): the IRS
+  contribution-limit table on that slide was emitted as eight consecutive `###` headings —
+  `SINGLE FAMILY`, `PLAN PLAN`, `$4,300 $8,550`, `2025`, `Maximum contribution limit`,
+  `$4,400 $8,750`, `2026 2026!` — so the sectioniser cut page 11 into 8 sections and
+  `$8,750` sits alone in section 32 while the ranked hits were 31 and 34. No single section
+  states "the 2026 family limit is $8,750"; the values also precede their year labels, so
+  the year/amount pairing is ambiguous even to a reader. Retrieval behaved correctly. The
+  defect is upstream in Stage 1 (large table cells on a slide clear `PDF_HEADING_SIZE_RATIO`
+  and are promoted to headings). Broader than the documented "flattened table" caveat, which
+  describes losing grid structure, not manufacturing false section boundaries.
+- 2026-09-23 [TOOL] **`expected_phrase` + `expected_page` together over-constrain a case.**
+  Both must be satisfied by the SAME section, and section boundaries are an implementation
+  artifact that any chunking change moves — so a case written that way measures the
+  sectioniser as much as the retriever, which is at odds with the file's purpose as a
+  regression floor. All five all-leg misses (`hsa-2026-limits`,
+  `newhire-supporting-documents`, `cfap-egg-form-part`, `almanac-officer-accessions`,
+  `pca-share-a76`) were verified to have correct phrases and correct pages.
+- 2026-09-23 [TOOL] **The lexical 33% is mostly question wording, not retrieval quality.**
+  `websearch_to_tsquery` ANDs every unquoted term, so a long natural-language question
+  fails the lexical leg whenever any one word is absent from the target section. Already
+  noted for the fixtures in `eval/retrieval.yaml`'s header; it applies to the proxy cases
+  too and means the lexical column should not be read as a quality score.
 - 2026-09-18 [TOOL] **Embedding time is per character, not per text.** Host ollama 0.21 +
   nomic-embed-text on the Intel dev Mac: 1 × 2,358 chars = 1.0 s, 8 = 7.2 s, 32 = 62.6 s,
   over the 60 s `httpx` read timeout; `make index --force` failed twice on the regulation
