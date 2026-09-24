@@ -558,28 +558,38 @@ The committed cases run only against the synthetic fixtures in
 `tests/retrieval/fixtures/kb/` and are checked in the test suite (fused hit@5 must be
 100% there). They say nothing about retrieval quality on a real corpus.
 
-**Recorded floor, proxy corpus (2026-09-18).** Twelve public documents of the shapes the
+**Recorded floor, proxy corpus (2026-09-24).** Twelve public documents of the shapes the
 client corpus is expected to contain (reports, slide decks, an annotated form set, two
 acquisition regulations as Word files, one CSV table), indexed with `nomic-embed-text`,
-21 questions worded the way a user would ask them, each answerable from one document and
-checked by an expected phrase and, where the source has pages, an expected page. The
-case file lives outside the repository because its questions describe the documents.
+36 questions worded the way a user would ask them, each answerable from one document and
+checked by an expected phrase and, where the source has pages, an expected page. Every
+case is verified satisfiable by `scripts/check_eval_cases.py`. The case file lives outside
+the repository because its questions describe the documents.
 
 | leg | hit@5 |
 |---|---|
-| lexical | 33% |
-| vector | 67% |
-| fused | 76% |
+| lexical | 31% |
+| vector | 53% |
+| fused | 67% |
+
+Supersedes the 2026-09-18 floor of 33% / 67% / 76%, which was measured over the first 21
+of these cases. **The drop is the case set becoming more representative, not retrieval
+regressing:** the 15 cases added on 2026-09-24 deliberately target tables, CSVs and
+documents whose headings are table header rows, and nothing about the index changed when
+they were added. A floor that avoids the corpus's weakest content is not a floor.
 
 How to read it: the lexical leg ANDs every non-stop word of the question, so a natural
 question containing one word the right chunk lacks scores zero there; it exists for exact
-tokens (a section number, a form number, a phone number), and it placed every such case
-first. Of the five fused misses, two are slide pages whose large-type fragments each
-convert to a one-line heading and therefore a one-line section; one is a PDF whose word
-spacing was lost in conversion; one is a page holding only bare labels and numbers; one is
-a table the vector leg does not surface. Each is a conversion shape, not a ranking
-parameter. These numbers are a regression floor: a change to chunking, embedding model,
-or fusion is measured against them and must not lower them. They are not tuned toward.
+tokens (a section number, a form number, a phone number, a zip code), and it placed every
+such case first. Half of the twelve fused misses are tabular: four are the Marine Corps
+almanac, whose tables carry headings like `rank number percent` shared verbatim by several
+sections and whose alternating rows lost their labels in conversion, and two are the CSV,
+which chunks into blocks of bare pipe rows that no natural-language question embeds close
+to. The rest are slide and form pages whose large-type fragments each convert to a
+one-line heading and therefore a one-line section. Every one is a conversion shape, not a
+ranking parameter. These numbers are a regression floor: a change to chunking, embedding
+model, or fusion is measured against them and must not lower them. They are not tuned
+toward — a fix belongs in conversion, and the floor is re-measured and re-recorded after it.
 
 No number for the client's own corpus appears here; the client runs the same command
 against their index and records their own.
