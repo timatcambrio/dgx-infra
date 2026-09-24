@@ -388,8 +388,19 @@ def _cell_box(box) -> tuple[float, float, float, float]:
     return (x0, top, x1, bottom)
 
 
+#: Slack, in points, within which two rows' rules count as the same column edge. Absorbs
+#: the rounding in a rule's own coordinates and nothing else: a column measured from one row
+#: is only usable on another if the page draws it in the same place on both.
+_COLUMN_EDGE_SLACK = 1.0
+
+
+def _siblings(tables: list, table) -> list[tuple]:
+    """Bounding boxes of the other tables on the page."""
+    return [other.bbox for other in tables if other is not table]
+
+
 def _column_spans(table) -> list[tuple[float, float] | None]:
-    """Left and right edge of each column, measured from the rows that are fully ruled.
+    """Left and right edge of each column, measured from the rows that are ruled.
 
     A cell exists for pdfplumber only where a rule bounds it on every side. A banded table
     draws a box around its shaded rows and nothing around the rest, so the unshaded rows
@@ -397,8 +408,11 @@ def _column_spans(table) -> list[tuple[float, float] | None]:
     their text dropped, not merely unplaced. The columns those cells belong to are still
     measured, just by the neighbouring rows, which is what this recovers.
 
-    The median rather than the extremes: one row whose rule is drawn a point wide of the
-    others should not widen the column for everybody.
+    A column is only reported where every ruled row puts it in the same place, within
+    `_COLUMN_EDGE_SLACK`. That refusal is the whole guard rail. Where a row merges cells the
+    grid has no single column at that index, and taking an average of the two produces a
+    span overlapping its neighbour -- which, filled in, copies a paragraph into two cells of
+    the same row. A ragged grid is left exactly as pdfplumber reported it.
     """
     width = max((len(row.cells) for row in table.rows), default=0)
     spans: list[tuple[float, float] | None] = []
@@ -411,12 +425,15 @@ def _column_spans(table) -> list[tuple[float, float] | None]:
         if not boxes:
             spans.append(None)
             continue
-        spans.append(
-            (
-                statistics.median(float(box[0]) for box in boxes),
-                statistics.median(float(box[2]) for box in boxes),
-            )
-        )
+        lefts = [float(box[0]) for box in boxes]
+        rights = [float(box[2]) for box in boxes]
+        if (
+            max(lefts) - min(lefts) > _COLUMN_EDGE_SLACK
+            or max(rights) - min(rights) > _COLUMN_EDGE_SLACK
+        ):
+            spans.append(None)
+            continue
+        spans.append((statistics.median(lefts), statistics.median(rights)))
     return spans
 
 
@@ -434,17 +451,39 @@ def _cell_text(words: list[dict]) -> str:
     ).strip()
 
 
-def _table_rows(page, table) -> list[tuple[Any, list[str], list[tuple | None]]]:
+def _table_rows(
+    page, table, siblings: Iterable[tuple] = ()
+) -> list[tuple[Any, list[str], list[tuple | None]]]:
     """`(row, texts, cell boxes)` per row, with cells no rule bounds filled back in.
 
-    Only cells pdfplumber returned as `None` are filled, and only from words no ruled cell
-    of the same row already claimed: a blank cell on a form stays blank, and a cell spanning
-    two columns is not duplicated into both. The filled box is the column's span crossed with
-    the row's own band, so a callout anchored to a recovered cell lands where it is drawn.
+    Only cells pdfplumber returned as `None` are filled, never a cell that is ruled and
+    empty: a blank box on a form is a fact about the form, and the linking tests depend on
+    it staying blank.
+
+    A candidate cell is abandoned outright if it overlaps anything that already renders the
+    text under it -- a ruled cell of this table, or another table on the page. Both happen
+    for real: pdfplumber returns rows that nest inside a taller row, and tables that nest
+    inside another table, and in each case the words are already being emitted once. Words
+    claimed by any ruled cell of the table are excluded for the same reason.
+
+    The filled box is the column's span crossed with the row's own band, so a callout
+    anchored to a recovered cell lands where it is drawn.
     """
     extracted = table.extract()
     spans = _column_spans(table)
+    if not spans or any(span is None for span in spans):
+        # An irregular grid. Some columns are merged on one row and split on another, or
+        # pdfplumber has found a "table" in a bar chart's axis labels, and there is no
+        # column to put a recovered cell in. Report exactly what it reported.
+        return [
+            (row, [(text or "").strip() for text in raw], list(row.cells))
+            for row, raw in zip(table.rows, extracted)
+        ]
+    occupied = [
+        _cell_box(box) for row in table.rows for box in row.cells if box is not None
+    ] + [_cell_box(box) for box in siblings]
     words: list[dict] | None = None
+    claimed: set[int] = set()
     rows: list[tuple[Any, list[str], list[tuple | None]]] = []
     for row, raw in zip(table.rows, extracted):
         texts = [(text or "").strip() for text in raw]
@@ -454,28 +493,25 @@ def _table_rows(page, table) -> list[tuple[Any, list[str], list[tuple | None]]]:
             for index in range(len(texts))
             if index < len(spans) and cells[index] is None and spans[index] is not None
         ]
-        if missing:
-            if words is None:
-                words = page.extract_words()
+        if not missing:
+            rows.append((row, texts, cells))
+            continue
+        if words is None:
+            words = page.extract_words()
             claimed = {
-                id(word)
-                for box in cells
-                if box is not None
-                for word in _words_inside(words, _cell_box(box))
+                id(word) for box in occupied for word in _words_inside(words, box)
             }
-            top, bottom = float(row.bbox[1]), float(row.bbox[3])
-            for index in missing:
-                x0, x1 = spans[index]  # type: ignore[misc]
-                box = (x0, top, x1, bottom)
-                cells[index] = box
-                if not texts[index]:
-                    texts[index] = _cell_text(
-                        [
-                            word
-                            for word in _words_inside(words, box)
-                            if id(word) not in claimed
-                        ]
-                    )
+        top, bottom = float(row.bbox[1]), float(row.bbox[3])
+        for index in missing:
+            x0, x1 = spans[index]  # type: ignore[misc]
+            box = (x0, top, x1, bottom)
+            if any(_boxes_overlap(box, other) for other in occupied):
+                continue
+            cells[index] = box
+            if not texts[index]:
+                texts[index] = _cell_text(
+                    [word for word in _words_inside(words, box) if id(word) not in claimed]
+                )
         rows.append((row, texts, cells))
     return rows
 
@@ -488,10 +524,11 @@ def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[l
     Borderless tables are therefore left to flow as text and reported by `analyse` instead.
     """
     regions = []
-    for table in page.find_tables():
+    tables = page.find_tables()
+    for table in tables:
         rows = [
             texts
-            for _, texts, _ in _table_rows(page, table)
+            for _, texts, _ in _table_rows(page, table, _siblings(tables, table))
             if any(texts)
         ]
         if len(rows) >= 2 and len(rows[0]) >= 2:
@@ -574,7 +611,7 @@ def _table_cells(page) -> list[Cell]:
 
     for table in tables:
         try:
-            rows = _table_rows(page, table)
+            rows = _table_rows(page, table, _siblings(tables, table))
         except Exception:  # noqa: BLE001 - skip this table, keep the rest of the page
             continue
         table_top = float(table.bbox[1])

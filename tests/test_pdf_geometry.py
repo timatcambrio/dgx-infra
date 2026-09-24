@@ -650,3 +650,102 @@ def test_a_blank_cell_that_is_ruled_stays_blank(fixtures_dir):
         cells = pdf_geometry._table_cells(pdf.pages[0])
 
     assert any(cell.text == "" for cell in cells)
+
+
+class StubRow:
+    """One row of a `pdfplumber` table: its band, and a box per cell or `None` where unruled."""
+
+    def __init__(self, bbox, cells):
+        self.bbox = bbox
+        self.cells = cells
+
+
+class StubTable:
+    def __init__(self, bbox, rows, extracted):
+        self.bbox = bbox
+        self.rows = rows
+        self._extracted = extracted
+
+    def extract(self):
+        return self._extracted
+
+
+class StubPage:
+    def __init__(self, words):
+        self._words = words
+
+    def extract_words(self, **_):
+        return self._words
+
+
+def cell_word(text: str, x0: float, top: float, width: float = 30.0, height: float = 8.0) -> dict:
+    return {"text": text, "x0": x0, "x1": x0 + width, "top": top, "bottom": top + height}
+
+
+def test_a_cell_is_recovered_only_where_the_grid_is_regular():
+    """Two rows disagreeing about where a column ends is a merged cell, not a column.
+
+    Averaging the two produces a span overlapping its neighbour, and filling that in copies
+    one cell's text into two. The table is reported exactly as pdfplumber reported it.
+    """
+    rows = [
+        StubRow((0.0, 0.0, 300.0, 10.0), [(0.0, 0.0, 100.0, 10.0), (100.0, 0.0, 300.0, 10.0)]),
+        StubRow((0.0, 10.0, 300.0, 20.0), [(0.0, 10.0, 200.0, 20.0), None]),
+    ]
+    table = StubTable((0.0, 0.0, 300.0, 20.0), rows, [["a", "b"], ["c", ""]])
+    page = StubPage([cell_word("recovered", 210.0, 11.0)])
+
+    assert [texts for _, texts, _ in pdf_geometry._table_rows(page, table)] == [
+        ["a", "b"],
+        ["c", ""],
+    ]
+
+
+def test_a_cell_is_not_recovered_over_a_row_that_already_renders_it():
+    """pdfplumber returns rows nested inside a taller row of the same table.
+
+    The tall row's cell already holds the text, so filling the nested row's cell from the
+    same words says it twice — which is how a bulleted list ended up printed three times.
+    """
+    rows = [
+        StubRow((0.0, 0.0, 200.0, 40.0), [(0.0, 0.0, 100.0, 40.0), (100.0, 0.0, 200.0, 40.0)]),
+        StubRow((0.0, 10.0, 200.0, 20.0), [(0.0, 10.0, 100.0, 20.0), None]),
+    ]
+    table = StubTable((0.0, 0.0, 200.0, 40.0), rows, [["label", "bullets"], ["", ""]])
+    page = StubPage([cell_word("bullets", 120.0, 11.0)])
+
+    assert [texts for _, texts, _ in pdf_geometry._table_rows(page, table)] == [
+        ["label", "bullets"],
+        ["", ""],
+    ]
+
+
+def test_a_cell_is_not_recovered_over_another_table():
+    """A table nested inside another renders its own text; the outer cell must not repeat it."""
+    rows = [
+        StubRow((0.0, 0.0, 200.0, 10.0), [(0.0, 0.0, 100.0, 10.0), (100.0, 0.0, 200.0, 10.0)]),
+        StubRow((0.0, 10.0, 200.0, 20.0), [(0.0, 10.0, 100.0, 20.0), None]),
+    ]
+    table = StubTable((0.0, 0.0, 200.0, 20.0), rows, [["a", "b"], ["c", ""]])
+    page = StubPage([cell_word("inner", 120.0, 11.0)])
+    nested = (100.0, 10.0, 200.0, 20.0)
+
+    assert [texts for _, texts, _ in pdf_geometry._table_rows(page, table, [nested])] == [
+        ["a", "b"],
+        ["c", ""],
+    ]
+
+
+def test_a_recovered_cell_takes_the_words_drawn_inside_it():
+    """The positive case, stated on a grid with nothing else in the way."""
+    rows = [
+        StubRow((0.0, 0.0, 200.0, 10.0), [(0.0, 0.0, 100.0, 10.0), (100.0, 0.0, 200.0, 10.0)]),
+        StubRow((0.0, 10.0, 200.0, 20.0), [(0.0, 10.0, 100.0, 20.0), None]),
+    ]
+    table = StubTable((0.0, 0.0, 200.0, 20.0), rows, [["a", "b"], ["c", ""]])
+    page = StubPage([cell_word("41+", 120.0, 11.0)])
+
+    rows_out = pdf_geometry._table_rows(page, table)
+
+    assert [texts for _, texts, _ in rows_out] == [["a", "b"], ["c", "41+"]]
+    assert rows_out[1][2][1] == (100.0, 10.0, 200.0, 20.0)
