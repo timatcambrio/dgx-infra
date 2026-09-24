@@ -141,6 +141,25 @@ def test_fetch_page_contains_incomplete_callout(indexed_dsn: str) -> None:
     assert fetch_json["metadata"]["kind"] == "page"
 
 
+def test_fetch_page_over_the_cap_is_bounded_and_names_how_to_narrow(indexed_dsn: str) -> None:
+    """The page path takes the same ceiling as the document path (`test_server_oversize.py`
+    covers the section path against a genuinely over-cap fixture; no committed fixture has
+    a page anywhere near 200,000 characters, so this lowers the cap instead)."""
+    cfg = _cfg(FIXTURES.parent, indexed_dsn, fetch_max_chars=200)
+
+    async def _go():
+        srv = server_module.build_server(cfg)
+        async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
+            res = await s.call_tool("fetch", {"id": "page:budget-form:p002"})
+            return json.loads(res.content[0].text)
+
+    fetch_json = _run(_go)
+    assert fetch_json["metadata"]["kind"] == "page"
+    assert fetch_json["metadata"]["truncated"] is True
+    assert "FETCH_MAX_CHARS" in fetch_json["text"]
+    assert "chunk:budget-form:" in fetch_json["text"]
+
+
 def test_get_section_neighbours_spans_three_sections(indexed_dsn: str) -> None:
     """`sec:handbook:3` ("Expense Reporting") is a middle section with both a predecessor
     ("Travel Policy", index 2) and a successor ("Approvals", index 4); confirmed against
