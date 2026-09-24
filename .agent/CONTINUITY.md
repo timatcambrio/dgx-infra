@@ -110,6 +110,26 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   size and weight as well leaves the spec at 236 headings — exactly what it had before, the
   only five differences being TOC lines whose dotted leaders now collapse to `…`. Lesson: a
   synthetic fixture cannot find this class; convert the corpus and diff the heading lists.
+- 2026-09-23 [TOOL] **Retrieval-side measurement of the slide-table defect** (root cause in
+  the three entries above, fixed the same day): `kb eval` scored `hsa-2026-limits` a miss on
+  all three legs although the top two fused hits were the right document and the expected
+  page 11 — `$8,750` sat alone in section 32 while sections 31 and 34 ranked. The answer's
+  section competed with seven near-identical one-line siblings. Retrieval was correct.
+- 2026-09-23 [TOOL] **`expected_phrase` + `expected_page` can over-constrain a case, but do
+  not here.** Both must be satisfied by the SAME section, and section boundaries are an
+  implementation artifact any chunking change moves, so such a case measures the sectioniser
+  as much as the retriever. `scripts/check_eval_cases.py` checks for exactly this and finds
+  **0 instances in the 21 proxy cases**: all five all-leg misses (`hsa-2026-limits`,
+  `newhire-supporting-documents`, `cfap-egg-form-part`, `almanac-officer-accessions`,
+  `pca-share-a76`) have a correct phrase and a correct page that are jointly satisfiable —
+  `hsa-2026-limits`'s section 32 holds both. They were genuine retrieval misses, not unfair
+  cases. SUPERSEDES an earlier claim on the `eval-case-check-and-mcp-stdio-path` branch that
+  these five were over-constrained; the checker written afterwards disproved it.
+- 2026-09-23 [TOOL] **The lexical 33% is mostly question wording, not retrieval quality.**
+  `websearch_to_tsquery` ANDs every unquoted term, so a long natural-language question
+  fails the lexical leg whenever any one word is absent from the target section. Already
+  noted for the fixtures in `eval/retrieval.yaml`'s header; it applies to the proxy cases
+  too and means the lexical column should not be read as a quality score.
 - 2026-09-18 [TOOL] **Embedding time is per character, not per text.** Host ollama 0.21 +
   nomic-embed-text on the Intel dev Mac: 1 × 2,358 chars = 1.0 s, 8 = 7.2 s, 32 = 62.6 s,
   over the 60 s `httpx` read timeout; `make index --force` failed twice on the regulation

@@ -653,6 +653,18 @@ Both forms work today. Use `--transport stdio` for local development against a h
 use `--transport http` (with `KB_TOKEN` exported and `kb.internal.example` replaced with
 your `KB_PUBLIC_HOST`) once `make compose-up` is running.
 
+**Give `uv` its absolute path** in the stdio forms above — `$(command -v uv)`, e.g.
+`/Users/you/.local/bin/uv` or `/opt/homebrew/bin/uv`. An MCP stdio server is a subprocess of
+the assistant application and inherits *its* environment, not the login shell's, so a `uv`
+under `~/.local/bin` (where the standalone installer puts it) or inside a conda environment
+is often absent from its PATH, and the server fails to start. Starting the assistant from a
+terminal hides the problem; starting it from Finder, the Dock or a desktop launcher does
+not. The HTTP forms are unaffected — nothing is launched as a subprocess there.
+
+The project venv does not need `conda activate`, even when its base interpreter is a conda
+environment: `.venv/bin/python` is a symlink straight to that interpreter. Only `uv` itself
+has to be findable.
+
 #### What you should see
 
 Once added, ask the assistant something the fixtures or your real corpus can answer. It

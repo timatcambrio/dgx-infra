@@ -10,3 +10,7 @@ __pycache__/
 
 # macOS
 .DS_Store
+
+# A local MCP stdio server config: absolute paths to this checkout and to the
+# machine's own uv. Each developer writes their own; the README says how.
+.mcp.json
