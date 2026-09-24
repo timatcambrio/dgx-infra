@@ -20,6 +20,26 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-09-24 [DECISION] **A cell with no rule around it is recovered from the column its
+  ruled rows measure — or not at all.** `pdf_geometry._table_rows` is now the single way
+  both the renderer (`_table_regions`) and the cell index (`_table_cells`) read a ruled
+  table, so a recovered cell is in both or in neither. `_column_spans` measures each column
+  from the rows that are ruled and reports it only where every one of them puts it in the
+  same place within `_COLUMN_EDGE_SLACK` (1.0 pt); a cell pdfplumber returned as `None` is
+  then filled with that span crossed with the row's own band, and with the words the page
+  draws inside it. Why it was needed: a cell exists for pdfplumber only where a rule bounds
+  it on every side, and a banded table boxes its shaded rows and nothing else, so on the
+  unshaded rows the outer cells had no vertical, came back `None`, and their text was
+  dropped outright. Three refusals, each added after measuring the proxy corpus, not from
+  first principles: (1) a column its ruled rows disagree about is not measured — that is a
+  merged cell, and the average of the two spans overlaps its neighbour and copies a
+  paragraph into both; (2) a table with any unmeasurable column recovers nothing at all —
+  that is what `find_tables` returns for a bar chart's axis labels; (3) a candidate cell
+  overlapping a ruled cell of the same table or another table on the page is abandoned —
+  pdfplumber returns rows nested in a taller row and tables nested in a table, and the
+  words there are already rendered once. A cell that is ruled and empty is never filled.
+  No tolerance was widened; `PDF_LINE_TOLERANCE` is untouched. Tests f6b4139 (failing
+  first, `banded_table.pdf` fixture), fix c768742, guard rails 365807a, README 0bf0c01.
 - 2026-09-24 [DECISION] **FETCH_MAX_CHARS is a ceiling on every fetch path, and a section
   is not a bounded unit.** `_oversize_response` (retrieval/server.py) answers an over-cap
   section, section range, page or chunk the way `_fetch_document` has always answered an
@@ -211,6 +231,11 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-09-24 [TOOL] **Banded-table cell recovery shipped** (branch `fix/banded-table-cells`,
+  4 commits; see [DECISIONS]). `make check` green at 514 tests (510 before this work: 500
+  plus the 10 the eval-case and fetch-ceiling work added). `make fixtures` is a no-op.
+  Corpus re-converted and re-indexed: **2 of 12 documents reindexed**, `ch-05-b` and
+  `Annotated_Forms_SmallBus_FORMS-f`, which is the whole blast radius.
 - 2026-09-24 [TOOL] **Fetch size ceiling applied to every path** (branch
   `fix/fetch-size-ceiling-all-paths`, tests d5674df, fix 5de0de0; see [DECISIONS]).
   `fetch("sec:daffars:523")` 540,776 → 2,330 chars; `sec:gsam:70` → 2,100. 505 tests green
@@ -239,6 +264,31 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   with `callout_notes.pdf` fixture; conftest scrubs `PDF_*` env vars.
 
 ## [OUTCOMES]
+- 2026-09-24 [TOOL] **Banded-table fix measured against the proxy corpus, before and after,
+  by rendering every page with both versions of the module.** Two counts per page, against
+  the words the page actually draws: tokens rendered more often than drawn (duplication) and
+  tokens never rendered at all (loss).
+  * Loss: `Ch 05_b` 464 → 154 unrendered tokens over 14 pages. Every other document
+    unchanged — so of the nine PDFs, only the almanac was losing table text this way, and
+    the `None` cells elsewhere (2,079 in the Sentinel spec, 656 in the PCA guidebook) cost
+    nothing: their text was already being rendered by a nested table.
+  * Duplication: zero pages increase. The first version of the fix increased it on 82 pages
+    and added 5,264 token occurrences across six documents; that is what the three refusals
+    in [DECISIONS] are for, and each was written after seeing the page that needed it.
+  * `kb eval`, 36 cases: lexical 31% / vector 53% / fused 67% — **identical to the recorded
+    floor**, case for case. Expected: the fix restores evidence, and every almanac case
+    misses for the reason already recorded — `### rank number percent` is the heading of
+    four sections of that document, and the right one does not rank. `almanac-captains-count`
+    asks for a row that survived conversion even before this fix.
+  Nothing was tuned toward the score; chunk sizes, k and the RRF constant are untouched.
+- 2026-09-24 [TOOL] **The almanac's accessions table (p3) is a second, visible defect, not
+  fixed here.** Its shaded rows are single-row tables, dropped by the two-row minimum in
+  `_table_regions`, so `find_note_boxes` is never told they are tables and renders every
+  other row as `> **Boxed text:** Platoon Leader Course 383` with the rest as paragraphs. No
+  text is lost — `NROTC 218` and `Officer Candidate Course 473` are both present verbatim —
+  so this is the cheap failure, not the dangerous one. Not fixed because the obvious repair
+  (feed `find_note_boxes` every `find_tables` bbox rather than the filtered ones) would call
+  every lone stroked rectangle a table and delete boxed-text rendering entirely.
 - 2026-09-23 [TOOL] **Slide-table fix measured.** `WORK_DIR=/private/tmp/dgx-empty-work make
   check` green at 500 tests (was 488; +12, and `slide_table.md` golden added). Corpus
   re-converted and re-indexed (8 of 12 reindexed). `kb eval` on the 21 proxy cases:
