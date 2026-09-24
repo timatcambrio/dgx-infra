@@ -22,6 +22,7 @@ GOLDEN_BY_FIXTURE = {
     "born_digital.pdf": "born_digital.md",
     "toc_page.pdf": "toc_page.md",
     "callout_notes.pdf": "callout_notes.md",
+    "slide_table.pdf": "slide_table.md",
     "mixed.pdf": "mixed.md",
     "annotated_form.pdf": "annotated_form.md",
     "linked_form.pdf": "linked_form.md",

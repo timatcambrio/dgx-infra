@@ -270,6 +270,17 @@ one or more of these, the body also opens with an INCOMPLETE note giving the cou
 Ruled tables come from their ruling lines. Borderless ones are recovered from column
 alignment and flagged in LAYOUT NOTES for a spot-check.
 
+A table that meets neither test — a slide's table, drawn with type, whitespace and a rule
+above and below — is left as text. What it must not become is headings. Its cells are set
+large and bold, so each one passes every test a heading has, and a run of them cuts the
+page into a section per cell: the figure lands in one section and the year it belongs to in
+the next, and no section states the answer. So a line is not a heading if it splits into
+columns, or if another line stands beside it in the same band of the page. Both are
+measurements that a heading does not satisfy — a heading is one run of text with its
+content below it — and the cost of the rule falling on a real heading is its `#`, not its
+text.
+
+
 ---
 
 ## When something looks wrong
@@ -278,13 +289,18 @@ Put the converted markdown next to the original and look. Then:
 
 **Reading order scrambled on a two-column page.** Check LAYOUT NOTES to see whether columns
 were detected at all. `PDF_COLUMN_GAP_FRACTION` sets how wide a gutter has to be to count.
+Where a gutter is found, words are grouped into lines within each column and the columns are
+emitted left first: a line never crosses a gutter, so two columns whose lines happen to share
+a baseline cannot be welded into one.
 
 **A table came out as prose, or prose came out as a table.** `PDF_MIN_TABLE_ROWS` is how many
 aligned lines make a table; `PDF_COLUMN_ALIGN_TOLERANCE` is how much horizontal drift is
 allowed between rows.
 
 **Too many headings, or too few.** `PDF_HEADING_SIZE_RATIO`: how much larger than body text a
-line has to be set to count as a heading.
+line has to be set to count as a heading. Size is not the only test: a line that splits into
+columns, or that has another line standing beside it, is a table cell and is never a
+heading, whatever size it is set in.
 
 **Running headers and footers left in.** `PDF_REPEAT_PAGE_FRACTION` and `PDF_MARGIN_FRACTION`
 control how repeated margin text is found.

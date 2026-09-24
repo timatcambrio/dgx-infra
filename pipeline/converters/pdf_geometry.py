@@ -42,6 +42,12 @@ _WHITESPACE = re.compile(r"\s+")
 #: everything that should have been under it.
 _MAX_HEADING_CHARS = 90
 
+#: How much of the shorter line's height two lines must share vertically before they are
+#: read as standing *beside* each other rather than one above the other. Ordinary stacked
+#: prose shares none of it; two cells of one table row share nearly all of it, even when
+#: they are set in different sizes and so do not group into a single line.
+_SIDE_BY_SIDE_OVERLAP = 0.5
+
 #: A leading bullet or number. Requires whitespace and then something after it, so `--`
 #: (which is what an unfilled form field prints) and a lone dash are not list markers.
 _LIST_MARKER = re.compile(
@@ -331,16 +337,22 @@ def _build_line(words: list[dict], config: Config) -> Line:
     )
 
 
-def detect_columns(words: list[dict], page_width: float, gap_fraction: float) -> int:
-    """Count text columns by looking for a vertical gutter with no words in it.
+def find_column_gutter(
+    words: list[dict], page_width: float, gap_fraction: float
+) -> tuple[float, float] | None:
+    """`(left edge, right edge)` of the page's gutter, or `None` if it has no columns.
 
     A gutter is only believed if it sits near the middle of the page and both sides carry a
     real share of the words — otherwise an indented block or a wide margin reads as a column
     split and the page comes out interleaved, which is far worse than treating it as one
     column.
+
+    The edges matter as much as the count. Splitting a two-column page at its *midpoint*
+    instead puts the right-hand cells of a wide left-hand table into the right column: on a
+    16:9 slide the gutter can sit at 58% of the width with content either side of the half.
     """
     if len(words) < 20 or page_width <= 0:
-        return 1
+        return None
 
     minimum_gap = page_width * gap_fraction
     spans = sorted((float(w["x0"]), float(w["x1"])) for w in words)
@@ -362,8 +374,13 @@ def detect_columns(words: list[dict], page_width: float, gap_fraction: float) ->
         left_share = sum(1 for w in words if float(w["x1"]) <= gap_start) / len(words)
         right_share = sum(1 for w in words if float(w["x0"]) >= gap_end) / len(words)
         if left_share > 0.25 and right_share > 0.25:
-            return 2
-    return 1
+            return gap_start, gap_end
+    return None
+
+
+def detect_columns(words: list[dict], page_width: float, gap_fraction: float) -> int:
+    """How many text columns the page has: 1, or 2 when a gutter is found."""
+    return 2 if find_column_gutter(words, page_width, gap_fraction) else 1
 
 
 def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[list[str]]]]:
@@ -996,7 +1013,27 @@ def to_blocks(path: Path, config: Config) -> list[RenderedBlock]:
         page["body_words"] = _outside_regions(
             page["words"], page["table_boxes"] + [box for box, _ in page["boxes"]]
         )
-        page["lines"] = _group_words_into_lines(page["body_words"], config)
+        # A line does not cross a gutter. Grouping words by baseline across the whole page
+        # welds the two columns together wherever their lines happen to share one: an HSA
+        # slide's table cell "2026" came out as "2026 2026!" with a fragment of the callout
+        # beside it, which is not text either column contains. Per column, then in reading
+        # order, left column first.
+        page["gutter"] = find_column_gutter(
+            page["body_words"], page["width"], config.pdf_column_gap_fraction
+        )
+        if page["gutter"] is None:
+            page["lines"] = _group_words_into_lines(page["body_words"], config)
+        else:
+            # Every word lies wholly on one side: the gutter is a gap between merged word
+            # spans, so nothing straddles it.
+            gap_start = page["gutter"][0]
+            page["lines"] = _group_words_into_lines(
+                [word for word in page["body_words"] if float(word["x1"]) <= gap_start],
+                config,
+            ) + _group_words_into_lines(
+                [word for word in page["body_words"] if float(word["x1"]) > gap_start],
+                config,
+            )
         if config.pdf_annotation_linking and page["annotations"]:
             page["annotations"] = resolve_targets(
                 page["annotations"],
@@ -1061,13 +1098,12 @@ def _render_page(
         if line.text and _normalise(line.text) not in repeated
     ]
 
-    columns = detect_columns(
-        page["body_words"], page["width"], config.pdf_column_gap_fraction
-    )
-    if columns == 2:
-        midpoint = page["width"] / 2
-        ordered = [line for line in keep if line.x0 < midpoint] + [
-            line for line in keep if line.x0 >= midpoint
+    gutter = page.get("gutter")
+    columns = 2 if gutter else 1
+    if gutter:
+        gap_start = gutter[0]
+        ordered = [line for line in keep if line.x0 <= gap_start] + [
+            line for line in keep if line.x0 > gap_start
         ]
     else:
         ordered = keep
@@ -1240,6 +1276,80 @@ def _render_list(
     return "\n".join(lines)
 
 
+def _side_by_side(a: Line, b: Line) -> bool:
+    """Whether two lines are laid out beside each other rather than one above the other.
+
+    Horizontally disjoint *and* vertically overlapping by `_SIDE_BY_SIDE_OVERLAP` of the
+    shorter one's height. Both conditions are needed: columns of prose are disjoint but do
+    not overlap, and a wrapped line overlaps its neighbour's ascenders but is not disjoint.
+    """
+    if _line_x1(a) > b.x0 and _line_x1(b) > a.x0:
+        return False
+    overlap = min(a.bottom, b.bottom) - max(a.top, b.top)
+    shortest = min(a.bottom - a.top, b.bottom - b.top)
+    return shortest > 0 and overlap >= shortest * _SIDE_BY_SIDE_OVERLAP
+
+
+def _shares_columns(a: Line, b: Line, config: Config) -> bool:
+    """Whether two lines split into the same number of cells at the same left edges.
+
+    Almost the measurement `find_aligned_table_runs` makes, over a pair rather than a run,
+    and with one condition it does not need: the two lines must be set the *same way*.
+    Cells in a column are. A numbered heading and the numbered subheading directly under it
+    are not -- they share a tab stop, so they share their columns, but a level-1 heading and
+    a level-2 heading are never the same size. Without that condition `4 L1 PROCESSOR
+    PARAMETERS` followed by `4.1 Overview` reads as two rows of a table.
+
+    Two rows are not enough evidence to *reconstruct* a grid -- that needs
+    `PDF_MIN_TABLE_ROWS`, and a hallucinated table destroys the paragraph it consumes --
+    but they are enough to decline to call one of them a section title. Refusing a heading
+    costs a `#`; asserting a table costs the text.
+    """
+    if abs(a.size - b.size) >= 0.01 or a.bold != b.bold:
+        return False
+    left = [x0 for x0, text in a.cells(config.pdf_cell_gap_ratio) if text]
+    right = [x0 for x0, text in b.cells(config.pdf_cell_gap_ratio) if text]
+    return (
+        len(left) >= 2
+        and len(left) == len(right)
+        and all(
+            abs(x - y) <= config.pdf_column_align_tolerance for x, y in zip(left, right)
+        )
+    )
+
+
+def _reads_as_cell(lines: list[Line], index: int, config: Config) -> bool:
+    """Whether a line is one cell of a row rather than a line of its own.
+
+    A heading is one run of text with the content it introduces *below* it. Two kinds of
+    neighbour say a line is not that: one directly above or below it split into the same
+    columns, and one standing beside it in the same band of the page. Either way the line is
+    part of a row.
+
+    This is what a slide's table needs. Its cells are set large and mostly bold, so each one
+    passes every test a heading has, and the table came out as a run of `###` lines -- worse
+    than the known cost of flattening a table, which is losing its grid. It manufactures
+    section boundaries *inside* the table, and the sectioniser then files a figure under one
+    heading and the year it belongs to under the next, so no section states either.
+
+    Ruled and aligned tables never reach this: their lines are taken before the heading path
+    runs. This is for the tables geometry declines to reconstruct, and declining to
+    reconstruct one is not a reason to assert it is a stack of headings instead.
+
+    Corroboration by a neighbour is what keeps the rule off real headings. `1.1<tab>Purpose`
+    splits into two cells like any table row does, and a numbered heading is the commonest
+    shape in the specifications and regulations this converter is pointed at; what it never
+    has is another line agreeing with it.
+    """
+    line = lines[index]
+    return any(
+        _shares_columns(line, lines[neighbour], config)
+        or _side_by_side(lines[neighbour], line)
+        for neighbour in (index - 1, index + 1)
+        if 0 <= neighbour < len(lines)
+    )
+
+
 def _heading_run(
     lines: list[Line],
     start: int,
@@ -1262,6 +1372,8 @@ def _heading_run(
     pass, so the last line of a paragraph would come back as a heading.
     """
     first = lines[start]
+    if _reads_as_cell(lines, start, config):
+        return start + 1, 0
     level = _heading_level(first.size, body, heading_sizes, config.pdf_heading_size_ratio)
     if level is None:
         if not (first.bold and body > 0 and first.size >= body):
