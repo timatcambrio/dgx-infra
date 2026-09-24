@@ -716,6 +716,61 @@ def slide_table(path: Path) -> None:
     canvas.save()
 
 
+#: `banded_table` rows: label, count, share. Alternate rows are shaded.
+BANDED_TABLE_ROWS = [
+    ("age", "number", "percent"),
+    ("<22", "21", "0.1%"),
+    ("22", "398", "1.9%"),
+    ("23", "859", "4.2%"),
+    ("24", "1,175", "5.7%"),
+    ("25", "1,136", "5.5%"),
+    ("Total", "3,589", "100%"),
+]
+
+
+def banded_table(path: Path) -> None:
+    """A three-column table whose shading, not its grid, carries the vertical rules.
+
+    The shape an almanac page produced. The two inner column rules run the full height of
+    the table, but the outer left and right edges exist only as the sides of the box drawn
+    around each *shaded* row. A cell exists for pdfplumber only where a rule bounds it on
+    every side, so on the unshaded rows the first and last cells had nothing outboard of
+    them, came back as `None`, and their text was dropped outright -- every second row
+    keeping its middle number and losing both its label and its percentage.
+
+    That is the dangerous failure mode: the numbers survive, unlabelled, and the table still
+    reads as a table. Every row must keep all three of its cells.
+    """
+    canvas = _canvas(path)
+    left, right = 100.0, 420.0
+    inner = (220.0, 330.0)
+    row_height = 22.0
+    top = 640.0
+
+    canvas.setLineWidth(0.75)
+    for index in range(len(BANDED_TABLE_ROWS)):
+        row_top = top - index * row_height
+        if index % 2:
+            # The shaded band, stroked as well as filled: this box is the only thing that
+            # puts a vertical rule at `left` and at `right`, and only across its own row.
+            canvas.setFillGray(0.9)
+            canvas.rect(left, row_top - row_height, right - left, row_height, stroke=1, fill=1)
+            canvas.setFillGray(0.0)
+
+    # The full-height column rules. Nothing else spans the table vertically.
+    for x in inner:
+        canvas.line(x, top - len(BANDED_TABLE_ROWS) * row_height, x, top)
+
+    for index, row in enumerate(BANDED_TABLE_ROWS):
+        baseline = top - index * row_height - 15
+        canvas.setFont("Helvetica-Bold" if index == 0 else "Helvetica", 9)
+        for x, cell in zip((left + 8, inner[0] + 8, inner[1] + 8), row):
+            canvas.drawString(x, baseline, cell)
+
+    canvas.showPage()
+    canvas.save()
+
+
 def simple_docx(path: Path) -> None:
     """Headings, a list, and a table."""
     from docx import Document
@@ -1014,6 +1069,7 @@ GENERATORS = {
     "boxed_notes.pdf": boxed_notes,
     "callout_notes.pdf": callout_notes,
     "slide_table.pdf": slide_table,
+    "banded_table.pdf": banded_table,
 }
 
 

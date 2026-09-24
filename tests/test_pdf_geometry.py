@@ -587,3 +587,66 @@ def test_a_heading_with_a_wide_margin_note_beside_it_is_demoted(config):
     note = line("revised", top=102.0, size=20.0, words=((480.0, 540.0, "revised"),))
 
     assert pdf_geometry._side_by_side(heading, note)
+
+
+def banded_rows(fixtures_dir) -> list[list[str]]:
+    import pdfplumber
+
+    with pdfplumber.open(fixtures_dir / "banded_table.pdf") as pdf:
+        regions = pdf_geometry._table_regions(pdf.pages[0])
+    assert len(regions) == 1, f"expected one ruled table, got {len(regions)}"
+    return regions[0][1]
+
+
+def test_a_banded_table_has_no_rule_around_its_unshaded_rows(fixtures_dir):
+    """The premise of the test below, asserted so the fixture cannot rot into a no-op.
+
+    Only the shaded rows are boxed, so the outer verticals exist across those rows alone.
+    pdfplumber therefore reports no cell at all at either end of an unshaded row.
+    """
+    import pdfplumber
+
+    with pdfplumber.open(fixtures_dir / "banded_table.pdf") as pdf:
+        table = pdf.pages[0].find_tables()[0]
+        missing = [
+            index
+            for index, row in enumerate(table.rows)
+            if row.cells[0] is None and row.cells[-1] is None
+        ]
+
+    assert missing, "the fixture no longer reproduces the unruled outer cells"
+
+
+def test_every_row_of_a_banded_table_keeps_all_its_cells(fixtures_dir):
+    """The defect this fixture exists for.
+
+    Every second row came back holding its middle number and nothing else: the label and
+    the percentage were dropped, not merely unplaced. A table of bare numbers still reads
+    as a table, which is why this failed silently where a missing table would not have.
+    """
+    rows = banded_rows(fixtures_dir)
+
+    for row in rows:
+        assert all(cell for cell in row), f"row {row} lost a cell; table was {rows}"
+
+
+def test_a_recovered_cell_carries_the_value_the_page_prints(fixtures_dir):
+    """Recovered, not invented: the text is the page's own words, in its own columns."""
+    rows = banded_rows(fixtures_dir)
+
+    assert ["22", "398", "1.9%"] in rows
+    assert ["24", "1,175", "5.7%"] in rows
+
+
+def test_a_blank_cell_that_is_ruled_stays_blank(fixtures_dir):
+    """The guard rail: only a cell with no rule around it is filled in.
+
+    An empty cell on a form is a fact about the form — nothing was entered — and the
+    linking tests downstream depend on it staying empty.
+    """
+    import pdfplumber
+
+    with pdfplumber.open(fixtures_dir / "ruled_form.pdf") as pdf:
+        cells = pdf_geometry._table_cells(pdf.pages[0])
+
+    assert any(cell.text == "" for cell in cells)
