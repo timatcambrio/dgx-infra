@@ -584,6 +584,46 @@ or fusion is measured against them and must not lower them. They are not tuned t
 No number for the client's own corpus appears here; the client runs the same command
 against their index and records their own.
 
+#### Checking a cases file before you trust it — `scripts/check_eval_cases.py`
+
+```bash
+uv run python scripts/check_eval_cases.py --cases /path/to/cases.yaml
+```
+
+`kb eval` scores a case as a miss when *any* of `expected_slug`, `expected_page` and
+`expected_phrase` fails — and all three must hold for the **same** section. Two very
+different things therefore look identical in the table: retrieval missed, or the case asked
+for something no single section can satisfy. This script separates them. It reports a case
+as unsatisfiable when the page or phrase is absent, and specifically flags the
+**over-constrained** case where each constraint holds alone but no one section holds both —
+which would otherwise make the file a regression floor for the sectioniser rather than the
+retriever. It also warns when a phrase appears in more than three sections (weak evidence)
+and when a page is split across more than six sections, which usually means a table was
+flattened. Read-only; exits 1 if any case is unsatisfiable.
+
+#### Probing the MCP contract — `scripts/mcp_probe.py`
+
+```bash
+uv run python scripts/mcp_probe.py --cases /path/to/mcp-cases.yaml
+```
+
+`kb eval` asks whether the right section *ranks*. This asks whether the evidence is
+**reachable through the MCP tools, with an honest citation** — it launches `kb serve
+--transport stdio` as a subprocess, exactly as an assistant application does, and drives the
+real tools. Per case it checks that all five tools are advertised, that `search` returns the
+expected document, that `fetch` resolves and returns more than the 300-character snippet,
+that the expected phrase is present in the *fetched* text (reachable, not merely indexed),
+that the citation names the source file and the url sits under `KB_URL_BASE`, and that
+`get_section(neighbours=1)` is a superset of `fetch`.
+
+It deliberately does **not** judge whether an assistant's prose answer is correct or whether
+it called `fetch` before quoting: those are properties of the assistant, not of this server,
+and grading them automatically would need an LLM judge. Cases carry a `requires:` list of
+such behaviours and the probe prints them as a checklist; a case marked `expect_damage: true`
+prints the fetched text so you can confirm the damage is visible to a reader at all. The
+server's own call log goes to `mcp-probe-server.log` (`--server-log` to change it) rather
+than interleaving with the report.
+
 ### `kb serve` — the MCP server
 
 ```bash
