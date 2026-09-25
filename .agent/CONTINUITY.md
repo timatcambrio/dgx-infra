@@ -353,14 +353,23 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
     `type number` sits 23 pt above the first of those grids — beyond `_HEADER_ROW_GAP` and
     over a grid that is not rendered — so this rule does not touch it.
   * `forms-equipment-threshold`: the form's field labels are NOT fixed. See [DISCOVERIES].
-- 2026-09-25 [TOOL] **`~/Dropbox/Cambrio/dgx-eval/mcp-cases.yaml` needs one edit; NOT made,
-  because changing an eval case to match new behaviour is Tim's call.** `damaged-table-age-23`
-  pins `expected_id: "sec:ch-05-b:7"`. Section indices shifted by one when the caption and
-  its header row merged, so that id is now the *grade* table and the probe prints it under
-  `expect_damage: true`. The age table is `sec:ch-05-b:6`. Second and separate: that case's
-  `expect_damage` premise has been false since the banded-cell fix on 2026-09-24 — the age
-  table converts cleanly now (`| 23 | 859 | 4.2% |`), so there is no damage for an assistant
-  to notice. The case needs re-pointing at a table that is still damaged, or retiring.
+- 2026-09-25 [USER→TOOL] **`mcp-cases.yaml` case 3 re-pointed; Tim approved the edit.**
+  `damaged-table-age-23` pinned `expected_id: "sec:ch-05-b:7"`. Section indices shifted by
+  one when the caption absorbed its header row, so it silently began fetching the *grade*
+  table under `expect_damage: true` — silently because `expect_damage` asserts nothing, it
+  only prints for a human. Two problems at once: the address was wrong (caused by this
+  fix), and the premise had been false since the banded-cell fix of 2026-09-24 made the age
+  table convert cleanly, so there was no damage left to demonstrate. Renamed
+  `damaged-table-accessions`, pointed at `sec:ch-05-b:5` (`type number`, page 3's accessions
+  list — the separate unfixed single-row-table defect, where alternate rows still render as
+  `> **Boxed text:**`), question changed to the Platoon Leader Course row. That preserves
+  what the case was for: the contrast with case 4's intact table. Probe back to 69
+  mechanical checks / 1 failure. Backup beside it as `mcp-cases.yaml.bak-20260925`.
+  A `page:ch-05-b:p003` id would be stable against renumbering and was tried first, but it
+  fails the probe's `get_section(neighbours=1) is a superset of fetch` check, so the case
+  keeps a section index and carries a CAUTION comment saying to re-check the printed text
+  after any conversion change. **`proxy-cases.yaml` pins no ids at all** (slug + phrase +
+  page only), so it is immune to this class of breakage; `mcp-cases.yaml` had the only one.
 - 2026-09-24 [TOOL] **Banded-table fix measured against the proxy corpus, before and after,
   by rendering every page with both versions of the module.** Two counts per page, against
   the words the page actually draws: tokens rendered more often than drawn (duplication) and
