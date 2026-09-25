@@ -623,7 +623,7 @@ def _header_row(
 
 
 def _absorb_header_rows(
-    regions: list[Region], lines: list[Line], config: Config
+    regions: list[Region], lines: list[Line], repeated: set[str], config: Config
 ) -> list[Line]:
     """Move each table's header row off the page's text and onto the table it heads.
 
@@ -633,29 +633,51 @@ def _absorb_header_rows(
     where the page draws them, and the caption above then keeps the table it introduces:
     one section holding both the words someone searches for and the figures they want.
 
+    Two refusals, both found by measuring the proxy corpus rather than reasoned out:
+
+    * a running header is never a header row, however well it happens to line up. The
+      Sentinel specification sets `Issue/Revision: 3/11/1` and `Date: 19/10/2023` over the
+      table below them on eight pages, and those lines are dropped as repeated margin text
+      today -- absorbing one would put text back on the page that the document repeats
+      once per page, on eight pages, in the middle of a table;
+    * a line that fits the columns of *two* grids is left alone. Page 8 of the almanac has
+      one, and there is nothing in the geometry that says which table it heads; guessing
+      the nearer one would be a coin toss recorded as a measurement.
+
     Returns the lines that remain. A line is only ever claimed by one table.
     """
-    claimed: set[int] = set()
+    claims: dict[int, list[tuple[Region, list[str]]]] = {}
     for region in regions:
         top = float(region.box[1])
         for index, line in enumerate(lines):
-            if index in claimed or not line.text:
+            if not line.text or _normalise(line.text) in repeated:
                 continue
             gap = top - line.bottom
             if gap < 0 or gap > (line.bottom - line.top) * _HEADER_ROW_GAP:
                 continue
             texts = _header_row(line, region.columns, config.pdf_cell_gap_ratio)
-            if texts is None:
-                continue
-            width = len(region.rows[0])
-            region.rows.insert(0, (texts + [""] * width)[:width])
-            # The block now renders text drawn above the grid, so its bbox has to cover it;
-            # a provenance box that does not contain what the block says is a lie about
-            # where the words came from.
-            region.box = (region.box[0], min(top, line.top), region.box[2], region.box[3])
-            claimed.add(index)
-            break
-    return [line for index, line in enumerate(lines) if index not in claimed]
+            if texts is not None:
+                claims.setdefault(index, []).append((region, texts))
+
+    taken: set[int] = set()
+    for index, candidates in claims.items():
+        if len(candidates) != 1:
+            continue
+        region, texts = candidates[0]
+        line = lines[index]
+        width = len(region.rows[0])
+        region.rows.insert(0, (texts + [""] * width)[:width])
+        # The block now renders text drawn above the grid, so its bbox has to cover it; a
+        # provenance box that does not contain what the block says is a lie about where the
+        # words came from.
+        region.box = (
+            region.box[0],
+            min(float(region.box[1]), line.top),
+            region.box[2],
+            region.box[3],
+        )
+        taken.add(index)
+    return [line for index, line in enumerate(lines) if index not in taken]
 
 
 def _is_note_box(rect: dict, page_area: float, max_area_fraction: float) -> bool:
@@ -1290,10 +1312,19 @@ def to_blocks(path: Path, config: Config) -> list[RenderedBlock]:
                 [word for word in page["body_words"] if float(word["x1"]) > gap_start],
                 config,
             )
+
+    repeated = find_repeated_margin_lines(
+        [page["lines"] for page in pages], [page["height"] for page in pages], config
+    )
+
+    for page in pages:
         # A table's header row is drawn outside its grid often enough to matter, and it
         # reaches this point as an ordinary line of page text. Claim it before anything
-        # else reads it: left alone it passes every heading test there is.
-        page["lines"] = _absorb_header_rows(page["regions"], page["lines"], config)
+        # else reads it: left alone it passes every heading test there is. After the
+        # running headers are known, so that one can never be claimed.
+        page["lines"] = _absorb_header_rows(
+            page["regions"], page["lines"], repeated, config
+        )
         if config.pdf_annotation_linking and page["annotations"]:
             page["annotations"] = resolve_targets(
                 page["annotations"],
@@ -1304,9 +1335,6 @@ def to_blocks(path: Path, config: Config) -> list[RenderedBlock]:
                 cells=page["cells"],
             )
 
-    repeated = find_repeated_margin_lines(
-        [page["lines"] for page in pages], [page["height"] for page in pages], config
-    )
     body = _body_size([page["lines"] for page in pages])
     heading_sizes = sorted(
         {
