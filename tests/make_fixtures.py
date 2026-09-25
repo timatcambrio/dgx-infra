@@ -870,6 +870,9 @@ def captioned_table(path: Path) -> None:
         for x, cell in zip((guard_left, guard_inner), row):
             canvas.drawString(x + 8, baseline, cell)
 
+    # Enough prose for triage to call the page readable; without it the page is classified
+    # as yielding no usable text and the golden carries an INCOMPLETE note about it.
+    _draw_paragraph(canvas, BODY_TEXT, int(top - height - 40), size=8)
     canvas.showPage()
     canvas.save()
 
