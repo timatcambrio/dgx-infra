@@ -749,3 +749,98 @@ def test_a_recovered_cell_takes_the_words_drawn_inside_it():
 
     assert [texts for _, texts, _ in rows_out] == [["a", "b"], ["c", "41+"]]
     assert rows_out[1][2][1] == (100.0, 10.0, 200.0, 20.0)
+
+
+# ------------------------------------------------- a table's header row drawn above its grid
+
+
+def captioned_blocks(fixtures_dir, config, page: int = 1):
+    return [
+        block
+        for block in pdf_geometry.to_blocks(fixtures_dir / "captioned_table.pdf", config)
+        if block.page_number == page
+    ]
+
+
+def test_a_captioned_table_rules_only_its_data(fixtures_dir, config):
+    """The premise of the tests below, asserted so the fixture cannot rot into a no-op.
+
+    The page rules the data rows and nothing else, so pdfplumber reports a table whose first
+    row is data. The three words naming the columns are drawn above the grid's top edge and
+    reach the converter as an ordinary line of page text.
+    """
+    import pdfplumber
+
+    with pdfplumber.open(fixtures_dir / "captioned_table.pdf") as pdf:
+        page = pdf.pages[0]
+        regions = pdf_geometry._table_regions(page)
+        assert len(regions) == 1
+        box, rows = regions[0]
+        assert rows[0] == ["<22", "21", "0.1%"], "the grid should start at the first data row"
+        above = [
+            word
+            for word in page.extract_words()
+            if float(word["bottom"]) <= float(box[1])
+        ]
+    assert {"age", "number", "percent"} <= {str(word["text"]) for word in above}
+
+
+def test_a_tables_header_row_is_not_a_heading(fixtures_dir, config):
+    """The defect this fixture exists for.
+
+    `age number percent` cleared every test a heading has — larger than body text, short,
+    no neighbour to corroborate it as a row — so the page came out as a caption with an
+    empty body followed by a section titled by the table's own column names. The
+    discriminating words were in one section and the figures in the next, and neither
+    section answered the question on its own. Four sections of the real almanac carried the
+    heading `rank number percent`, which also makes the citation useless.
+    """
+    headings = [
+        block.text for block in captioned_blocks(fixtures_dir, config)
+        if block.kind == "heading"
+    ]
+
+    assert "# Active Duty Officer Age Distribution" in headings
+    for heading in headings:
+        assert "age number percent" not in heading, heading_failure(headings, "age number percent")
+
+
+def test_the_caption_keeps_the_table_it_introduces(fixtures_dir, config):
+    """One section holding both the words someone searches for and the figures they want."""
+    blocks = captioned_blocks(fixtures_dir, config)
+    kinds = [block.kind for block in blocks]
+    caption = kinds.index("heading")
+
+    assert kinds[caption + 1] == "table", f"the caption is followed by {kinds[caption + 1]!r}"
+
+
+def test_the_header_row_becomes_the_tables_header(fixtures_dir, config):
+    """Absorbed, not dropped: the words the page draws are kept, in their own columns.
+
+    Dropping them would fix the section boundary and leave the table headed by its first
+    *data* row — `| <22 | 21 | 0.1% |` — which reads as though the first age band were the
+    name of the column.
+    """
+    table = next(
+        block for block in captioned_blocks(fixtures_dir, config) if block.kind == "table"
+    )
+
+    assert table.text.splitlines()[0] == "| age | number | percent |"
+    assert "| <22 | 21 | 0.1% |" in table.text
+
+
+def test_a_numbered_heading_above_a_table_stays_a_heading(fixtures_dir, config):
+    """The guard rail, and the shape that makes this hard.
+
+    `2.1  Travel Rates` also sits directly above a ruled grid and also splits into two
+    cells. What it does not do is put one cell in each column: its second cell straddles
+    the rule between the grid's two columns. A numbered heading is the commonest shape in
+    the specifications and regulations this converter is pointed at, and refusing them all
+    would cost far more than the defect above.
+    """
+    blocks = captioned_blocks(fixtures_dir, config, page=2)
+    headings = [block.text for block in blocks if block.kind == "heading"]
+
+    assert any("Travel Rates" in heading for heading in headings), headings
+    table = next(block for block in blocks if block.kind == "table")
+    assert table.text.splitlines()[0] == "| Lodging | $96 |"

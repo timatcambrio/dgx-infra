@@ -771,6 +771,109 @@ def banded_table(path: Path) -> None:
     canvas.save()
 
 
+#: `captioned_table` page 1: the caption, the header row drawn above the grid, and the data.
+CAPTIONED_TABLE_CAPTION = "Active Duty Officer Age Distribution"
+CAPTIONED_TABLE_HEADER = ("age", "number", "percent")
+CAPTIONED_TABLE_ROWS = [
+    ("<22", "21", "0.1%"),
+    ("22", "398", "1.9%"),
+    ("23", "859", "4.2%"),
+    ("Total", "1,278", "100%"),
+]
+
+#: `captioned_table` page 2: a numbered heading whose two cells do NOT land one per column.
+CAPTIONED_TABLE_GUARD_ROWS = [
+    ("Lodging", "$96"),
+    ("Meals", "$59"),
+    ("Mileage", "$0.67"),
+]
+
+
+def captioned_table(path: Path) -> None:
+    """A table whose caption and whose header row are both drawn outside its grid.
+
+    The almanac shape. The page rules only the data: the three words naming the columns sit
+    a few points above the grid's top edge, at the columns' own x positions, and the caption
+    sits above them, set larger. Both clear every test a heading has, so the page came out as
+    two empty `###` sections followed by a table whose markdown header was its first *data*
+    row -- the discriminating words in one section, the answer in the next, and neither
+    section able to answer on its own.
+
+    The caption is a heading. The header row is not: it is one row of the grid below it,
+    drawn outside the grid's rules.
+
+    Page 2 is the guard rail, and it is the shape that makes this hard. `2.1  Travel Rates`
+    also sits directly above a ruled grid and also splits into two cells -- a numbered
+    heading is the commonest shape in the documents this converter is pointed at -- but its
+    second cell straddles the boundary between the grid's two columns instead of landing in
+    one. It must still be a heading.
+    """
+    canvas = _canvas(path)
+    left, right = 100.0, 420.0
+    inner = (220.0, 320.0)
+    row_height = 22.0
+    top = 620.0
+    columns = (left, inner[0], inner[1])
+
+    canvas.setFont("Helvetica-Bold", 12)
+    canvas.drawString(left, top + 62, CAPTIONED_TABLE_CAPTION)
+
+    # The header row: drawn above the grid, each word at its own column's left edge. Nothing
+    # rules it, which is why pdfplumber reports a table that starts at the first data row.
+    canvas.setFont("Helvetica", 10)
+    for x, cell in zip(columns, CAPTIONED_TABLE_HEADER):
+        canvas.drawString(x + 8, top + 8, cell)
+
+    canvas.setLineWidth(0.75)
+    height = len(CAPTIONED_TABLE_ROWS) * row_height
+    for x in (left, inner[0], inner[1], right):
+        canvas.line(x, top - height, x, top)
+    for index in range(len(CAPTIONED_TABLE_ROWS) + 1):
+        y = top - index * row_height
+        canvas.line(left, y, right, y)
+
+    canvas.setFont("Helvetica", 8)
+    for index, row in enumerate(CAPTIONED_TABLE_ROWS):
+        baseline = top - index * row_height - 15
+        for x, cell in zip(columns, row):
+            canvas.drawString(x + 8, baseline, cell)
+
+    # Body prose at 8pt, which makes 8 the document's dominant size and the 10pt header row
+    # a heading size. That is the almanac's own arrangement: the page's smallest type is its
+    # body text, so anything set for emphasis clears the heading threshold.
+    canvas.setFont("Helvetica", 8)
+    _draw_paragraph(canvas, BODY_TEXT, int(top - height - 40), size=8)
+    canvas.showPage()
+
+    # --- page 2: the numbered heading that must survive ---
+    top = 620.0
+    guard_left, guard_right = 100.0, 420.0
+    guard_inner = 260.0
+    height = len(CAPTIONED_TABLE_GUARD_ROWS) * row_height
+
+    canvas.setFont("Helvetica-Bold", 12)
+    # `2.1` sits at the first column's edge and `Travel Rates` in the middle of the grid,
+    # far enough from the number to be a second cell and squarely across the column rule.
+    canvas.drawString(guard_left, top + 8, "2.1")
+    canvas.drawString(guard_inner - 40, top + 8, "Travel Rates")
+
+    canvas.setLineWidth(0.75)
+    for x in (guard_left, guard_inner, guard_right):
+        canvas.line(x, top - height, x, top)
+    for index in range(len(CAPTIONED_TABLE_GUARD_ROWS) + 1):
+        y = top - index * row_height
+        canvas.line(guard_left, y, guard_right, y)
+
+    canvas.setFont("Helvetica", 8)
+    for index, row in enumerate(CAPTIONED_TABLE_GUARD_ROWS):
+        baseline = top - index * row_height - 15
+        for x, cell in zip((guard_left, guard_inner), row):
+            canvas.drawString(x + 8, baseline, cell)
+
+    canvas.showPage()
+    canvas.save()
+
+
 def simple_docx(path: Path) -> None:
     """Headings, a list, and a table."""
     from docx import Document
@@ -1070,6 +1173,7 @@ GENERATORS = {
     "callout_notes.pdf": callout_notes,
     "slide_table.pdf": slide_table,
     "banded_table.pdf": banded_table,
+    "captioned_table.pdf": captioned_table,
 }
 
 
