@@ -62,8 +62,8 @@
       "page_count": 30,
       "dropped_empty_blocks": 0,
       "incomplete_pages": [],
-      "section_count": 32,
-      "chunk_count": 32
+      "section_count": 31,
+      "chunk_count": 31
     },
     "reference-table": {
       "slug": "reference-table",

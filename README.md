@@ -600,12 +600,20 @@ the repository because its questions describe the documents.
 
 | leg | hit@5 |
 |---|---|
-| lexical | 31% |
-| vector | 53% |
-| fused | 67% |
+| lexical | 33% |
+| vector | 58% |
+| fused | 72% |
 
-Supersedes the 2026-09-18 floor of 33% / 67% / 76%, which was measured over the first 21
-of these cases. **The drop is the case set becoming more representative, not retrieval
+Supersedes the 2026-09-24 floor of 31% / 53% / 67% over the same 36 cases, which stood
+until sections stopped being cut between a caption and the thing it introduces
+(2026-09-28). That change moved two cases from a miss on every leg to a hit and moved none
+the other way: `forms-equipment-threshold`, where the threshold is stated in a heading
+whose body was empty and the figures were in the next section, and `cfap-egg-form-part`.
+Nothing was tuned to get it — no chunk size, no `k`, no fusion constant. What changed is
+that a heading with no body of its own no longer opens a section, so 443 of the corpus's
+1,577 sections stopped being dead ends: results that matched on a good-looking title and
+then had nothing under it. The floor before those 36 cases was 33% / 67% / 76%, measured
+over the first 21 of them. **The drop is the case set becoming more representative, not retrieval
 regressing:** the 15 cases added on 2026-09-24 deliberately target tables, CSVs and
 documents whose headings are table header rows, and nothing about the index changed when
 they were added. A floor that avoids the corpus's weakest content is not a floor.
@@ -622,9 +630,9 @@ large-type fragments each convert to a one-line heading and therefore a one-line
 plainly.** Two conversion defects were blamed for them and both are fixed: the alternating
 rows that lost their labels (2026-09-24) and the tables headed by their own column names,
 so that four sections read `rank number percent` and the caption above each had an empty
-body (2026-09-25). `sec:ch-05-b:7` now reads `Active Duty Officer Grade Distribution` and
+body (2026-09-25). `sec:ch-05-b:5` now reads `Active Duty Officer Grade Distribution` and
 holds `| Captain | 5,913 | 28.6% |` in the same 427-character section, and the floor did
-not move by a single case. The remaining cause is retrieval, not conversion: the vector leg
+not move by a single case when it did. The remaining cause is retrieval, not conversion: the vector leg
 ranks the almanac's four 1,900-to-2,300-character occupational-field tables above a
 427-character grade table for every question about a rank, and the lexical leg needs every
 word of the question present. A short table of numbers under a good heading is still hard
@@ -633,7 +641,12 @@ milestone is for — generated prose or metadata retrieval, not a ranking consta
 
 These numbers are a regression floor: a change to chunking, embedding
 model, or fusion is measured against them and must not lower them. They are not tuned
-toward — a fix belongs in conversion, and the floor is re-measured and re-recorded after it.
+toward. A fix belongs wherever the evidence puts it — conversion, sectioning or chunking —
+and the floor is re-measured and re-recorded after it. Both are worth saying, because the
+two changes measured against this floor came out opposite ways: the conversion fix on
+2026-09-25 corrected a real defect and moved nothing, and the sectioning change on
+2026-09-28 moved five points without touching a character of converted text. Where the
+words are cut can matter more than how well they were read.
 
 No number for the client's own corpus appears here; the client runs the same command
 against their index and records their own.
