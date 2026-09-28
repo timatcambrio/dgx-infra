@@ -250,7 +250,10 @@ def test_document_outline_drops_deeper_headings_before_it_is_cut(oversize_cfg) -
     assert "Headings deeper than level 2 are left out" in text
     # Trimming was enough on its own; nothing was cut off the end.
     assert "Listing cut here" not in text
-    # Every level-2 section is still named (plus the level-1 title section), and the
-    # level-3 ones are gone.
-    assert text.count("- sec:deep-outline:") == _DEEP_PARENTS + 1
+    # Every level-2 section is still named and the level-3 ones are gone. There is no
+    # separate entry for the level-1 title: this document puts nothing between `# Deep
+    # Outline` and its first subpart, and a heading that introduces nothing no longer
+    # opens a section of its own -- it keeps the one below it, and both names stay in that
+    # section's heading path.
+    assert text.count("- sec:deep-outline:") == _DEEP_PARENTS
     assert "Approval Authority For This Numbered Matter" not in text
