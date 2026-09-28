@@ -20,6 +20,35 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-09-25 [DECISION] **A table's header row belongs to the table, not to the heading
+  path.** `pdf_geometry._header_row` / `_absorb_header_rows`: a line directly above a ruled
+  table is that table's header row when each of its cells falls wholly inside exactly one
+  of the columns `_column_spans` measured the rows in, no two cells share a column, and
+  they arrive in the grid's order. It is then moved off `page["lines"]` and inserted as the
+  table's first row, and the region's bbox is extended upward so provenance still covers
+  every word the block renders. Continues PR #1's line — a heading is never one cell of a
+  row — with the grid's own rules as the corroborating neighbour instead of another line of
+  text. **Absorbed rather than dropped, deliberately:** dropping fixes the section boundary
+  and leaves the table headed by its first *data* row, so `<22` reads as the name of the
+  column whose values are ages; absorbing also gives the caption above the table it
+  introduces, so one section holds both the searchable words and the figures.
+  Refusals, all found by measuring the proxy corpus: a grid with any unmeasurable column; a
+  line more than `_HEADER_ROW_GAP` (1.5 × its own height) above the grid — at 3× the
+  Sentinel spec's running header matches the table below it on eight pages; a line that
+  fits two grids at once (almanac p8), since geometry cannot say which it heads; and any
+  line `find_repeated_margin_lines` reports, which is why `to_blocks` now computes the
+  repeated margin lines *before* it absorbs anything. `Line.cells` is now derived from a new
+  `Line.cell_spans`, which keeps each cell's right edge — containment, not the left edge
+  alone, is what separates `age | number | percent` from `2.1  Travel Rates`.
+  Measured, page by page, against the words each page draws: duplication and loss unchanged
+  on every page of all nine PDFs. Only `ch-05-b` changes at all (71 → 62 headings, all ten
+  claimed lines table header rows); `kb index` reindexed 1 of 12. Sections 1,586 → 1,577,
+  empty-bodied 452 → 443 (all nine in `ch-05-b`, 28 → 19), heading paths shared by more than
+  one section 103/34 → 95/32 — the two 4× paths `age number percent` and `rank number
+  percent` are gone. 524 tests green.
+  **What it did NOT move, stated plainly:** `kb eval` is unchanged at lexical 31% / vector
+  53% / fused 67%, case for case, and the MCP case `intact-table-captains` still fails. See
+  [OUTCOMES].
 - 2026-09-24 [DECISION] **A cell with no rule around it is recovered from the column its
   ruled rows measure — or not at all.** `pdf_geometry._table_rows` is now the single way
   both the renderer (`_table_regions`) and the cell index (`_table_cells`) read a ruled
@@ -126,6 +155,45 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-09-25 [TOOL] **A form's field labels are NOT fixed, and the reason is that the page
+  draws no evidence.** This was folded into the header-row task as "the same root cause".
+  It is not: the almanac's header row sits over a ruled grid, and `Annotated_Forms_
+  SmallBus_FORMS-f.pdf` p10 draws nothing at all around the shape that is failing.
+  `Equipment item` [x 33.6–93.6] and `Funds Requested ($)` [x 455.6–534.7] are one `Line`
+  only because words are grouped by baseline; the nearest ruled rectangle is 55 pt below
+  them, and the equipment column itself is never ruled — only the two totals boxes are.
+  There is no column edge, no neighbouring line, and no widget (`extract_widgets` returns
+  `[]`; this PDF's AcroForm is flattened). Four candidate rules were written and measured
+  over the whole proxy corpus against the 924 headings it currently emits. All four are
+  REJECTED, and the numbers are the point:
+  * **beside a blank ruled entry box** (`_table_cells`, the obvious `_reads_as_cell`
+    extension): 22 heading lines claimed, of which 8 are plainly wrong — `Thank you`,
+    `Thank You!`, `Handbook Summary`, `Required Supporting Documents`, `2.4. Inclusion of
+    Women and Minorities`. It also misses both named cases: sections 31 and 32 have no box
+    in their band.
+  * **a wide internal gap** (cells separated by more than a fraction of the page width):
+    no threshold separates them. `SF 424 (R&R) Page 2` sits at 0.63 of the page width and
+    `Equipment item Funds Requested ($)` at 0.46, with legitimate headings on both sides of
+    every cut.
+  * **first heading of a run wins, demote the rest** (the structural reading of "the data
+    should stay under the caption"): 215 of 924 headings demoted, including
+    `TaskI-1. Establishbaselinemeasuresofcost` (PCA) and `8.3.1 Before IPF 3.70` (Sentinel).
+    This is exactly what the task's own caveat warned about — the 435 empty-bodied sections
+    are not one cause — and measuring it confirmed the caveat rather than the rule.
+  * **a heading is one run of text: ≥2 cells after dropping a leading number**: 129 of 924,
+    and it is right about `ISSUE DATE PAGE(S) DESCRIPTION` (the 10× Sentinel path) and the
+    slide rows, but wrong about 35 PCA `TaskN-n.` headings — that document has lost its
+    word spacing, so `Establishbaselinemeasuresofcost` is a second "cell" — and about
+    Sentinel's `A1`/`B2.1` appendix numbering. Roughly a third false positives, on a rule
+    that would change 14% of every heading in the corpus.
+  **The conclusion is a measurement, not a shrug:** on this page geometry has nothing to
+  corroborate with, so the remaining evidence is typographic and linguistic — a column
+  label repeated at the same x on three lines, or the run-on words that reveal broken
+  spacing. `Annotated_Forms...` is also the corpus's outlier on bold: 37% of its
+  body-size text is bold, against 14% for the Sentinel spec and under 9% everywhere else,
+  which is why 71 of its 113 headings rest on `_heading_run`'s bold-at-body-size fallback
+  alone. A threshold between 14% and 37% would be a constant fitted to one document.
+  UNRESOLVED, and it should be scoped as its own task with that evidence named.
 - 2026-09-23 [TOOL] **The slide table was never detected as a table, and could not have
   been.** `pebp-…-hsa-education-101-slide-deck.pdf` p11 (960×540): `find_tables` returns 0
   — the table has two horizontal rules and no verticals — and `find_aligned_table_runs`
@@ -264,6 +332,44 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   with `callout_notes.pdf` fixture; conftest scrubs `PDF_*` env vars.
 
 ## [OUTCOMES]
+- 2026-09-25 [TOOL] **The heading/data split is fixed in conversion and the floor did not
+  move.** Branch `fix/table-header-row-headings` (tests + fixture `captioned_table.pdf`
+  0302056, fix 0bc2559, guard rails 9422e1b, README ede1a5c). `kb eval` over the 36 proxy
+  cases: lexical 31% / vector 53% / fused 67%, identical case for case to the recorded
+  floor. `scripts/check_eval_cases.py`: 36 cases, 0 unsatisfiable, 4 warnings, unchanged.
+  `scripts/mcp_probe.py`: 69 mechanical checks, still 1 failure.
+  The four almanac cases and `forms-equipment-threshold` all still miss, and the reasons
+  are now different from what was recorded:
+  * `almanac-captains-count`: `sec:ch-05-b:7` is now `Active Duty Officer Grade
+    Distribution` and holds `| Captain | 5,913 | 28.6% |` in one 427-char section. It is
+    still not in the top 5. The vector leg puts that document's four occupational-field
+    tables (1,890–2,267 chars) above it for every question about a rank; even the query
+    `Active Duty Officer Grade Distribution captain` does not surface it. **This is a
+    retrieval finding, not a conversion one, and it is the same finding as the CSV's.**
+  * `almanac-officer-accessions`, `almanac-ocs-accessions`, `almanac-warrant-officer-route`
+    are all page 3's *accessions* table, which is the separate unfixed defect recorded
+    2026-09-24: each shaded row is its own single-row table, dropped by the two-row minimum
+    in `_table_regions`, so alternate rows render as `> **Boxed text:**`. The header row
+    `type number` sits 23 pt above the first of those grids — beyond `_HEADER_ROW_GAP` and
+    over a grid that is not rendered — so this rule does not touch it.
+  * `forms-equipment-threshold`: the form's field labels are NOT fixed. See [DISCOVERIES].
+- 2026-09-25 [USER→TOOL] **`mcp-cases.yaml` case 3 re-pointed; Tim approved the edit.**
+  `damaged-table-age-23` pinned `expected_id: "sec:ch-05-b:7"`. Section indices shifted by
+  one when the caption absorbed its header row, so it silently began fetching the *grade*
+  table under `expect_damage: true` — silently because `expect_damage` asserts nothing, it
+  only prints for a human. Two problems at once: the address was wrong (caused by this
+  fix), and the premise had been false since the banded-cell fix of 2026-09-24 made the age
+  table convert cleanly, so there was no damage left to demonstrate. Renamed
+  `damaged-table-accessions`, pointed at `sec:ch-05-b:5` (`type number`, page 3's accessions
+  list — the separate unfixed single-row-table defect, where alternate rows still render as
+  `> **Boxed text:**`), question changed to the Platoon Leader Course row. That preserves
+  what the case was for: the contrast with case 4's intact table. Probe back to 69
+  mechanical checks / 1 failure. Backup beside it as `mcp-cases.yaml.bak-20260925`.
+  A `page:ch-05-b:p003` id would be stable against renumbering and was tried first, but it
+  fails the probe's `get_section(neighbours=1) is a superset of fetch` check, so the case
+  keeps a section index and carries a CAUTION comment saying to re-check the printed text
+  after any conversion change. **`proxy-cases.yaml` pins no ids at all** (slug + phrase +
+  page only), so it is immune to this class of breakage; `mcp-cases.yaml` had the only one.
 - 2026-09-24 [TOOL] **Banded-table fix measured against the proxy corpus, before and after,
   by rendering every page with both versions of the module.** Two counts per page, against
   the words the page actually draws: tokens rendered more often than drawn (duplication) and

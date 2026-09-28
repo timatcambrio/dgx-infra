@@ -281,6 +281,25 @@ measured that way at all (which is what a bar chart's axis labels look like), an
 overlapping another table or a taller row that already renders the same words. A cell that
 is ruled and empty is never filled — a blank box on a form is a fact about the form.
 
+A table's header row is often drawn *outside* its grid: the page rules the data and sets
+the column names a line above it. Those names reach the converter as ordinary page text,
+and being short and set larger than body text they become a heading — so the caption above
+them ends up with an empty body, and the figures end up filed under `age number percent`.
+The words someone would search for are then in one section and the answer in the next, and
+neither answers on its own; in the Marine Corps almanac four sections carried the heading
+`rank number percent`, which makes the citation useless too. A line directly above a ruled
+table is taken as that table's header row when each of its cells falls wholly inside
+exactly one of the columns the rows were measured in, no two cells share a column, and
+they arrive in the grid's order. It is then absorbed into the table rather than dropped,
+so the table is headed by the column names the page draws instead of by its own first data
+row, and the caption above keeps the table it introduces. The rule refuses more than it
+takes: a grid with any unmeasurable column, a line more than one line's leading above the
+grid, a line that fits two grids at once, and any line the document repeats in its
+margins. `2.1  Travel Rates` also sits over a grid and also splits into two cells, but its
+second cell straddles a column rule rather than sitting in a column, so it stays a
+heading — a numbered heading is the commonest shape in the documents this converter is
+pointed at.
+
 A table that meets neither test — a slide's table, drawn with type, whitespace and a rule
 above and below — is left as text. What it must not become is headings. Its cells are set
 large and bold, so each one passes every test a heading has, and a run of them cuts the
@@ -595,12 +614,24 @@ How to read it: the lexical leg ANDs every non-stop word of the question, so a n
 question containing one word the right chunk lacks scores zero there; it exists for exact
 tokens (a section number, a form number, a phone number, a zip code), and it placed every
 such case first. Half of the twelve fused misses are tabular: four are the Marine Corps
-almanac, whose tables carry headings like `rank number percent` shared verbatim by several
-sections and whose alternating rows lost their labels in conversion, and two are the CSV,
-which chunks into blocks of bare pipe rows that no natural-language question embeds close
-to. The rest are slide and form pages whose large-type fragments each convert to a
-one-line heading and therefore a one-line section. Every one is a conversion shape, not a
-ranking parameter. These numbers are a regression floor: a change to chunking, embedding
+almanac and two are the CSV, which chunks into blocks of bare pipe rows that no
+natural-language question embeds close to. The rest are slide and form pages whose
+large-type fragments each convert to a one-line heading and therefore a one-line section.
+
+**The four almanac misses are no longer a conversion shape, and that is worth stating
+plainly.** Two conversion defects were blamed for them and both are fixed: the alternating
+rows that lost their labels (2026-09-24) and the tables headed by their own column names,
+so that four sections read `rank number percent` and the caption above each had an empty
+body (2026-09-25). `sec:ch-05-b:7` now reads `Active Duty Officer Grade Distribution` and
+holds `| Captain | 5,913 | 28.6% |` in the same 427-character section, and the floor did
+not move by a single case. The remaining cause is retrieval, not conversion: the vector leg
+ranks the almanac's four 1,900-to-2,300-character occupational-field tables above a
+427-character grade table for every question about a rank, and the lexical leg needs every
+word of the question present. A short table of numbers under a good heading is still hard
+to reach. That is the same finding as the CSV's, and it is what the deferred catalog-summary
+milestone is for — generated prose or metadata retrieval, not a ranking constant.
+
+These numbers are a regression floor: a change to chunking, embedding
 model, or fusion is measured against them and must not lower them. They are not tuned
 toward — a fix belongs in conversion, and the floor is re-measured and re-recorded after it.
 

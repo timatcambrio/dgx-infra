@@ -69,23 +69,31 @@ class Line:
     #: (x0, x1, text) per word, kept so aligned-column tables can be recovered.
     words: tuple[tuple[float, float, str], ...] = ()
 
-    def cells(self, gap_ratio: float) -> list[tuple[float, str]]:
+    def cell_spans(self, gap_ratio: float) -> list[tuple[float, float, str]]:
         """Split the line where the gap between words is far wider than a word space.
 
-        Returns `(x0, text)` per cell. A single-cell result means the line is ordinary prose.
+        Returns `(x0, x1, text)` per cell. A single-cell result means the line is ordinary
+        prose. The right edge matters when a cell has to be placed in a *drawn* column:
+        a cell belongs to a column only if it fits inside it, and the left edge alone
+        cannot say that.
         """
         if not self.words:
-            return [(self.x0, self.text)]
+            return [(self.x0, self.x0, self.text)]
         threshold = max(self.size, 1.0) * gap_ratio
-        cells: list[tuple[float, list[str]]] = []
+        cells: list[list] = []
         previous_x1: float | None = None
         for x0, x1, text in self.words:
             if previous_x1 is None or x0 - previous_x1 > threshold:
-                cells.append((x0, [text]))
+                cells.append([x0, x1, [text]])
             else:
-                cells[-1][1].append(text)
+                cells[-1][1] = x1
+                cells[-1][2].append(text)
             previous_x1 = x1
-        return [(x0, " ".join(parts).strip()) for x0, parts in cells]
+        return [(x0, x1, " ".join(parts).strip()) for x0, x1, parts in cells]
+
+    def cells(self, gap_ratio: float) -> list[tuple[float, str]]:
+        """`(x0, text)` per cell -- `cell_spans` without the right edge."""
+        return [(x0, text) for x0, _, text in self.cell_spans(gap_ratio)]
 
 
 #: Annotation subtypes that carry authored text a reader is meant to read.
@@ -137,6 +145,16 @@ class Widget:
     x0: float
     x1: float
     name: str
+
+
+@dataclass
+class Region:
+    """A ruled table as it will be rendered, and the columns it was measured against."""
+
+    box: tuple[float, float, float, float]
+    rows: list[list[str]]
+    #: Left and right edge of each column, `None` where the ruled rows disagree about one.
+    columns: list[tuple[float, float] | None]
 
 
 @dataclass(frozen=True)
@@ -516,14 +534,18 @@ def _table_rows(
     return rows
 
 
-def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[list[str]]]]:
-    """Ruled tables only.
+def _ruled_tables(page) -> list[Region]:
+    """Ruled tables only, with the columns each one was measured against.
 
     pdfplumber's text-alignment strategy will happily find "tables" in ordinary prose, and a
     hallucinated table is worse than a missed one -- it destroys the paragraph it consumed.
     Borderless tables are therefore left to flow as text and reported by `analyse` instead.
+
+    The column spans come along because the caller needs them to decide what, if anything,
+    heads the table: they are `_column_spans`' own measurement, not a second one, so a
+    header row is placed in exactly the columns the rows were recovered in.
     """
-    regions = []
+    regions: list[Region] = []
     tables = page.find_tables()
     for table in tables:
         rows = [
@@ -532,8 +554,130 @@ def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[l
             if any(texts)
         ]
         if len(rows) >= 2 and len(rows[0]) >= 2:
-            regions.append((table.bbox, rows))
+            regions.append(Region(box=table.bbox, rows=rows, columns=_column_spans(table)))
     return regions
+
+
+def _table_regions(page) -> list[tuple[tuple[float, float, float, float], list[list[str]]]]:
+    """`(box, rows)` per ruled table -- `_ruled_tables` without the columns."""
+    return [(region.box, region.rows) for region in _ruled_tables(page)]
+
+
+#: How far above a grid a line may sit and still be that grid's header row, as a multiple
+#: of the line's own height. One line's leading, no more.
+#:
+#: Measured, not chosen. At this distance the rule claims 15 lines across the whole proxy
+#: corpus and every one of them is a table row. At twice it, the Sentinel specification's
+#: running header -- `Issue/Revision: 3/11/1` and `Date: 19/10/2023`, which happen to sit
+#: over the columns of the table below them on eight pages -- starts to match, and so does a
+#: line that heads two different grids at once. A header row is set against the grid it
+#: heads; anything further away is something else that happens to be above it.
+_HEADER_ROW_GAP = 1.5
+
+
+def _header_row(
+    line: Line, columns: list[tuple[float, float] | None], gap_ratio: float
+) -> list[str] | None:
+    """The line's cells placed in a grid's columns, or `None` if it is not a header row.
+
+    Continues the line PR #1 drew -- a heading is never one cell of a row -- to the row a
+    page draws just outside the grid it belongs to. There the corroborating neighbour is not
+    another line of text but the grid's own rules, which is stronger evidence: a column edge
+    is something the page states, not something inferred from two lines agreeing.
+
+    Every condition here exists to refuse a real heading. Each cell must fall *wholly* inside
+    exactly one column, no two cells may share a column, and they must arrive in the grid's
+    own order. That is what separates `age | number | percent` over a three-column grid from
+    `2.1  Travel Rates`, which also sits directly above a grid and also splits into two
+    cells, but whose second cell straddles a column rule instead of sitting in a column. A
+    numbered heading is the commonest shape in the specifications this converter is pointed
+    at; refusing them all would cost far more than the defect this fixes.
+
+    A grid with any unmeasurable column is declined outright, for the reason `_column_spans`
+    gives: where the ruled rows disagree there is no column to put a cell in.
+    """
+    if not columns or any(span is None for span in columns) or len(columns) < 2:
+        return None
+    cells = [cell for cell in line.cell_spans(gap_ratio) if cell[2]]
+    if len(cells) < 2:
+        return None
+
+    placed: list[int] = []
+    for x0, x1, _text in cells:
+        inside = [
+            index
+            for index, span in enumerate(columns)
+            if span is not None and x0 >= span[0] - _COLUMN_EDGE_SLACK
+            and x1 <= span[1] + _COLUMN_EDGE_SLACK
+        ]
+        if len(inside) != 1:
+            return None
+        placed.append(inside[0])
+    if len(set(placed)) != len(placed) or placed != sorted(placed):
+        return None
+
+    texts = [""] * len(columns)
+    for index, (_x0, _x1, text) in zip(placed, cells):
+        texts[index] = text
+    return texts
+
+
+def _absorb_header_rows(
+    regions: list[Region], lines: list[Line], repeated: set[str], config: Config
+) -> list[Line]:
+    """Move each table's header row off the page's text and onto the table it heads.
+
+    Absorbed rather than dropped. Dropping it would fix the section boundary -- which is
+    the damage -- and leave the table headed by its first *data* row, so that `<22` reads as
+    the name of the column whose values are ages. Keeping it puts the words the page draws
+    where the page draws them, and the caption above then keeps the table it introduces:
+    one section holding both the words someone searches for and the figures they want.
+
+    Two refusals, both found by measuring the proxy corpus rather than reasoned out:
+
+    * a running header is never a header row, however well it happens to line up. The
+      Sentinel specification sets `Issue/Revision: 3/11/1` and `Date: 19/10/2023` over the
+      table below them on eight pages, and those lines are dropped as repeated margin text
+      today -- absorbing one would put text back on the page that the document repeats
+      once per page, on eight pages, in the middle of a table;
+    * a line that fits the columns of *two* grids is left alone. Page 8 of the almanac has
+      one, and there is nothing in the geometry that says which table it heads; guessing
+      the nearer one would be a coin toss recorded as a measurement.
+
+    Returns the lines that remain. A line is only ever claimed by one table.
+    """
+    claims: dict[int, list[tuple[Region, list[str]]]] = {}
+    for region in regions:
+        top = float(region.box[1])
+        for index, line in enumerate(lines):
+            if not line.text or _normalise(line.text) in repeated:
+                continue
+            gap = top - line.bottom
+            if gap < 0 or gap > (line.bottom - line.top) * _HEADER_ROW_GAP:
+                continue
+            texts = _header_row(line, region.columns, config.pdf_cell_gap_ratio)
+            if texts is not None:
+                claims.setdefault(index, []).append((region, texts))
+
+    taken: set[int] = set()
+    for index, candidates in claims.items():
+        if len(candidates) != 1:
+            continue
+        region, texts = candidates[0]
+        line = lines[index]
+        width = len(region.rows[0])
+        region.rows.insert(0, (texts + [""] * width)[:width])
+        # The block now renders text drawn above the grid, so its bbox has to cover it; a
+        # provenance box that does not contain what the block says is a lie about where the
+        # words came from.
+        region.box = (
+            region.box[0],
+            min(float(region.box[1]), line.top),
+            region.box[2],
+            region.box[3],
+        )
+        taken.add(index)
+    return [line for index, line in enumerate(lines) if index not in taken]
 
 
 def _is_note_box(rect: dict, page_area: float, max_area_fraction: float) -> bool:
@@ -1115,13 +1259,13 @@ def to_blocks(path: Path, config: Config) -> list[RenderedBlock]:
     with pdfplumber.open(path) as pdf:
         for page_number, page in enumerate(pdf.pages, start=1):
             words = page.extract_words(extra_attrs=_WORD_ATTRS)
-            tables = _table_regions(page)
-            table_boxes = [box for box, _ in tables]
+            regions = _ruled_tables(page)
+            table_boxes = [region.box for region in regions]
             pages.append(
                 {
                     "page_number": page_number,
                     "words": words,
-                    "tables": tables,
+                    "regions": regions,
                     "table_boxes": table_boxes,
                     "boxes": (
                         _boxed_notes(page, words, table_boxes, config)
@@ -1168,6 +1312,19 @@ def to_blocks(path: Path, config: Config) -> list[RenderedBlock]:
                 [word for word in page["body_words"] if float(word["x1"]) > gap_start],
                 config,
             )
+
+    repeated = find_repeated_margin_lines(
+        [page["lines"] for page in pages], [page["height"] for page in pages], config
+    )
+
+    for page in pages:
+        # A table's header row is drawn outside its grid often enough to matter, and it
+        # reaches this point as an ordinary line of page text. Claim it before anything
+        # else reads it: left alone it passes every heading test there is. After the
+        # running headers are known, so that one can never be claimed.
+        page["lines"] = _absorb_header_rows(
+            page["regions"], page["lines"], repeated, config
+        )
         if config.pdf_annotation_linking and page["annotations"]:
             page["annotations"] = resolve_targets(
                 page["annotations"],
@@ -1178,9 +1335,6 @@ def to_blocks(path: Path, config: Config) -> list[RenderedBlock]:
                 cells=page["cells"],
             )
 
-    repeated = find_repeated_margin_lines(
-        [page["lines"] for page in pages], [page["height"] for page in pages], config
-    )
     body = _body_size([page["lines"] for page in pages])
     heading_sizes = sorted(
         {
@@ -1251,13 +1405,17 @@ def _render_page(
                 RenderedBlock(page_number, block.kind, block.top, block.text, block.bbox),
             )
         )
-    for box, rows in page["tables"]:
-        top = float(box[1])
+    for region in page["regions"]:
+        top = float(region.box[1])
         elements.append(
             (
                 top,
                 RenderedBlock(
-                    page_number, "table", top, render_table(rows), _bbox_from_box(box)
+                    page_number,
+                    "table",
+                    top,
+                    render_table(region.rows),
+                    _bbox_from_box(region.box),
                 ),
             )
         )

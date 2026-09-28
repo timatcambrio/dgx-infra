@@ -749,3 +749,171 @@ def test_a_recovered_cell_takes_the_words_drawn_inside_it():
 
     assert [texts for _, texts, _ in rows_out] == [["a", "b"], ["c", "41+"]]
     assert rows_out[1][2][1] == (100.0, 10.0, 200.0, 20.0)
+
+
+# ------------------------------------------------- a table's header row drawn above its grid
+
+
+def captioned_blocks(fixtures_dir, config, page: int = 1):
+    return [
+        block
+        for block in pdf_geometry.to_blocks(fixtures_dir / "captioned_table.pdf", config)
+        if block.page_number == page
+    ]
+
+
+def test_a_captioned_table_rules_only_its_data(fixtures_dir, config):
+    """The premise of the tests below, asserted so the fixture cannot rot into a no-op.
+
+    The page rules the data rows and nothing else, so pdfplumber reports a table whose first
+    row is data. The three words naming the columns are drawn above the grid's top edge and
+    reach the converter as an ordinary line of page text.
+    """
+    import pdfplumber
+
+    with pdfplumber.open(fixtures_dir / "captioned_table.pdf") as pdf:
+        page = pdf.pages[0]
+        regions = pdf_geometry._table_regions(page)
+        assert len(regions) == 1
+        box, rows = regions[0]
+        assert rows[0] == ["<22", "21", "0.1%"], "the grid should start at the first data row"
+        above = [
+            word
+            for word in page.extract_words()
+            if float(word["bottom"]) <= float(box[1])
+        ]
+    assert {"age", "number", "percent"} <= {str(word["text"]) for word in above}
+
+
+def test_a_tables_header_row_is_not_a_heading(fixtures_dir, config):
+    """The defect this fixture exists for.
+
+    `age number percent` cleared every test a heading has — larger than body text, short,
+    no neighbour to corroborate it as a row — so the page came out as a caption with an
+    empty body followed by a section titled by the table's own column names. The
+    discriminating words were in one section and the figures in the next, and neither
+    section answered the question on its own. Four sections of the real almanac carried the
+    heading `rank number percent`, which also makes the citation useless.
+    """
+    headings = [
+        block.text for block in captioned_blocks(fixtures_dir, config)
+        if block.kind == "heading"
+    ]
+
+    assert "# Active Duty Officer Age Distribution" in headings
+    for heading in headings:
+        assert "age number percent" not in heading, heading_failure(headings, "age number percent")
+
+
+def test_the_caption_keeps_the_table_it_introduces(fixtures_dir, config):
+    """One section holding both the words someone searches for and the figures they want."""
+    blocks = captioned_blocks(fixtures_dir, config)
+    kinds = [block.kind for block in blocks]
+    caption = kinds.index("heading")
+
+    assert kinds[caption + 1] == "table", f"the caption is followed by {kinds[caption + 1]!r}"
+
+
+def test_the_header_row_becomes_the_tables_header(fixtures_dir, config):
+    """Absorbed, not dropped: the words the page draws are kept, in their own columns.
+
+    Dropping them would fix the section boundary and leave the table headed by its first
+    *data* row — `| <22 | 21 | 0.1% |` — which reads as though the first age band were the
+    name of the column.
+    """
+    table = next(
+        block for block in captioned_blocks(fixtures_dir, config) if block.kind == "table"
+    )
+
+    assert table.text.splitlines()[0] == "| age | number | percent |"
+    assert "| <22 | 21 | 0.1% |" in table.text
+
+
+def test_a_numbered_heading_above_a_table_stays_a_heading(fixtures_dir, config):
+    """The guard rail, and the shape that makes this hard.
+
+    `2.1  Travel Rates` also sits directly above a ruled grid and also splits into two
+    cells. What it does not do is put one cell in each column: its second cell straddles
+    the rule between the grid's two columns. A numbered heading is the commonest shape in
+    the specifications and regulations this converter is pointed at, and refusing them all
+    would cost far more than the defect above.
+    """
+    blocks = captioned_blocks(fixtures_dir, config, page=2)
+    headings = [block.text for block in blocks if block.kind == "heading"]
+
+    assert any("Travel Rates" in heading for heading in headings), headings
+    table = next(block for block in blocks if block.kind == "table")
+    assert table.text.splitlines()[0] == "| Lodging | $96 |"
+
+
+def header_region(columns=((0.0, 100.0), (100.0, 200.0)), top=20.0):
+    return pdf_geometry.Region(
+        box=(0.0, top, 200.0, top + 40.0),
+        rows=[["1", "2"], ["3", "4"]],
+        columns=list(columns),
+    )
+
+
+def header_line(text="age number", top=8.0, words=None):
+    return line(
+        text,
+        top=top,
+        size=10.0,
+        words=words or ((10.0, 60.0, text.split()[0]), (110.0, 160.0, text.split()[1])),
+    )
+
+
+def test_a_line_over_two_grids_at_once_is_left_alone(config):
+    """Nothing in the geometry says which table such a line heads.
+
+    Page 8 of the almanac has one. Taking the nearer grid would be a coin toss recorded as
+    a measurement, and the cost of refusing is a heading, while the cost of guessing is a
+    row of the wrong table.
+    """
+    candidate = header_line()
+    regions = [header_region(top=20.0), header_region(top=22.0)]
+
+    remaining = pdf_geometry._absorb_header_rows(regions, [candidate], set(), config)
+
+    assert remaining == [candidate]
+    assert [region.rows[0] for region in regions] == [["1", "2"], ["1", "2"]]
+
+
+def test_a_running_header_is_never_a_tables_header_row(config):
+    """Text the document repeats in every margin is not a row of any one table.
+
+    The Sentinel specification sets `Issue/Revision: 3/11/1` over the table below it on
+    eight pages. It is dropped as repeated margin text today; absorbing it would put it
+    back, once per page, in the middle of a table.
+    """
+    candidate = header_line()
+    region = header_region()
+
+    remaining = pdf_geometry._absorb_header_rows(
+        [region], [candidate], {pdf_geometry._normalise(candidate.text)}, config
+    )
+
+    assert remaining == [candidate]
+    assert region.rows[0] == ["1", "2"]
+
+
+def test_a_grid_with_an_unmeasurable_column_takes_no_header_row(config):
+    """`_column_spans` declines a column the ruled rows disagree about, and so does this.
+
+    Where there is no column there is nowhere to put a cell, and placing it in the columns
+    that *were* measured would shift every cell after it into the wrong one.
+    """
+    candidate = header_line()
+    region = header_region(columns=((0.0, 100.0), None))
+
+    remaining = pdf_geometry._absorb_header_rows([region], [candidate], set(), config)
+
+    assert remaining == [candidate]
+    assert region.rows[0] == ["1", "2"]
+
+
+def test_two_cells_in_one_column_are_not_a_header_row(config):
+    """A row puts one cell in each column. Two cells in one column is a line that wraps."""
+    candidate = header_line(words=((10.0, 30.0, "age"), (50.0, 90.0, "number")))
+
+    assert pdf_geometry._header_row(candidate, [(0.0, 100.0), (100.0, 200.0)], 1.5) is None
