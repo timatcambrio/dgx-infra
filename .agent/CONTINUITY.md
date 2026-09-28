@@ -20,6 +20,28 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-09-28 [USER→DECISION] **A heading that introduces nothing does not open a section.**
+  `retrieval.sections.build_sections`: a heading run with no body of its own joins the run
+  below it; the swallowed heading stays in that section's blocks, so its words are still
+  indexed, still searchable and still rendered on fetch. Nothing moves and nothing is lost —
+  only the boundary changes. The section keeps the NAME and the LEVEL of the heading that
+  opened the run, and a swallowed heading extends the heading path only when it is genuinely
+  deeper (`4` then `4.1` still cites as both; two headings at the same level are not a
+  nesting, and letting the second name the section would restore exactly the heading this
+  removes). Naming by the deepest swallowed heading would read better but would take its
+  level too, and level is what `get_outline` trims by — every section would fall past a
+  depth limit and the outline would empty. Navigation beats a better title.
+  **This reverses the 2026-09-25 decision** to fix the split in conversion rather than work
+  around it at index time. The reason it was rejected — that an index-layer merge would mask
+  a conversion defect — did not survive contact: the conversion fix landed, corrected a real
+  defect, and moved the eval floor by nothing, and the form case it was meant to reach turned
+  out not to be a conversion defect at all. Every word of `Annotated_Forms_SmallBus_FORMS-f`
+  p10 is present, in order, on the right page; an assistant reading that page answers the
+  question without difficulty. The defect was the cut, not the text.
+  Measured: sections 1,577 → 1,134; **no-body sections 443 → 0**; sections able to answer on
+  their own 48% → 67%; names shared with another section 112 → 55; median section 208 → 446
+  chars, p99 18k → 21k, and the count over `FETCH_MAX_CHARS` stays at 2 — the two that were
+  already there, so no new section is too big to return. 530 tests green.
 - 2026-09-25 [DECISION] **A table's header row belongs to the table, not to the heading
   path.** `pdf_geometry._header_row` / `_absorb_header_rows`: a line directly above a ruled
   table is that table's header row when each of its cells falls wholly inside exactly one
@@ -332,6 +354,33 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   with `callout_notes.pdf` fixture; conftest scrubs `PDF_*` env vars.
 
 ## [OUTCOMES]
+- 2026-09-28 [USER→TOOL] **New floor: lexical 33% / vector 58% / fused 72%** over the same
+  36 cases, up from 31/53/67. Branch `fix/empty-heading-sections` (tests 5f34afe, fix
+  687e23a, fixtures c6f04dc, probe 30cbb4e, README 955dab0). Two cases went from a miss on
+  every leg to a hit and none went the other way: `forms-equipment-threshold` (miss →
+  **rank 1**, the case the converter could not reach) and `cfap-egg-form-part`. Two shifted
+  rank and stayed hits (`presentation-cis-net-irr` fused 2 → 1; `hsa-2026-limits` vector and
+  fused 1 → 5, worth watching — it is now at the edge of hit@5). Nothing tuned: no chunk
+  size, no `k`, no fusion constant. Needed `kb index --reindex-all`, ~50 min on the dev Mac.
+  The four almanac cases still miss; that is the short-numeric-table ranking problem and is
+  untouched by this. `mcp_probe.py` back to 1 standing failure (`intact-table-captains`,
+  same cause).
+  Cost to be honest about: `sec:ch-05-b:3` — the accessions page, now properly named and
+  holding the whole block — dropped out of the top 8 for its own question, where it had been
+  present before. Net across the 36 cases was +2/−0, but the ranking did move under this and
+  not only upward.
+- 2026-09-28 [TOOL] **A pinned section index is not a durable way to address an eval case,
+  proved twice in one session.** `mcp-cases.yaml` case 3 pinned `sec:ch-05-b:7`; the header-
+  row fix renumbered it, and the section merge renumbered it again — silently each time,
+  because `expect_damage` only prints for a reader and nothing compared what came back with
+  what was meant. Now pinned `page:ch-05-b:p003`, which no renumbering moves, and renamed
+  `damaged-table-accessions` (the age table it used to point at has converted cleanly since
+  2026-09-24 and no longer demonstrates damage). `expected_slug` dropped from that one case
+  and the reason recorded in the file: it exists to put damaged output in front of a reader,
+  not to assert retrieval, and the almanac's poor retrieval is already measured twice in
+  `proxy-cases.yaml`. Pinning by page needed one probe fix — `get_section(neighbours=1)` is
+  only a superset of `fetch` for a `sec:` id — otherwise a `page:` pin reports a failure
+  that says nothing about the server. `proxy-cases.yaml` pins no ids and was never exposed.
 - 2026-09-25 [TOOL] **The heading/data split is fixed in conversion and the floor did not
   move.** Branch `fix/table-header-row-headings` (tests + fixture `captioned_table.pdf`
   0302056, fix 0bc2559, guard rails 9422e1b, README ede1a5c). `kb eval` over the 36 proxy
