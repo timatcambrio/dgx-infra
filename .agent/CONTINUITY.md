@@ -89,8 +89,8 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   overlapping a ruled cell of the same table or another table on the page is abandoned —
   pdfplumber returns rows nested in a taller row and tables nested in a table, and the
   words there are already rendered once. A cell that is ruled and empty is never filled.
-  No tolerance was widened; `PDF_LINE_TOLERANCE` is untouched. Tests f6b4139 (failing
-  first, `banded_table.pdf` fixture), fix c768742, guard rails 365807a, README 0bf0c01.
+  No tolerance was widened; `PDF_LINE_TOLERANCE` is untouched. Tests 3f0518e (failing
+  first, `banded_table.pdf` fixture), fix cadb4a4, guard rails 2e7bdd3, README 984994f.
 - 2026-09-24 [DECISION] **FETCH_MAX_CHARS is a ceiling on every fetch path, and a section
   is not a bounded unit.** `_oversize_response` (retrieval/server.py) answers an over-cap
   section, section range, page or chunk the way `_fetch_document` has always answered an
@@ -110,8 +110,8 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   over-cap ones, and only offers a page id when the range spans more than one page (one
   page containing an over-cap unit is at least as large as it); (4) the outline listing is
   bounded too — deeper heading levels drop out before the list is cut, and both say so.
-  Tests d5674df (failing first, a generated 320,000-char fixture document), fix 5de0de0,
-  outline-trimming test 08e5271. Brief §6.5.1/§6.5.2 updated in the design repo to match,
+  Tests a8e5cec (failing first, a generated 320,000-char fixture document), fix e9a5b80,
+  outline-trimming test 6ce8c11. Brief §6.5.1/§6.5.2 updated in the design repo to match,
   so `"chunk"` and the ceiling are spec, not an undocumented deviation.
 - 2026-09-23 [DECISION] **A heading is never one cell of a row, whatever size it is set in.**
   `pdf_geometry._reads_as_cell` refuses heading promotion for a line that a neighbour
@@ -327,7 +327,7 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   Corpus re-converted and re-indexed: **2 of 12 documents reindexed**, `ch-05-b` and
   `Annotated_Forms_SmallBus_FORMS-f`, which is the whole blast radius.
 - 2026-09-24 [TOOL] **Fetch size ceiling applied to every path** (branch
-  `fix/fetch-size-ceiling-all-paths`, tests d5674df, fix 5de0de0; see [DECISIONS]).
+  `fix/fetch-size-ceiling-all-paths`, tests a8e5cec, fix e9a5b80; see [DECISIONS]).
   `fetch("sec:daffars:523")` 540,776 → 2,330 chars; `sec:gsam:70` → 2,100. 505 tests green
   (500 before). `scripts/mcp_probe.py` against `~/Dropbox/Cambrio/dgx-eval/mcp-cases.yaml`
   unchanged at 69 mechanical checks with the same single failure as before the change
@@ -355,8 +355,8 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [OUTCOMES]
 - 2026-09-28 [USER→TOOL] **New floor: lexical 33% / vector 58% / fused 72%** over the same
-  36 cases, up from 31/53/67. Branch `fix/empty-heading-sections` (tests 5f34afe, fix
-  687e23a, fixtures c6f04dc, probe 30cbb4e, README 955dab0). Two cases went from a miss on
+  36 cases, up from 31/53/67. Branch `fix/empty-heading-sections` (tests d7faafd, fix
+  9dbbe9b, fixtures 8fb99cc, probe 518efa0, README e495271). Two cases went from a miss on
   every leg to a hit and none went the other way: `forms-equipment-threshold` (miss →
   **rank 1**, the case the converter could not reach) and `cfap-egg-form-part`. Two shifted
   rank and stayed hits (`presentation-cis-net-irr` fused 2 → 1; `hsa-2026-limits` vector and
@@ -383,7 +383,7 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   that says nothing about the server. `proxy-cases.yaml` pins no ids and was never exposed.
 - 2026-09-25 [TOOL] **The heading/data split is fixed in conversion and the floor did not
   move.** Branch `fix/table-header-row-headings` (tests + fixture `captioned_table.pdf`
-  0302056, fix 0bc2559, guard rails 9422e1b, README ede1a5c). `kb eval` over the 36 proxy
+  0eae6d8, fix 1d450fb, guard rails 5d06634, README 3c5bed5). `kb eval` over the 36 proxy
   cases: lexical 31% / vector 53% / fused 67%, identical case for case to the recorded
   floor. `scripts/check_eval_cases.py`: 36 cases, 0 unsatisfiable, 4 warnings, unchanged.
   `scripts/mcp_probe.py`: 69 mechanical checks, still 1 failure.
