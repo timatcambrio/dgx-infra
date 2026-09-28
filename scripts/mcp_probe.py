@@ -14,7 +14,7 @@ What it checks mechanically, per case:
   fetch      resolves the expected id and returns MORE than the search snippet
   evidence   expected_phrase is present in the FETCHED text -- reachable, not just indexed
   citation   non-empty, names the source file, and the url starts with KB_URL_BASE
-  neighbours get_section(id, neighbours=1) is a superset of fetch(id)
+  neighbours get_section(id, neighbours=1) is a superset of fetch(id), for a `sec:` id
 
 What it deliberately does NOT check: whether an assistant's prose answer is correct, or
 whether it chose to call `fetch` before quoting. Those are properties of the assistant, not
@@ -154,11 +154,17 @@ async def run(cases_path: Path, server_log: Optional[Path] = None) -> int:
                     p.check(phrase.lower() in text.lower(), cid,
                             f"evidence {phrase!r} reachable in fetched text")
 
-                gs = _payload(await session.call_tool(
-                    "get_section", {"id": target, "neighbours": 1}))
-                if gs and gs.get("text"):
-                    p.check(len(gs["text"]) >= len(text), cid,
-                            "get_section(neighbours=1) is a superset of fetch")
+                # Only a section has neighbours. Asked for a `page:` or `chunk:` id,
+                # `get_section` answers about the section that id falls in, which is not a
+                # superset of the page -- a page can span two sections and hold more than
+                # either. Checking it anyway reported a failure that said nothing about
+                # the server.
+                if target.startswith("sec:"):
+                    gs = _payload(await session.call_tool(
+                        "get_section", {"id": target, "neighbours": 1}))
+                    if gs and gs.get("text"):
+                        p.check(len(gs["text"]) >= len(text), cid,
+                                "get_section(neighbours=1) is a superset of fetch")
 
                 print(f"    fetch  -> {len(text)} chars | citation: {citation[:70]}...")
 
