@@ -416,7 +416,8 @@ built (S5, optional).
 **Quickstart — clone to a working `search` in Codex, over the shared HTTPS server:**
 
 ```bash
-cp .env.example .env               # then set KB_PATH (absolute), KB_TOKENS, KB_PUBLIC_HOST, KB_URL_BASE
+cp .env.example .env               # then set KB_PATH (absolute), KB_PUBLIC_HOST, KB_URL_BASE
+uv run kb token issue you@example.com   # prints your bearer token ONCE; see "Tokens" below
 make compose-up                    # builds and starts db, ollama, kb-mcp, kb-static, caddy
 make compose-index                 # walks kb/, embeds it, loads it into Postgres
 ```
@@ -447,7 +448,7 @@ divide that work further; they matter for a larger embedding model and for servi
 requests at once.
 
 Then add the server to your assistant (Codex/Claude Code snippets below) using
-`https://<KB_PUBLIC_HOST>/mcp` and one of the tokens from `KB_TOKENS`, and ask it a
+`https://<KB_PUBLIC_HOST>/mcp` and the token `kb token issue` printed, and ask it a
 question. `make compose-index` needs the embedding model pulled into `ollama` first —
 `docker compose -f compose/docker-compose.yml exec ollama ollama pull nomic-embed-text`
 — which is a separate, manual, one-time step (nothing in `make compose-up` does it, since
@@ -695,7 +696,7 @@ than interleaving with the report.
 
 ```bash
 uv run kb serve --transport stdio    # the default; developer path, nothing on the network
-uv run kb serve --transport http     # the shared server; needs KB_TOKENS (or --allow-anonymous, dev only)
+uv run kb serve --transport http     # the shared server; needs an issued token (or --allow-anonymous, dev only)
 ```
 
 Runs a read-only [MCP](https://modelcontextprotocol.io) server against the index, over
@@ -708,12 +709,12 @@ either:
   user's assistant talks to over `https://<KB_PUBLIC_HOST>/mcp`. `kb-mcp` itself binds
   `0.0.0.0:8765` inside the compose network only; `caddy` is what actually terminates TLS
   and is reachable from the LAN, on 443. Every request under `/mcp*` needs `Authorization:
-  Bearer <token>` where `<token>` is one of the comma-separated values in `KB_TOKENS`; a
-  missing or wrong token gets a 401 with no body. `/health` (`GET /health`, returning
-  `{"ok": true, "documents": <count>, "embed_model": ...}`) needs no token, for monitoring.
-  Starting `--transport http` with `KB_TOKENS` empty refuses to run (exit 2) unless you pass
-  `--allow-anonymous`, which is for local experimentation only and logs a loud warning —
-  never pass it on a network anyone else can reach.
+  Bearer <token>` where `<token>` is one issued by `kb token issue` (see "Tokens" below); a
+  missing, wrong, revoked or expired token gets a 401 with no body. `/health` (`GET /health`,
+  returning `{"ok": true, "documents": <count>, "embed_model": ...}`) needs no token, for
+  monitoring. Starting `--transport http` with no usable token refuses to run (exit 2)
+  unless you pass `--allow-anonymous`, which is for local experimentation only and logs a
+  loud warning — never pass it on a network anyone else can reach.
 
 It exposes five tools, each read-only (`readOnlyHint: true`) and documented to the
 assistant in its own instructions:
@@ -820,20 +821,60 @@ configured to present it automatically and you drop the header requirement for t
 origin — that is a Caddy/client-cert configuration choice, not something this repo sets up
 for you.
 
-### Rotating a token
+### Tokens: issuing, revoking, rotating
 
-`KB_TOKENS` is a comma-separated list — add a new token, keep the old one for as long as
-you want both to work, then remove the old one. Whether it's one token per user, one per
-team, or one shared token for everyone is a decision `stage2-retrieval-brief.md` §11.2
-leaves to Tim; `KB_TOKENS` supports all three shapes equally. After editing `.env`:
+One token per user. `kb token` manages them; nothing here restarts the server.
 
 ```bash
-docker compose -f compose/docker-compose.yml --profile prod up -d --build caddy kb-mcp
+uv run kb token issue alice@example.com          # prints the token ONCE
+uv run kb token issue bob@example.com --note "bob's laptop" --expires-in-days 90
+uv run kb token list                             # ids, owners, status -- never the secrets
+uv run kb token list --all                       # include revoked and expired
+uv run kb token revoke 1979317c8685              # withdraw one person's access, now
 ```
 
-restarts both `caddy` (which regenerates its token matcher from the new `KB_TOKENS` on
-start — see `compose/caddy-entrypoint.sh`) and `kb-mcp` (whose bearer middleware reads
-`KB_TOKENS` at process start too) without touching the database or `ollama`.
+**Revoking affects one person and nothing else.** The records live in `KB_TOKENS_FILE`
+(default: `tokens.json` beside `.env`, gitignored, mode 0600) and the server re-reads that
+file as it changes, so a revocation is in force within `KB_TOKEN_CACHE_SECONDS` (default 5)
+on both `/mcp*` and `/kb/*`, with no restart and nothing required of any other user. That
+is the whole reason this exists: with tokens in `.env`, withdrawing one credential meant
+restarting the server, which dropped everybody — so in practice it never happened.
+
+**The secret is shown once and is not stored.** Only a sha256 of it is, so the file is not
+a credential: read access to it does not yield anyone's token. If a token is lost, issue
+another and revoke the old one; there is no recovery, by design.
+
+**Rotating**, if you want to rotate on a calendar rather than on an incident: issue the
+replacement, give it to its owner, then revoke the old one. Both work in between, so there
+is no flag day. `--expires-in-days` closes that window for you. Note that this rotates the
+*server's* record — the secret still sits in a config file on the user's machine, which the
+server cannot fix; see the proposal's §7.1 for the three answers to that (rotate on
+incident, push the credential as a managed setting, or OAuth).
+
+**The audit log.** Every authentication decision is one JSON line on `kb-mcp`'s stderr,
+beside the tool-call log: `{"event": "auth.ok", "path": "/mcp", "token": "...", "user":
+"alice@example.com", "source": "file"}`, or `auth.denied` with no user. This is what one
+token per user buys and a shared token could not: the log says *who*, not just that someone
+with a valid token called.
+
+**`KB_TOKENS` still works, and should not be used.** Tokens listed there are accepted for
+compatibility with an existing deployment, but they are plaintext in `.env`, they name no
+owner (so the audit log says `(KB_TOKENS)`), and revoking one still means editing `.env`
+and restarting — dropping every user. `kb serve` warns on startup when it is set, and
+`kb token list` says how many are in play. To migrate: issue a token per user, hand them
+out, then remove `KB_TOKENS` from `.env` and restart once.
+
+#### How `/kb/*` is checked
+
+`kb-mcp` checks `/mcp*` itself. `/kb/*` is served by `kb-static`, which is a plain
+`file_server` with no auth, so Caddy enforces the token in front of it — by asking
+`kb-mcp` (`forward_auth` to an internal `/auth/check`, which answers 204 or 401) rather
+than matching the token itself. That matters: Caddy used to hold a regex of every token,
+built from `KB_TOKENS` at container start, which made the token list a second copy that
+went stale. A revoked token kept reading the entire converted corpus over `/kb/*` until
+`caddy` was restarted. There is now one live store behind both routes. `/auth/check` is
+reachable only inside the compose network — the Caddyfile answers 404 for every path it
+does not route.
 
 ### The "flattened table" caveat
 

@@ -43,6 +43,7 @@ from . import cite as cite_module
 from . import db as db_module
 from . import ids as ids_module
 from . import search as search_module
+from . import tokens as tokens_module
 from .config import Config
 from .embed import embed_query
 
@@ -1148,12 +1149,19 @@ def build_server(cfg: Config) -> "FastMCP[ServerContext]":
     return mcp
 
 
-def build_http_app(cfg: Config) -> ASGIApp:
+def build_http_app(
+    cfg: Config, *, store: tokens_module.TokenStore | None = None, allow_anonymous: bool = False
+) -> ASGIApp:
     """The ASGI app for `kb serve --transport http` (brief §9 S4): `build_server(cfg)`'s
     `streamable_http_app()` — a Starlette app whose own `lifespan` enters
     `mcp.session_manager.run()` (see `auth.py`'s module docstring) — wrapped in the bearer
     middleware (brief §6.5.6). `cli.py` runs the result with uvicorn; it must not be run
     any other way, or `/mcp*` is served with no auth.
+
+    The middleware gets a live `TokenStore`, not a token list: see `tokens.py` for why
+    (revocation must not require a restart that drops every other user).
     """
     mcp = build_server(cfg)
-    return auth_module.BearerMiddleware(mcp.streamable_http_app(), cfg.kb_tokens)
+    if store is None:
+        store = auth_module.build_store(cfg, allow_anonymous=allow_anonymous)
+    return auth_module.BearerMiddleware(mcp.streamable_http_app(), store)

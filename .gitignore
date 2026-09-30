@@ -8,6 +8,12 @@ __pycache__/
 # Local configuration. SOURCE_DIR is machine-specific by design.
 .env
 
+# The bearer-token store (KB_TOKENS_FILE, default here). Hashes, not secrets, but
+# still a per-deployment list of who has access -- never committed. Back it up with
+# the deployment's other state, not with the code.
+tokens.json
+.tokens.json.tmp
+
 # macOS
 .DS_Store
 

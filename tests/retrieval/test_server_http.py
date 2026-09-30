@@ -22,6 +22,8 @@ from conftest import SERVER_EMBED_DIM, SERVER_EMBED_MODEL, SERVER_KB_URL_BASE
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
+from retrieval import tokens as tokens_module
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "kb"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 EMBED_DIM = SERVER_EMBED_DIM
@@ -50,6 +52,10 @@ def _base_env(indexed_dsn: str, fake_ollama_http: str) -> dict[str, str]:
         "EMBED_DIM": str(EMBED_DIM),
         "KB_URL_BASE": KB_URL_BASE,
         "KB_PUBLIC_HOST": "localhost",
+        # Explicitly no token store: unset would mean `config.DEFAULT_TOKENS_FILE`, the
+        # repo root's gitignored tokens.json, which a developer who has run
+        # `kb token issue` locally does have. Tests that want a store set this.
+        "KB_TOKENS_FILE": "",
     }
 
 
@@ -149,17 +155,18 @@ def test_initialize_list_tools_search_fetch_over_http(http_server: str) -> None:
     assert "FORM-7731" in fetch_json["text"]
 
 
-def test_serve_http_with_empty_kb_tokens_and_no_allow_anonymous_exits_2(
+def test_serve_http_with_no_credential_and_no_allow_anonymous_exits_2(
     indexed_dsn: str, fake_ollama_http: str
 ) -> None:
+    """Hard rule 6: never start an unauthenticated HTTP server by accident. The check is
+    now "can anything authenticate" across both sources, not "is KB_TOKENS non-empty"."""
     kb_bin = _kb_bin()
     if not kb_bin.is_file():
         pytest.skip(f"console script not found at {kb_bin} (needs `uv sync --extra serve`)")
 
-    port = _free_port()
     env = _base_env(indexed_dsn, fake_ollama_http)
     env["KB_TOKENS"] = ""
-    env["KB_BIND"] = f"127.0.0.1:{port}"
+    env["KB_BIND"] = f"127.0.0.1:{_free_port()}"
 
     result = subprocess.run(
         [str(kb_bin), "serve", "--transport", "http"],
@@ -170,4 +177,168 @@ def test_serve_http_with_empty_kb_tokens_and_no_allow_anonymous_exits_2(
         timeout=15,
     )
     assert result.returncode == 2
-    assert "KB_TOKENS" in result.stderr
+    assert "no usable credential" in result.stderr
+    # The message has to say what to do about it, not just what is wrong.
+    assert "kb token issue" in result.stderr
+
+
+def test_serve_http_with_only_revoked_tokens_exits_2(
+    indexed_dsn: str, fake_ollama_http: str, tmp_path: Path
+) -> None:
+    """A store is present but everything in it has been withdrawn — still not a usable
+    server, and the old `KB_TOKENS`-is-non-empty check could not have seen it."""
+    kb_bin = _kb_bin()
+    if not kb_bin.is_file():
+        pytest.skip(f"console script not found at {kb_bin} (needs `uv sync --extra serve`)")
+
+    token_file = tmp_path / "tokens.json"
+    _, record = tokens_module.issue(token_file, "alice@example.com")
+    tokens_module.revoke(token_file, record.id)
+
+    env = _base_env(indexed_dsn, fake_ollama_http)
+    env["KB_TOKENS_FILE"] = str(token_file)
+    env["KB_BIND"] = f"127.0.0.1:{_free_port()}"
+
+    result = subprocess.run(
+        [str(kb_bin), "serve", "--transport", "http"],
+        cwd=str(REPO_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 2
+    assert "no usable credential" in result.stderr
+
+
+def test_serve_http_with_a_broken_token_file_exits_2(
+    indexed_dsn: str, fake_ollama_http: str, tmp_path: Path
+) -> None:
+    """A store that cannot be parsed must not start a server that authenticates nobody.
+    (Breaking it *after* startup is the opposite case — the last good copy keeps serving;
+    see `test_tokens.py`.)"""
+    kb_bin = _kb_bin()
+    if not kb_bin.is_file():
+        pytest.skip(f"console script not found at {kb_bin} (needs `uv sync --extra serve`)")
+
+    token_file = tmp_path / "tokens.json"
+    token_file.write_text("{ broken")
+
+    env = _base_env(indexed_dsn, fake_ollama_http)
+    env["KB_TOKENS_FILE"] = str(token_file)
+    env["KB_BIND"] = f"127.0.0.1:{_free_port()}"
+
+    result = subprocess.run(
+        [str(kb_bin), "serve", "--transport", "http"],
+        cwd=str(REPO_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 2
+    assert "not valid JSON" in result.stderr
+
+
+# --------------------------------------------------------------------------------------
+# The revocation fix, end to end against a real server process.
+# --------------------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def http_server_with_token_file(indexed_dsn: str, fake_ollama_http: str, tmp_path: Path):
+    """A real `kb serve --transport http` backed by a token file, plus the file's path and
+    two issued credentials. `KB_TOKEN_CACHE_SECONDS=0` so the test does not sleep — the
+    caching itself is covered in `test_tokens.py` with a fake clock."""
+    kb_bin = _kb_bin()
+    if not kb_bin.is_file():
+        pytest.skip(f"console script not found at {kb_bin} (needs `uv sync --extra serve`)")
+
+    token_file = tmp_path / "tokens.json"
+    alice_secret, alice = tokens_module.issue(token_file, "alice@example.com")
+    bob_secret, _ = tokens_module.issue(token_file, "bob@example.com")
+
+    port = _free_port()
+    env = _base_env(indexed_dsn, fake_ollama_http)
+    env["KB_TOKENS_FILE"] = str(token_file)
+    env["KB_TOKEN_CACHE_SECONDS"] = "0"
+    env["KB_BIND"] = f"127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [str(kb_bin), "serve", "--transport", "http"],
+        cwd=str(REPO_ROOT),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        _wait_for_health(base_url, proc)
+        yield base_url, token_file, alice, alice_secret, bob_secret
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+def _post_mcp(base_url: str, secret: str) -> int:
+    resp = httpx.post(
+        f"{base_url}/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+        headers={
+            "Authorization": f"Bearer {secret}",
+            "Accept": "application/json, text/event-stream",
+        },
+        timeout=5.0,
+    )
+    return resp.status_code
+
+
+def test_revoking_one_token_leaves_the_server_up_and_everyone_else_working(
+    http_server_with_token_file,
+) -> None:
+    """The fix, stated as a test: withdrawing one person's access is a file write against
+    a running server. Before this, it meant editing `.env` and restarting, which dropped
+    every user — so in practice it never happened."""
+    base_url, token_file, alice, alice_secret, bob_secret = http_server_with_token_file
+
+    assert _post_mcp(base_url, alice_secret) == 200
+    assert _post_mcp(base_url, bob_secret) == 200
+
+    tokens_module.revoke(token_file, alice.id)
+
+    assert _post_mcp(base_url, alice_secret) == 401
+    assert _post_mcp(base_url, bob_secret) == 200
+    # And the server is still the same process, serving.
+    assert httpx.get(f"{base_url}/health", timeout=5.0).status_code == 200
+
+
+def test_a_newly_issued_token_works_against_the_running_server(
+    http_server_with_token_file,
+) -> None:
+    """The other half: onboarding needs no restart either."""
+    base_url, token_file, _, _, _ = http_server_with_token_file
+    carol_secret, _ = tokens_module.issue(token_file, "carol@example.com")
+    assert _post_mcp(base_url, carol_secret) == 200
+
+
+def test_auth_check_answers_for_kb_files_over_http(http_server_with_token_file) -> None:
+    """What Caddy asks on behalf of `/kb/*` (`compose/Caddyfile`), against the real
+    server: 204 while the token is good, 401 once it is revoked — so a revocation closes
+    the static file route at the same moment it closes `/mcp`."""
+    base_url, token_file, alice, alice_secret, _ = http_server_with_token_file
+
+    def check(secret: str) -> int:
+        return httpx.get(
+            f"{base_url}/auth/check",
+            headers={"Authorization": f"Bearer {secret}"},
+            timeout=5.0,
+        ).status_code
+
+    assert check(alice_secret) == 204
+    tokens_module.revoke(token_file, alice.id)
+    assert check(alice_secret) == 401
+    assert httpx.get(f"{base_url}/auth/check", timeout=5.0).status_code == 401

@@ -49,6 +49,8 @@ RETRIEVAL_ENV_VARS = (
     "KB_BIND",
     "KB_PUBLIC_HOST",
     "KB_TOKENS",
+    "KB_TOKENS_FILE",
+    "KB_TOKEN_CACHE_SECONDS",
     "FETCH_MAX_CHARS",
     "CHUNK_TARGET",
     "CHUNK_MAX",
@@ -56,9 +58,16 @@ RETRIEVAL_ENV_VARS = (
 
 
 @pytest.fixture(autouse=True)
-def _scrubbed_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _scrubbed_env(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
     for name in RETRIEVAL_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+    # KB_TOKENS_FILE unset means `config.DEFAULT_TOKENS_FILE` — the repo root's
+    # gitignored `tokens.json`, which a developer who has run `kb token issue` locally
+    # DOES have. Point it at a path that does not exist so no test can authenticate with
+    # a real credential or depend on one being absent by luck. Tests that want a store
+    # set this themselves.
+    missing = tmp_path_factory.mktemp("no-tokens") / "tokens.json"
+    monkeypatch.setenv("KB_TOKENS_FILE", str(missing))
 
 
 def database_url_test() -> str:
@@ -148,6 +157,8 @@ def make_server_config(kb_path: Path, db_dsn: str, **overrides):
         kb_bind="127.0.0.1:8765",
         kb_public_host="localhost",
         kb_tokens=(),
+        kb_tokens_file=None,
+        kb_token_cache_seconds=5.0,
         fetch_max_chars=200_000,
         chunk_target=1200,
         chunk_max=2500,
