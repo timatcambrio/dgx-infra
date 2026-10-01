@@ -126,8 +126,12 @@ compose-down:  ## Tear down the prod compose stack (keeps volumes -- add ARGS=-v
 token: compose-env-check  ## Manage tokens in a container: make token ARGS="issue you@example.com"
 	$(COMPOSE) --profile tools run --rm kb-token $(ARGS)
 
-compose-index: compose-env-check gpu-check  ## Index kb/ from inside the compose network (one-off container)
-	$(COMPOSE) run --rm kb-mcp kb index
+# ARGS for the same reason `index` above has it, and one reason more: `--init` applies the
+# schema, and until this accepted flags there was no way to do that from the compose path
+# at all -- so the quickstart's `make compose-up && make compose-index` met an
+# UndefinedTableError on every new deployment.
+compose-index: compose-env-check gpu-check  ## Index kb/ from inside the compose network. First run needs ARGS=--init
+	$(COMPOSE) run --rm kb-mcp kb index $(ARGS)
 
 fixtures-retrieval:  ## Regenerate tests/retrieval/fixtures/kb/ (should be a no-op)
 	$(PYTHON) tests/retrieval/make_fixtures.py
