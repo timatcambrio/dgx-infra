@@ -30,5 +30,14 @@ USER kb
 # ENTRYPOINT is `uv run` (not `uv run kb`) so `docker compose run --rm kb-mcp kb index`
 # (brief §7.2) works unmodified: compose appends "kb index" to the entrypoint, giving
 # `uv run kb index`, rather than duplicating "kb" if the entrypoint already named it.
-ENTRYPOINT ["uv", "run"]
+#
+# `--no-sync` because `uv run` otherwise syncs the project AGAIN at container start, with
+# none of the flags above: it re-resolved the dependency set, added the `dev` group
+# (`pytest`, `reportlab`) on top of this image and fetched it from pypi on every start,
+# since UV_CACHE_DIR is under /tmp and nothing survives between containers. Measured
+# 2026-10-01 with `docker run --network none`: the container did not start at all, dying
+# on a `packaging` wheel that only `pytest` wanted. An on-prem machine does not get to
+# call pypi to start a server, and `--no-dev` at build time means nothing if the
+# entrypoint undoes it. See tests/test_compose_image.py.
+ENTRYPOINT ["uv", "run", "--no-sync"]
 CMD ["kb", "serve", "--transport", "http"]
