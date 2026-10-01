@@ -321,6 +321,25 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-10-01 [TOOL] **The compose mount would have broken revocation, and is fixed**
+  (`fix/token-file-bind-mount`, `6770d7f`, merged `afe39b5`; 597 tests, `make check` green).
+  Found by testing the deployment path rather than the code: **a single-file bind mount binds
+  the host file's inode**, and `tokens.write` is atomic (temp file + `os.replace`), which
+  installs a new one. Measured in a container: the mount does not go stale, the path
+  **disappears** (`No such file or directory`), `tokens.read` treats that as no records, and
+  every file-backed token stops working **on the first issue or revoke**. The shipped
+  `${KB_TOKENS_FILE}:/etc/kb/tokens.json:ro` would therefore have turned the revocation fix
+  into the outage it removes. Now `${KB_TOKENS_DIR:-./tokens}:/etc/kb:ro` — the directory,
+  still read-only; verified the container tracks `os.replace` through it. Costs a second
+  setting that must equal `KB_TOKENS_FILE`'s parent, so `make compose-env-check` now runs
+  `scripts/check_token_paths.py` first (the failure it prevents is the quiet one: `kb token
+  revoke` writing where the server is not reading, reporting success, changing nothing).
+  `compose/tokens/.gitkeep` is a committed empty default so the mount always succeeds — a
+  missing directory source fails the container at start, which is worse than `kb serve`'s own
+  refusal naming `kb token issue`. **Lesson worth keeping: the revocation work was verified
+  end to end against a real server process and real Caddy containers, and still shipped a
+  deployment-only defect, because the one thing not exercised was a write to the store while
+  it was mounted.**
 - 2026-09-30 [TOOL] **Server-side token revocation shipped** (branch `fix/token-revocation`,
   two commits `fdf38d4` and `2bce5af`, **merged to `main` 2026-10-01 as `b45c4d7`**,
   not pushed). `make check` green on `main` at **585** tests, both gates PASSED. New
