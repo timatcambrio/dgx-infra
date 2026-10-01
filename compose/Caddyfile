@@ -34,6 +34,15 @@
 {
 	auto_https disable_redirects
 	admin off
+
+	# What to serve a client that sends no SNI. TLS SNI carries host NAMES only, so a
+	# client dialling this host by IP -- which is how stages 1-4 reached the plain-HTTP
+	# server -- sends none, and without a default Caddy fails the handshake outright
+	# (`tlsv1 alert internal error`, alert 80, "no peer certificate available"): before
+	# any HTTP, so before the Host header, KB_PUBLIC_HOST or the bearer token are in the
+	# picture. KB_PUBLIC_HOST is the right certificate to name because the site block
+	# below already lists it, so `tls internal` already issues one for it.
+	default_sni {$KB_PUBLIC_HOST:localhost}
 }
 
 {$KB_PUBLIC_HOST:localhost}, localhost, 127.0.0.1 {
