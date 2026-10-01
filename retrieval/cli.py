@@ -8,13 +8,16 @@ naming the milestone that adds them.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
 import typer
 
 from . import config as config_module
+from . import tokens as tokens_module
 from .config import Config, ConfigError
+from .tokens import TokenFileError
 
 app = typer.Typer(
     add_completion=False,
@@ -280,28 +283,52 @@ def serve(
         return
 
     # --transport http|streamable-http (brief §9 S4, hard rule 6): refuse an
-    # unauthenticated HTTP server unless the operator explicitly opts in.
-    if not cfg.kb_tokens:
+    # unauthenticated HTTP server unless the operator explicitly opts in. The question is
+    # now "can anything authenticate", answered by the store across both sources (the
+    # token file and legacy KB_TOKENS), not "is KB_TOKENS non-empty".
+    from . import auth as auth_module
+
+    store = auth_module.build_store(cfg, allow_anonymous=allow_anonymous)
+    try:
+        has_credential = store.has_any_credential()
+    except TokenFileError as exc:
+        # A broken token file must not start a server that authenticates no one. Once the
+        # server is up a later bad edit keeps the last good copy instead (tokens.py).
+        typer.secho(f"kb serve --transport http: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=2) from exc
+
+    if not has_credential:
+        where = cfg.kb_tokens_file or "(KB_TOKENS_FILE unset)"
         if not allow_anonymous:
             typer.secho(
-                "kb serve --transport http: KB_TOKENS is empty. Refusing to start an "
-                "unauthenticated HTTP server. Set KB_TOKENS in .env, or pass "
-                "--allow-anonymous to start anyway (dev only).",
+                "kb serve --transport http: no usable credential. Refusing to start an "
+                "unauthenticated HTTP server. Issue one with `kb token issue <user>` "
+                f"(store: {where}), or pass --allow-anonymous to start anyway (dev only).",
                 fg=typer.colors.RED,
                 err=True,
             )
             raise typer.Exit(code=2)
         typer.secho(
-            "kb serve --transport http: KB_TOKENS is empty and --allow-anonymous was "
+            "kb serve --transport http: no usable credential and --allow-anonymous was "
             "passed. Every request to /mcp* will be accepted with NO authentication. Do "
             "not run this against a network you do not fully control.",
             fg=typer.colors.RED,
             err=True,
         )
+    elif cfg.kb_tokens:
+        typer.secho(
+            "kb serve --transport http: KB_TOKENS is set. Those tokens work, but they "
+            "are plaintext in .env, name no owner, and cannot be revoked without a "
+            "restart that drops every user. Prefer `kb token issue <user>`.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
 
     import uvicorn
 
-    http_app = server_module.build_http_app(cfg)
+    # The same store instance the pre-flight check used, so there is exactly one copy
+    # of the cache and no chance of the two disagreeing.
+    http_app = server_module.build_http_app(cfg, store=store)
     uvicorn.run(http_app, host=cfg.kb_bind_host, port=cfg.kb_bind_port, log_level="info")
 
 
@@ -359,3 +386,151 @@ def catalog(
     """Document catalog / summaries. Not implemented until S5."""
     _load_config(env_file)
     _not_implemented("catalog", "S5")
+
+
+# --------------------------------------------------------------------------------------
+# `kb token` — issuing and revoking the HTTP transport's bearer credentials.
+#
+# The v1 issuance surface, for an operator on the DGX. The proposal's unified web app
+# replaces this for non-technical users; the file format underneath is the same either
+# way, so that later work is a new front end over this, not a migration.
+#
+# These commands run wherever the token file lives, NOT inside the kb-mcp container: the
+# container bind-mounts the file read-only and re-reads it as it changes (`tokens.py`), so
+# nothing here needs the server running and nothing restarts it.
+# --------------------------------------------------------------------------------------
+
+token_app = typer.Typer(
+    no_args_is_help=True,
+    help="Issue, list and revoke the bearer tokens `kb serve --transport http` accepts.",
+)
+app.add_typer(token_app, name="token")
+
+
+def _tokens_path(cfg: Config) -> Path:
+    if cfg.kb_tokens_file is None:
+        typer.secho(
+            "KB_TOKENS_FILE is set to an empty value, so there is no token store to "
+            "modify. Unset it to use the default, or point it at a path.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(EXIT_CONFIG_ERROR)
+    return cfg.kb_tokens_file
+
+
+def _token_error(exc: TokenFileError) -> "typer.Exit":
+    typer.secho(str(exc), fg=typer.colors.RED, err=True)
+    return typer.Exit(EXIT_CONFIG_ERROR)
+
+
+@token_app.command("issue")
+def token_issue(
+    user: str = typer.Argument(..., help="Who this token identifies — an email or username."),
+    expires_in_days: Optional[int] = typer.Option(
+        None,
+        "--expires-in-days",
+        help=(
+            "Stop accepting it after this many days. Use it for a rotation overlap "
+            "window: issue the replacement, set an expiry on the old one, and neither a "
+            "restart nor a flag day is involved."
+        ),
+    ),
+    note: Optional[str] = typer.Option(None, "--note", help="Free text, e.g. the machine."),
+    env_file: Optional[Path] = ENV_FILE_OPTION,
+) -> None:
+    """Generate a token for one person and print it ONCE."""
+    cfg = _load_config(env_file)
+    path = _tokens_path(cfg)
+
+    expires = None
+    if expires_in_days is not None:
+        if expires_in_days <= 0:
+            typer.secho("--expires-in-days must be positive.", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=2)
+        expires = (
+            datetime.now(timezone.utc).replace(microsecond=0)
+            + timedelta(days=expires_in_days)
+        ).isoformat()
+
+    try:
+        secret, record = tokens_module.issue(path, user, expires=expires, note=note)
+    except TokenFileError as exc:
+        raise _token_error(exc) from exc
+
+    # The secret is not stored, so this is the only time it can be shown. Said plainly,
+    # because the recovery ("issue another, revoke this one") is cheap but not obvious.
+    typer.echo(secret)
+    typer.secho(
+        f"\nIssued {record.id} to {record.user}"
+        + (f", expires {record.expires}" if record.expires else "")
+        + f". Stored (hashed) in {path}.\n"
+        "The token above is shown once and is not recoverable — send it to its owner now. "
+        "If it is lost, issue another and revoke this one. It takes effect within "
+        f"{cfg.kb_token_cache_seconds:g}s; no restart.",
+        fg=typer.colors.YELLOW,
+        err=True,
+    )
+
+
+@token_app.command("list")
+def token_list(
+    all_: bool = typer.Option(
+        False, "--all", help="Include revoked and expired tokens (default: active only)."
+    ),
+    env_file: Optional[Path] = ENV_FILE_OPTION,
+) -> None:
+    """Every token in the store: id, owner, status. Never the secrets."""
+    cfg = _load_config(env_file)
+    path = _tokens_path(cfg)
+    try:
+        records = tokens_module.read(path)
+    except TokenFileError as exc:
+        raise _token_error(exc) from exc
+
+    shown = [r for r in records if all_ or r.status == "active"]
+    if not shown:
+        typer.echo(
+            f"No {'' if all_ else 'active '}tokens in {path}. "
+            "Issue one with `kb token issue <user>`."
+        )
+    else:
+        width = max(len(r.user) for r in shown)
+        for record in shown:
+            line = f"{record.id}  {record.user:<{width}}  {record.status:<8}  issued {record.issued}"
+            if record.expires:
+                line += f"  expires {record.expires}"
+            if record.revoked:
+                line += f"  revoked {record.revoked}"
+            if record.note:
+                line += f"  # {record.note}"
+            typer.echo(line)
+
+    if cfg.kb_tokens:
+        # Not in the file and not listed above, but they do authenticate — say so, or the
+        # list reads as the complete set of who has access, which it would not be.
+        typer.secho(
+            f"\nAlso accepted: {len(cfg.kb_tokens)} token(s) from KB_TOKENS in .env, which "
+            "name no owner and cannot be revoked here — only by editing .env and "
+            "restarting the server, which drops every user.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+
+
+@token_app.command("revoke")
+def token_revoke(
+    token_id: str = typer.Argument(..., help="The id from `kb token list`."),
+    env_file: Optional[Path] = ENV_FILE_OPTION,
+) -> None:
+    """Withdraw one token, now. Nobody else is affected and nothing restarts."""
+    cfg = _load_config(env_file)
+    path = _tokens_path(cfg)
+    try:
+        record = tokens_module.revoke(path, token_id)
+    except TokenFileError as exc:
+        raise _token_error(exc) from exc
+    typer.echo(
+        f"Revoked {record.id} ({record.user}) at {record.revoked}. "
+        f"In force within {cfg.kb_token_cache_seconds:g}s; no restart, no other user affected."
+    )

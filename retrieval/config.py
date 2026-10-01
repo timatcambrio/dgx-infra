@@ -11,6 +11,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import tokens as tokens_module
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Keys required unconditionally. `DATABASE_URL_INDEX` is required only for `kb index`,
@@ -18,6 +20,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 #: rather than at load time, so `kb --help` and other commands that need neither still work
 #: without a fully-populated `.env`.
 _ALWAYS_REQUIRED = ("KB_PATH",)
+
+#: Where `kb token` writes and `kb serve` reads the credential store when
+#: `KB_TOKENS_FILE` is unset. Beside `.env`, and gitignored for the same reason.
+DEFAULT_TOKENS_FILE = REPO_ROOT / "tokens.json"
 
 
 class ConfigError(RuntimeError):
@@ -70,6 +76,28 @@ def _split_tokens(raw: str | None) -> tuple[str, ...]:
     return tuple(t.strip() for t in raw.split(",") if t.strip())
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{name} must be a number, got {raw!r}") from exc
+
+
+def _env_path(name: str, default: Path) -> Path | None:
+    """A path setting that can be switched off. `KB_TOKENS_FILE=` (set but empty) means
+    "no token file", which is how the legacy `KB_TOKENS`-only path is selected explicitly
+    rather than by accident."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    if raw == "":
+        return None
+    return Path(raw).expanduser().resolve()
+
+
 @dataclass(frozen=True)
 class Config:
     """Resolved Stage 2 settings for one run."""
@@ -86,6 +114,8 @@ class Config:
     kb_bind: str
     kb_public_host: str
     kb_tokens: tuple[str, ...]
+    kb_tokens_file: Path | None
+    kb_token_cache_seconds: float
     fetch_max_chars: int
     chunk_target: int
     chunk_max: int
@@ -161,6 +191,10 @@ def load(*, env_file: Path | str | None = None) -> Config:
         kb_bind=os.environ.get("KB_BIND", "127.0.0.1:8765"),
         kb_public_host=os.environ.get("KB_PUBLIC_HOST", "localhost"),
         kb_tokens=_split_tokens(os.environ.get("KB_TOKENS")),
+        kb_tokens_file=_env_path("KB_TOKENS_FILE", DEFAULT_TOKENS_FILE),
+        kb_token_cache_seconds=_env_float(
+            "KB_TOKEN_CACHE_SECONDS", tokens_module.DEFAULT_CACHE_SECONDS
+        ),
         fetch_max_chars=_env_int("FETCH_MAX_CHARS", 200_000),
         chunk_target=_env_int("CHUNK_TARGET", 1200),
         chunk_max=_env_int("CHUNK_MAX", 2500),

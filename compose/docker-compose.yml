@@ -16,8 +16,9 @@
 #     route, which itself requires the same bearer token (see `compose/Caddyfile`).
 #   - `caddy` is the only service that publishes a port to the world: 443, TLS-terminated,
 #     reverse-proxying `/mcp*`+`/health` to `kb-mcp` and `/kb/*` (token-gated) to
-#     `kb-static`. `compose/caddy-entrypoint.sh` fills in the Caddyfile's token matcher and
-#     TLS directive from `$KB_TOKENS`/`$TLS_CERT`/`$TLS_KEY` before starting Caddy.
+#     `kb-static`. `compose/caddy-entrypoint.sh` fills in the Caddyfile's TLS directive
+#     from `$TLS_CERT`/`$TLS_KEY` before starting Caddy. The `/kb/*` token check is
+#     `forward_auth` to `kb-mcp`, so there is one live token store, not two copies.
 #   - the `dev` profile additionally publishes `db` and `ollama` to `127.0.0.1` for a host
 #     venv (`uv run kb ...` from the repo directly, without any of the above). `db` and
 #     `ollama` also belong to the `prod` profile (see the note on their `profiles:` below)
@@ -90,7 +91,15 @@ services:
       KB_URL_BASE: ${KB_URL_BASE:-}
       KB_BIND: 0.0.0.0:8765
       KB_PUBLIC_HOST: ${KB_PUBLIC_HOST:-localhost}
+      # Legacy: plaintext, no owner, not revocable without a restart that drops every
+      # user. Still honoured so an existing deployment keeps working; `kb serve` warns.
       KB_TOKENS: ${KB_TOKENS:-}
+      # The credential store (retrieval/tokens.py): hashed records, re-read as the file
+      # changes, so `kb token issue`/`revoke` on the host take effect here within
+      # KB_TOKEN_CACHE_SECONDS with no restart of this container. Mounted read-only --
+      # the server never writes it.
+      KB_TOKENS_FILE: /etc/kb/tokens.json
+      KB_TOKEN_CACHE_SECONDS: ${KB_TOKEN_CACHE_SECONDS:-5}
       # The host's KB_PATH is bind-mounted at a fixed container path below, and KB_PATH
       # is overridden to match -- `retrieval/config.py` resolves `${KB_PATH}/kb` the same
       # way whether it is running in the host venv or in this container.
@@ -101,6 +110,9 @@ services:
       # `make compose-index` check this before invoking Compose. The /dev/null default only
       # exists so the dev path (db alone, no .env) still parses.
       - ${KB_PATH:-/dev/null}:/kb-repo:ro
+      # The /dev/null default is why `tokens.py:read` treats an empty file as "no
+      # records" rather than an error: the dev path has no token store.
+      - ${KB_TOKENS_FILE:-/dev/null}:/etc/kb/tokens.json:ro
     command: ["kb", "serve", "--transport", "http"]
     depends_on:
       db:
@@ -126,7 +138,8 @@ services:
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/etc/caddy/caddy-entrypoint.sh"]
     environment:
-      KB_TOKENS: ${KB_TOKENS:-}
+      # No KB_TOKENS here any more: /kb/* asks kb-mcp's /auth/check per request instead
+      # of matching a token regex baked in at container start (compose/Caddyfile).
       KB_PUBLIC_HOST: ${KB_PUBLIC_HOST:-localhost}
       TLS_CERT: ${TLS_CERT:-}
       TLS_KEY: ${TLS_KEY:-}

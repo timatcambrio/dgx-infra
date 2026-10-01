@@ -321,6 +321,31 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-09-30 [TOOL] **Server-side token revocation shipped** (branch `fix/token-revocation`,
+  one commit `fdf38d4`, not yet merged). `make test` green at **585** (530 before). New
+  `retrieval/tokens.py`: `KB_TOKENS_FILE`, a JSON file of one sha256-hashed, individually
+  revocable record per user (`id`, `user`, `hash`, `issued`, optional `expires`/`revoked`/
+  `note`), written atomically at mode 0600. `TokenStore` re-reads it when mtime/size change,
+  stat'ing at most once per `KB_TOKEN_CACHE_SECONDS` (default 5) — that number is the upper
+  bound on how long a revoked token keeps working. `BearerMiddleware` takes the store instead
+  of a tuple and puts the resolved `Identity` in `scope["state"]["kb_identity"]` for the §10
+  ACL work (nothing reads it yet). New `kb token issue|list|revoke`. `KB_TOKENS` still
+  authenticates, is reported as `(KB_TOKENS)` in the log, and now warns at startup.
+  **`/kb/*` was the other half and is fixed too, which was not in the recorded plan**: Caddy
+  matched a token regex built from `KB_TOKENS` at container start, so a revoked token kept
+  reading the whole converted corpus over `/kb/*` until `caddy` restarted. It now does
+  `forward_auth` to a new `/auth/check` on `kb-mcp` (204/401, middleware-answered, never
+  reaches the inner app). `caddy-entrypoint.sh` no longer reads `KB_TOKENS` at all.
+  **Verified with real containers**, not only pytest: `/kb/*` 200 with a good token and 401
+  with a bad one, tracking the upstream's answer with no cached decision in Caddy; `/health`
+  still open; `/auth/check` 404 from outside the compose network. **Two behaviour changes,
+  both deliberate.** (1) `--allow-anonymous` now serves requests unauthenticated, which its
+  warning always claimed — an empty token tuple matched nothing, so it previously rejected
+  *every* request and the flag was useless. Nothing had tested it. (2) A token file that
+  breaks while the server runs keeps the last good copy serving (a typo must not lock
+  everyone out at once); a file already broken at startup still refuses to start, exit 2.
+  **New audit trail:** one JSON line per decision on stderr, `kb.server.auth` —
+  `{"event":"auth.ok|auth.denied","path":...,"token":...,"user":...,"source":"file|env"}`.
 - 2026-09-24 [TOOL] **Banded-table cell recovery shipped** (branch `fix/banded-table-cells`,
   4 commits; see [DECISIONS]). `make check` green at 514 tests (510 before this work: 500
   plus the 10 the eval-case and fetch-ceiling work added). `make fixtures` is a no-op.

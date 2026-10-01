@@ -48,6 +48,8 @@ def _cfg(kb_path: Path, db_dsn: str) -> Config:
         kb_bind="127.0.0.1:8765",
         kb_public_host="localhost",
         kb_tokens=(),
+        kb_tokens_file=None,
+        kb_token_cache_seconds=5.0,
         fetch_max_chars=200_000,
         chunk_target=1200,
         chunk_max=2500,

@@ -44,6 +44,52 @@ def test_kb_tokens_empty_string_is_no_tokens(
     assert cfg.kb_tokens == ()
 
 
+def test_kb_tokens_file_defaults_beside_dot_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The autouse fixture in conftest.py sets KB_TOKENS_FILE for isolation, so this is
+    the one place the real default is asserted."""
+    monkeypatch.delenv("KB_TOKENS_FILE", raising=False)
+    cfg = config_module.load(env_file=tmp_path / "nonexistent.env")
+    assert cfg.kb_tokens_file == config_module.DEFAULT_TOKENS_FILE
+    assert cfg.kb_tokens_file.name == "tokens.json"
+
+
+def test_kb_tokens_file_can_be_switched_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Set-but-empty means "no token store", which is how the legacy KB_TOKENS-only path
+    is selected on purpose rather than by accident."""
+    monkeypatch.setenv("KB_TOKENS_FILE", "")
+    cfg = config_module.load(env_file=tmp_path / "nonexistent.env")
+    assert cfg.kb_tokens_file is None
+
+
+def test_kb_tokens_file_is_resolved(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("KB_TOKENS_FILE", "tokens.json")
+    cfg = config_module.load(env_file=tmp_path / "nonexistent.env")
+    assert cfg.kb_tokens_file is not None and cfg.kb_tokens_file.is_absolute()
+
+
+def test_kb_token_cache_seconds_default_and_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from retrieval import tokens as tokens_module
+
+    cfg = config_module.load(env_file=tmp_path / "nonexistent.env")
+    assert cfg.kb_token_cache_seconds == tokens_module.DEFAULT_CACHE_SECONDS
+    monkeypatch.setenv("KB_TOKEN_CACHE_SECONDS", "0.5")
+    assert config_module.load(env_file=tmp_path / "nonexistent.env").kb_token_cache_seconds == 0.5
+
+
+def test_kb_token_cache_seconds_must_be_a_number(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("KB_TOKEN_CACHE_SECONDS", "soon")
+    with pytest.raises(ConfigError, match="KB_TOKEN_CACHE_SECONDS must be a number"):
+        config_module.load(env_file=tmp_path / "nonexistent.env")
+
+
 def test_require_database_url_index_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

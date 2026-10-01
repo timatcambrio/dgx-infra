@@ -6,21 +6,30 @@
 #                                      /health is open, same as it is directly on kb-mcp.
 #   /kb/*           -> kb-static:8080 the read-only kb/ file server every citation `url`
 #                                      points at. kb-static has no auth of its own (it is
-#                                      plain `file_server`), so Caddy enforces the same
-#                                      bearer token here before proxying.
+#                                      plain `file_server`), so the same token is required
+#                                      here -- enforced by asking kb-mcp, see below.
 #
-# The __KB_TOKEN_PATTERN__ placeholder below is filled in by compose/caddy-entrypoint.sh
-# at container start, from $KB_TOKENS -- see that script for why (Caddyfile has no loop
-# construct to turn a comma-separated env var into a set of header alternatives).
+# WHY /kb/* ASKS kb-mcp RATHER THAN MATCHING THE TOKEN ITSELF. This file used to carry a
+# __KB_TOKEN_PATTERN__ placeholder that caddy-entrypoint.sh filled in with a regex of
+# every token from $KB_TOKENS, baked in at container start. That made the token list a
+# second, independent copy of itself: revoking someone in the store left their credential
+# reading the entire converted corpus over /kb/* until `caddy` was restarted -- which is
+# the outage the revocation work exists to avoid. `forward_auth` sends each /kb/* request's
+# headers to kb-mcp's /auth/check, which consults the one live store (retrieval/tokens.py),
+# so a revocation takes effect on both routes at once and nothing here needs reloading.
+#
+# Cost of the change, stated honestly: one extra in-network request per /kb/* fetch. That
+# route serves whole converted markdown files to a human clicking a citation, not the MCP
+# hot path, so a sub-millisecond hop inside the compose network is not worth optimising
+# away by re-introducing a stale copy of the token list.
 #
 # TLS: `tls internal` (Caddy's own local CA) by default. If both TLS_CERT and TLS_KEY are
 # set (paths inside the container -- see docker-compose.yml's `kb_tls` bind mount), Caddy
 # uses that cert/key pair instead -- the __TLS_DIRECTIVE__ placeholder below is filled in
-# by caddy-entrypoint.sh, for the same reason as __KB_TOKEN_PATTERN__: a Caddyfile `tls`
-# line's shape (bare `internal` vs. two file paths) can't be made conditional on whether
-# two env vars are set using `{$VAR}` substitution alone. See the README "TLS" section for
-# what "each user's machine must trust Caddy's root CA once" means in practice, and the
-# client-cert alternative.
+# by caddy-entrypoint.sh, because a Caddyfile `tls` line's shape (bare `internal` vs. two
+# file paths) can't be made conditional on whether two env vars are set using `{$VAR}`
+# substitution alone. See the README "TLS" section for what "each user's machine must
+# trust Caddy's root CA once" means in practice, and the client-cert alternative.
 
 {
 	auto_https disable_redirects
@@ -35,21 +44,22 @@
 		reverse_proxy kb-mcp:8765
 	}
 
-	@kb_authorized {
-		path /kb/*
-		header_regexp bearer Authorization "__KB_TOKEN_PATTERN__"
-	}
-	handle @kb_authorized {
+	handle /kb/* {
+		# 204 -> proceed, 401 -> Caddy returns kb-mcp's 401 (with its WWW-Authenticate
+		# header) to the client unchanged. `copy_headers` is deliberately absent: nothing
+		# downstream needs the identity, since kb-static serves the same files to anyone
+		# who gets past this point.
+		forward_auth kb-mcp:8765 {
+			uri /auth/check
+		}
+
 		uri strip_prefix /kb
 		reverse_proxy kb-static:8080
 	}
 
-	handle /kb/* {
-		header Www-Authenticate "Bearer"
-		respond 401
-	}
-
 	handle {
+		# Also what keeps /auth/check off the LAN: it is reachable only from inside the
+		# compose network, never through this site.
 		respond "not found" 404
 	}
 }
