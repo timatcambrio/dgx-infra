@@ -417,14 +417,29 @@ built (S5, optional).
 
 ```bash
 cp .env.example .env               # then set KB_PATH (absolute), KB_PUBLIC_HOST, KB_URL_BASE
-uv run kb token issue you@example.com   # prints your bearer token ONCE; see "Tokens" below
+sudo install -d -o 10001 -g 10001 -m 700 /srv/kb    # the token store's directory, once
 make compose-up                    # builds and starts db, ollama, kb-mcp, kb-static, caddy
+make token ARGS="issue you@example.com"             # prints your bearer token ONCE
+make compose-index ARGS=--init     # applies the database schema (first run only)
 make compose-index                 # walks kb/, embeds it, loads it into Postgres
 ```
 
 `KB_PATH` must be an absolute path here: the compose stack bind-mounts it, and a relative
 path would be resolved against the `compose/` directory rather than this one. `make
 compose-up` checks and refuses otherwise.
+
+`KB_URL_BASE` is the **site root**, not the `/kb` path — `https://kb.internal.example`,
+with no `/kb` on the end. Both halves of a citation url already supply that segment (the
+indexer stores each document as `kb/<file>.md`, and Caddy routes `/kb/*`), so a value
+ending in `/kb` makes every citation url a 404. `make compose-up` refuses one.
+
+`install -d` is the one host command this deployment needs, and it is needed once. It
+creates the token store's directory owned by the uid the containers run as (10001), so
+`make token` can write the store and `kb-mcp` can read it. Without it the store ends up
+owned by whoever ran the command, mode 0600, and the server — which is not root — cannot
+read a single record: it exits 2, the container restarts in a loop, and the only symptom
+at the front door is Caddy answering 502. `make compose-up` checks for this before
+starting anything and prints the command to run.
 
 **GPUs.** Docker never hands a GPU to a container unless asked, so `make compose-up` asks
 on your behalf. Before starting anything it checks whether this host has NVIDIA GPUs and
@@ -825,13 +840,34 @@ for you.
 
 One token per user. `kb token` manages them; nothing here restarts the server.
 
+**On the compose stack, go through `make token`** — the deployment target has Docker and
+nothing else, so `uv run` is not available there:
+
+```bash
+make token ARGS="issue alice@example.com"        # prints the token ONCE
+make token ARGS='issue bob@example.com --note "bob laptop" --expires-in-days 90'
+make token ARGS=list                             # ids, owners, status -- never the secrets
+make token ARGS="list --all"                     # include revoked and expired
+make token ARGS="revoke 1979317c8685"            # withdraw one person's access, now
+```
+
+That runs the `kb-token` one-off container, built from the same image as the server and so
+running as the same uid, which is what keeps the store it writes readable by `kb-mcp`
+without widening mode 0600 or chowning anything. It deliberately does not depend on
+Postgres: tokens live in a file so that authentication survives the database being down,
+and revoking one has to work during exactly that outage.
+
+From a development host venv the same commands are:
+
 ```bash
 uv run kb token issue alice@example.com          # prints the token ONCE
-uv run kb token issue bob@example.com --note "bob's laptop" --expires-in-days 90
-uv run kb token list                             # ids, owners, status -- never the secrets
-uv run kb token list --all                       # include revoked and expired
-uv run kb token revoke 1979317c8685              # withdraw one person's access, now
+uv run kb token list
+uv run kb token revoke 1979317c8685
 ```
+
+Either way the store keeps whatever owner and mode it already had: `kb token` writes a new
+file and renames it over the old one, and it carries the previous file's ownership across,
+so a one-time `chown` is not undone by the next `issue` or `revoke`.
 
 **Revoking affects one person and nothing else.** The records live in `KB_TOKENS_FILE`
 (default: `tokens.json` beside `.env`, gitignored, mode 0600) and the server re-reads that
@@ -847,6 +883,18 @@ inode on every write, so the container would lose the file on the first issue or
 `make compose-up` checks that the two settings agree before starting anything, because the
 failure is otherwise silent — `kb token revoke` would report success and change nothing the
 server could see.
+
+**That directory has to be writable by uid 10001**, the uid the containers run as:
+
+```bash
+sudo install -d -o 10001 -g 10001 -m 700 /srv/kb
+```
+
+once, before the first `make token`. The server is not root, so a store owned by whoever
+ran the command and mode 0600 is one it cannot read at all — `kb serve` exits 2, the
+container restarts in a loop, and the only thing visible from outside is Caddy answering
+502, with nothing anywhere naming the permission. `make compose-up` checks both the
+directory and the store before starting anything and prints the exact command.
 
 **The secret is shown once and is not stored.** Only a sha256 of it is, so the file is not
 a credential: read access to it does not yield anyone's token. If a token is lost, issue
@@ -908,12 +956,49 @@ install it as a trusted root using your OS's normal process for that:
 docker compose -f compose/docker-compose.yml cp caddy:/data/caddy/pki/authorities/local/root.crt ./dgx-kb-ca.crt
 ```
 
+**Clients have to dial a NAME, or at least the name `KB_PUBLIC_HOST` holds.** TLS SNI
+carries host names only, so a client dialling the stack by bare IP sends none — and with
+nothing to go on Caddy used to fail the handshake outright (`tlsv1 alert internal error`,
+no certificate offered), before any HTTP and so before `KB_PUBLIC_HOST` or the token were
+in the picture. This is a step the earlier plain-HTTP testing could not surface, because
+plain HTTP has no SNI to be missing. The Caddyfile now sets `default_sni` to
+`KB_PUBLIC_HOST`, so an SNI-less client is served that certificate: dialling by IP works
+when `KB_PUBLIC_HOST` **is** that IP, and otherwise clients must use the name (DNS, or a
+`hosts` entry), since a certificate for `kb.internal.example` will not validate against
+`https://10.0.0.5`.
+
 Alternatively, set `TLS_CERT` and `TLS_KEY` in `.env` to the paths of a certificate/key
 pair issued by a CA your users' machines already trust (an internal corporate CA, or a
 client-issued cert) — `compose/caddy-entrypoint.sh` uses that pair instead of `tls
 internal` whenever both are set, and no user-side trust step is needed. Which of the two
 is right for a given deployment is `stage2-retrieval-brief.md` §11.1, open for Tim to
 decide; both are supported without any code change.
+
+### Checking a deployment end to end
+
+`make check` proves the code. It cannot prove the certificate, the reverse proxy, the
+`/kb/*` forward_auth hop or the live token store, because none of those exist in a test
+process. `scripts/http_probe.py` drives a *running* stack over TLS at its public address,
+the way a client on the LAN reaches it:
+
+```bash
+uv run python scripts/http_probe.py \
+    --base-url https://kb.internal.example \
+    --ca ./dgx-kb-ca.crt \
+    --tokens-file /srv/kb/tokens.json
+```
+
+It checks what is open and what is closed (`/health` without a token, `/mcp` and `/kb/*`
+with and without one, `/auth/check` unreachable from outside), drives MCP over streamable
+HTTP through `initialize` → `search` → `fetch`, follows the citation url it gets back to
+confirm the cited document is actually fetchable, and — given `--tokens-file`, so it can
+reach the store — revokes a throwaway token and confirms that closes **both** `/mcp*` and
+`/kb/*` within `KB_TOKEN_CACHE_SECONDS` while another user's token keeps working. It
+issues its own throwaway credentials, revokes them on the way out, and never prints a
+secret. Exit status is 0 only if every check passed.
+
+Without `--tokens-file` it runs the read-only checks from any client machine, taking two
+issued tokens as `KB_PROBE_TOKEN` and `KB_PROBE_TOKEN_2`, and skips the revocation checks.
 
 ### What is deliberately not built
 
