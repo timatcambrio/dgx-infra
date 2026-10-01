@@ -322,7 +322,8 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PROGRESS]
 - 2026-09-30 [TOOL] **Server-side token revocation shipped** (branch `fix/token-revocation`,
-  one commit `fdf38d4`, not yet merged). `make test` green at **585** (530 before). New
+  two commits `fdf38d4` and `2bce5af`, **merged to `main` 2026-10-01 as `b45c4d7`**,
+  not pushed). `make check` green on `main` at **585** tests, both gates PASSED. New
   `retrieval/tokens.py`: `KB_TOKENS_FILE`, a JSON file of one sha256-hashed, individually
   revocable record per user (`id`, `user`, `hash`, `issued`, optional `expires`/`revoked`/
   `note`), written atomically at mode 0600. `TokenStore` re-reads it when mtime/size change,
