@@ -98,8 +98,9 @@ COMPOSE = docker compose -f compose/docker-compose.yml $(GPU_COMPOSE_ARGS) --env
 # not the repo root, so a relative KB_PATH would silently mount the wrong (nonexistent)
 # directory. Check before invoking Compose rather than after a container fails to start.
 compose-env-check:
-	@test -f .env || { echo "no .env: run 'cp .env.example .env' and set KB_PATH, KB_TOKENS, KB_PUBLIC_HOST, KB_URL_BASE"; exit 2; }
+	@test -f .env || { echo "no .env: run 'cp .env.example .env' and set KB_PATH, KB_PUBLIC_HOST, KB_URL_BASE, KB_TOKENS_FILE, KB_TOKENS_DIR"; exit 2; }
 	@grep -qE '^KB_PATH=/' .env || { echo "KB_PATH in .env must be an ABSOLUTE path for the compose stack"; exit 2; }
+	@$(PYTHON) scripts/check_token_paths.py
 
 gpu-check:  ## Say whether the compose stack will use this host's GPUs (KB_GPU=auto|on|off)
 	@compose/gpu-detect.sh >/dev/null

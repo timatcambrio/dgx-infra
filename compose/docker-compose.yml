@@ -97,7 +97,8 @@ services:
       # The credential store (retrieval/tokens.py): hashed records, re-read as the file
       # changes, so `kb token issue`/`revoke` on the host take effect here within
       # KB_TOKEN_CACHE_SECONDS with no restart of this container. Mounted read-only --
-      # the server never writes it.
+      # the server never writes it. This is the path INSIDE the container; the host
+      # directory holding it is $KB_TOKENS_DIR, mounted below.
       KB_TOKENS_FILE: /etc/kb/tokens.json
       KB_TOKEN_CACHE_SECONDS: ${KB_TOKEN_CACHE_SECONDS:-5}
       # The host's KB_PATH is bind-mounted at a fixed container path below, and KB_PATH
@@ -110,9 +111,21 @@ services:
       # `make compose-index` check this before invoking Compose. The /dev/null default only
       # exists so the dev path (db alone, no .env) still parses.
       - ${KB_PATH:-/dev/null}:/kb-repo:ro
-      # The /dev/null default is why `tokens.py:read` treats an empty file as "no
-      # records" rather than an error: the dev path has no token store.
-      - ${KB_TOKENS_FILE:-/dev/null}:/etc/kb/tokens.json:ro
+      # MOUNT THE DIRECTORY, NOT THE FILE, and do not "simplify" this to
+      # `${KB_TOKENS_FILE}:/etc/kb/tokens.json`. A single-file bind mount binds the
+      # host file's INODE. `kb token issue`/`revoke` write atomically -- temp file then
+      # `os.replace` -- which installs a NEW inode, so a file mount would leave this
+      # container looking at the old one. Measured, 2026-10-01: the container does not
+      # merely go stale, the path disappears (`No such file or directory`), so every
+      # file-backed token stops working on the first issue or revoke. Mounting the
+      # directory tracks the replacement correctly. Still read-only: the server never
+      # writes here, only `kb token` on the host does.
+      #
+      # An empty or absent tokens.json inside it is not an error (`tokens.py:read`
+      # returns no records), which is what makes the default below safe: `kb serve`
+      # then refuses to start with a message naming `kb token issue`, rather than the
+      # container failing on a mount it cannot make.
+      - ${KB_TOKENS_DIR:-./tokens}:/etc/kb:ro
     command: ["kb", "serve", "--transport", "http"]
     depends_on:
       db:

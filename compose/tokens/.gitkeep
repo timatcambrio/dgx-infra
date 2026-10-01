@@ -1,0 +1,7 @@
+Default $KB_TOKENS_DIR for the compose stack, mounted read-only at /etc/kb in
+`kb-mcp`. Empty on purpose: a deployment points KB_TOKENS_DIR at wherever its
+real tokens.json lives, and until it does, `kb serve` refuses to start and says
+to run `kb token issue`. This directory exists so the mount itself always
+succeeds -- see the comment on the mount in ../docker-compose.yml.
+
+Do not commit a tokens.json here. ../../.gitignore ignores it.
