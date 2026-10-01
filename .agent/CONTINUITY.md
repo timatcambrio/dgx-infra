@@ -6,6 +6,17 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-01 [TOOL] **What the remote test did NOT cover, and is the next thing to do on real
+  hardware.** The run was on a fresh Linux host with no GPU and no access to
+  `registry.ollama.ai`, so `nomic-embed-text` could not be pulled and the stack was indexed
+  against the repo's own deterministic embedding double (hashes of the text, not
+  embeddings). Everything about the *deployment* was therefore exercised — TLS, Caddy, both
+  routes, the forward_auth hop, the live token store, revocation, MCP over streamable HTTP,
+  indexing, search, fetch, and a citation followed to its document — and **nothing about
+  retrieval quality was**: no ranking claim from that run means anything, and the recorded
+  33% / 58% / 72% floor was neither re-run nor affected. Still untested anywhere: the real
+  embedding model end to end over HTTPS, the GPU passthrough path (`KB_GPU=on`, which this
+  host could not exercise), and `TLS_CERT`/`TLS_KEY` instead of `tls internal`.
 - 2026-09-18 [USER] Next (after eval floor and table-row chunking, both DONE): embedding-model
   comparison on the DGX against the recorded floor; optional S5 (catalog summaries via ollama,
   gated on `models.yaml`, needs a go); `get_outline` paging/depth limit; `mcp` 2.x (later).
@@ -20,6 +31,26 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-10-01 [TOOL→DECISION] **`KB_URL_BASE` is the site root, and `kb-static` stays rooted
+  at the corpus.** The doubled `/kb` segment in every citation url had two self-consistent
+  repairs and only one of them is safe. Rooting `kb-static` at `${KB_PATH}` would make
+  `https://host/kb/kb/<file>.md` resolve — and would serve the whole knowledge repo (source
+  documents, `corpus.yaml`, the disposable work cache) to anyone holding a token, to fix a
+  URL. Refused. `KB_URL_BASE` is therefore documented as the site root with no `/kb`,
+  `.env.example` corrected, and `make compose-up` refuses a value ending in `/kb` because
+  the failure is otherwise silent until someone clicks a citation.
+  The alternative inside the code — have `_url` strip the `kb/` prefix so the old
+  documented value would work — was also refused: `rel_path` is hardcoded as `kb/<name>` at
+  index time and exists only to build URLs, so the join is coherent as written, and changing
+  it would break any deployment that had already set the value correctly.
+  `tests/test_compose_citation_url.py` pins all four facts the rule rests on.
+- 2026-10-01 [TOOL→DECISION] **Token management is container-first, and the store is written
+  by the uid that reads it.** `make token` runs `kb token` in a one-off container built from
+  the same image as the server, so the store it creates is owned by uid 10001 and mode 0600
+  — readable by `kb-mcp` with no chown and without widening the mode. The server's own mount
+  stays read-only: exactly one thing in the stack writes the store, and it is not the server.
+  The one host command this leaves is `install -d -o 10001 -g 10001 -m 700 <dir>`, once,
+  which `make compose-up` checks for and prints.
 - 2026-09-28 [USER→DECISION] **A heading that introduces nothing does not open a section.**
   `retrieval.sections.build_sections`: a heading run with no body of its own joins the run
   below it; the swallowed heading stays in that section's blocks, so its words are still
@@ -177,6 +208,28 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-10-01 [TOOL] **HTTPS broke IP-addressed clients, one layer below everything the
+  README warns about.** Dialling the stack at `https://<ip>/health` failed in the TLS
+  handshake — `tlsv1 alert internal error`, alert 80, `no peer certificate available` —
+  while the same request to a name the site block lists completed. TLS SNI carries host
+  names only, so a client dialling an IP sends none, and Caddy had no default certificate
+  to answer with. It failed before any HTTP, so before the Host header, `KB_PUBLIC_HOST` or
+  the bearer token were in the picture: **this is not the DNS-rebinding refusal the README
+  documents**, which is an HTTP-layer rejection of a completed connection. Stages 1-4 never
+  saw it because plain HTTP has no SNI to be missing, so the move to HTTPS was a silent
+  break for every client that had been reaching the server by address. Fixed with one global
+  `default_sni {$KB_PUBLIC_HOST:localhost}` — `default_sni` is NOT a `tls` subdirective in
+  Caddy 2 (`caddy validate` rejects it as unknown), it only exists in the global options
+  block. Verified: bare-IP HTTPS answers 200 afterwards.
+- 2026-10-01 [TOOL] **A committed binary fixture was only reproducible on the machine that
+  made it.** `tables_and_image.docx` differed from a Linux regeneration by one byte region:
+  its embedded 6x6 PNG, same length, identical decoded pixels, different 20-byte IDAT. A
+  PNG's pixel data is a zlib stream and which bytes a compressor emits for the same input
+  depends on the zlib build behind it, so `Image.save(..., format="PNG")` is deterministic
+  per machine and not across them — the generator's docstring claimed byte-stability on the
+  grounds that PIL embeds no timestamp, which is true and insufficient. It matters beyond
+  tidiness: `make check` is the stated verification command and the deployment target is
+  Linux, so the gate could not pass there at all.
 - 2026-09-25 [TOOL] **A form's field labels are NOT fixed, and the reason is that the page
   draws no evidence.** This was folded into the header-row task as "the same root cause".
   It is not: the almanac's header row sits over a ruled grid, and `Annotated_Forms_
@@ -321,6 +374,59 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-10-01 [TOOL] **The HTTPS compose stack ran end to end for the first time, on a
+  remote Linux host, and five deployment-only defects had to be fixed to get there**
+  (branch `claude/dgx-deployment-remote-test-d7s5k1`). `make check` green at **629 tests**,
+  both gates PASSED, nothing skipped (Postgres and the embedding service were up, so the
+  50 Stage 2 tests that skip on the dev Mac ran). `scripts/http_probe.py`: **23/23** against
+  the real stack over TLS at its public address.
+  Each defect was invisible to `make check` and to the earlier verification, and each one
+  alone broke the deployment:
+  1. **The server could not read its own token store.** `kb token issue` on the host writes
+     mode 0600 owned by whoever ran it; `kb-mcp` runs as uid 10001; `kb serve` exits 2 on an
+     unreadable store. The container crash-looped (9 restarts) and the only symptom at the
+     front door was Caddy answering **502** — nothing named the permission. Fixed three
+     ways: `tokens.write` now carries the previous file's owner and mode across the atomic
+     replace (without that, a one-time `chown` is undone by the next `issue` or `revoke` —
+     the same shape as the inode bug); a new `kb-token` compose service writes the store as
+     uid 10001 so the normal path never creates an unreadable one; and
+     `scripts/check_token_paths.py` refuses before Compose starts, naming the uid and the
+     exact command.
+  2. **There was no way to manage a token on the deployment target at all.** Every
+     documented path was `uv run kb token ...` and the DGX has Docker and nothing else —
+     while the quickstart asked for a token *before* `make compose-up`. Now `make token
+     ARGS="issue you@example.com"`, a one-off container with the store mounted read-write
+     (the server's mount stays read-only) and no `depends_on`, since tokens live in a file
+     precisely so authentication survives Postgres being down.
+  3. **The image was not self-contained: it reached pypi at every container start.** The
+     build is `uv sync --extra serve --frozen --no-dev`, but the ENTRYPOINT was a bare `uv
+     run`, which syncs again with none of those flags — adding the `dev` group (`pytest`,
+     `reportlab`) and fetching it every start, because `UV_CACHE_DIR` is under /tmp.
+     `docker run --network none` did not start at all, dying on a `packaging` wheel only
+     `pytest` wanted. `ENTRYPOINT ["uv", "run", "--no-sync"]`; verified offline afterwards.
+  4. **Every citation url was a 404.** `fetch` returned
+     `https://<host>/kb/kb/budget-form.md` — the segment doubled, because the indexer stores
+     `rel_path` as `kb/<file>.md` and `.env.example` documented `KB_URL_BASE=.../kb`. The
+     `/kb/*` route exists to let a reader check a citation against the original, and nobody
+     had ever followed one end to end. See [DECISIONS] for which half was changed.
+  5. **The documented quickstart failed on a fresh database.** `make compose-up` then `make
+     compose-index` ended in a raw asyncpg traceback (`relation "index_meta" does not
+     exist`): `--init` was only ever documented for the host venv, and `compose-index` took
+     no `ARGS`. Now it does, and `_run_db` turns that error into one line naming both ways
+     to apply the schema.
+  Also fixed, because it blocked the stated verification command on the target platform:
+  `make check` could not be green on Linux at all. `test_fixtures_regenerate_byte_
+  identically` failed on `tables_and_image.docx`, whose embedded 6x6 PNG decoded to
+  identical pixels but differed in its 20 IDAT bytes — a zlib-build difference between
+  Pillow on macOS and on Linux. The fixture generator now writes that PNG byte by byte with
+  a *stored* (uncompressed) deflate block, so no compressor is involved; `tables_and_image.
+  docx` and `dangling_rels.docx` were regenerated and differ only in those bytes, and
+  `tables_and_image.md`'s golden moved by one line (`content_sha256`).
+  **Lesson, the same one as last time and earned again: the revocation work was verified
+  against real containers and still shipped four deployment-only defects, because what was
+  never exercised was a FRESH deployment on a machine that was not the dev Mac** — a store
+  written by the documented command, an image started without egress, a citation followed
+  to its document, a database with no schema.
 - 2026-10-01 [TOOL] **The compose mount would have broken revocation, and is fixed**
   (`fix/token-file-bind-mount`, `6770d7f`, merged `afe39b5`; 597 tests, `make check` green).
   Found by testing the deployment path rather than the code: **a single-file bind mount binds
