@@ -418,11 +418,17 @@ built (S5, optional).
 ```bash
 cp .env.example .env               # then set KB_PATH (absolute), KB_PUBLIC_HOST, KB_URL_BASE
 sudo install -d -o 10001 -g 10001 -m 700 /srv/kb    # the token store's directory, once
-make compose-up                    # builds and starts db, ollama, kb-mcp, kb-static, caddy
 make token ARGS="issue you@example.com"             # prints your bearer token ONCE
+make compose-up                    # builds and starts db, ollama, kb-mcp, kb-static, caddy
 make compose-index ARGS=--init     # applies the database schema (first run only)
 make compose-index                 # walks kb/, embeds it, loads it into Postgres
 ```
+
+Issue the first token **before** `make compose-up`, not after: `kb serve` refuses to start
+an unauthenticated HTTP server, so with an empty store `kb-mcp` exits 2 and Compose keeps
+restarting it (Caddy answering 502 meanwhile) until a credential exists. It recovers on its
+own once one does, but there is no reason to watch that. `make token` builds what it needs,
+so it works before anything is up.
 
 `KB_PATH` must be an absolute path here: the compose stack bind-mounts it, and a relative
 path would be resolved against the `compose/` directory rather than this one. `make
