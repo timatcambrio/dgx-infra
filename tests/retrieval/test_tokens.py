@@ -10,6 +10,7 @@ store's own properties, which are where the revocation guarantee actually lives:
 from __future__ import annotations
 
 import json
+import os
 import stat
 from pathlib import Path
 
@@ -355,3 +356,74 @@ def test_write_creates_the_parent_directory(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "deeper" / "tokens.json"
     tokens_module.issue(path, "alice@example.com")
     assert path.is_file()
+
+
+# --------------------------------------------------------------------------------------
+# Who can still read the store after a write.
+#
+# Measured 2026-10-01 against the real compose stack, not reasoned about: `kb-mcp` runs as
+# a non-root uid (compose/Dockerfile, `--uid 10001`) and could not read a root-owned 0600
+# store at all. `kb serve` exited 2 on every start, the container crash-looped, Caddy
+# answered 502, and every file-backed token was dead — the same outage the revocation work
+# exists to remove, arriving by a different route.
+#
+# Whatever ownership and mode a deployment sets therefore has to SURVIVE each `kb token`
+# write. `write` replaces the file (temp file + `os.replace`), so without this the operator
+# chowns the store once and the next `issue` or `revoke` silently undoes it. That is the
+# same shape as the inode bug in tests/test_compose_token_mount.py: a correct fix that the
+# next write quietly reverts.
+# --------------------------------------------------------------------------------------
+
+
+def test_a_new_file_is_still_owner_readable_only(tmp_path: Path) -> None:
+    """Preserving an existing file's mode must not change what a *fresh* store gets."""
+    path = _path(tmp_path)
+    tokens_module.write(path, ())
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_write_preserves_an_existing_files_mode(tmp_path: Path) -> None:
+    path = _path(tmp_path)
+    tokens_module.issue(path, "alice@example.com")
+    path.chmod(0o640)
+    tokens_module.issue(path, "bob@example.com")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640, (
+        "a deployment that widened the mode so the server's uid can read it had that "
+        "undone by the next `kb token` write"
+    )
+
+
+def test_revoke_preserves_an_existing_files_mode(tmp_path: Path) -> None:
+    """Revocation is the write that matters most: it must not be the one that locks the
+    server out of the store."""
+    path = _path(tmp_path)
+    _, record = tokens_module.issue(path, "alice@example.com")
+    path.chmod(0o640)
+    tokens_module.revoke(path, record.id)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="chowning to another uid needs root")
+def test_write_preserves_an_existing_files_owner(tmp_path: Path) -> None:
+    """The compose case exactly: the store is chowned to the uid the server container runs
+    as, and `kb token` is then run by root on the host."""
+    path = _path(tmp_path)
+    tokens_module.issue(path, "alice@example.com")
+    os.chown(path, 10001, 10001)
+    tokens_module.issue(path, "bob@example.com")
+    st = path.stat()
+    assert (st.st_uid, st.st_gid) == (10001, 10001), (
+        "`kb token` gave the store back to root, so the server's uid lost its read"
+    )
+
+
+@pytest.mark.skipif(os.geteuid() != 0, reason="chowning to another uid needs root")
+def test_the_records_survive_the_ownership_handover(tmp_path: Path) -> None:
+    """Preserving the metadata must not cost the content."""
+    path = _path(tmp_path)
+    secret, _ = tokens_module.issue(path, "alice@example.com")
+    os.chown(path, 10001, 10001)
+    tokens_module.issue(path, "bob@example.com")
+    users = {r.user for r in tokens_module.read(path)}
+    assert users == {"alice@example.com", "bob@example.com"}
+    assert TokenStore(path=path).resolve(secret) is not None

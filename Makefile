@@ -10,7 +10,7 @@ PYTHON := $(UV) run python
 
 .PHONY: help sync check test gates license-gate model-gate fixtures \
         inventory triage prune convert report report-json answerability profile clean-work \
-        index search serve serve-http eval-retrieval compose-up compose-down \
+        index search serve serve-http eval-retrieval compose-up compose-down token \
         compose-index compose-env-check gpu-check fixtures-retrieval
 
 help:  ## Show this help
@@ -110,6 +110,12 @@ compose-up: compose-env-check gpu-check  ## Bring up the full stack (db, ollama,
 
 compose-down:  ## Tear down the prod compose stack (keeps volumes -- add ARGS=-v to also remove them)
 	$(COMPOSE) --profile prod down $(ARGS)
+
+# Container-first token management: `uv run kb token` needs a host venv, which the
+# deployment target does not have. Same image and so the same uid as the server, which is
+# what keeps the store it writes readable by `kb-mcp` (see compose/docker-compose.yml).
+token: compose-env-check  ## Manage tokens in a container: make token ARGS="issue you@example.com"
+	$(COMPOSE) --profile tools run --rm kb-token $(ARGS)
 
 compose-index: compose-env-check gpu-check  ## Index kb/ from inside the compose network (one-off container)
 	$(COMPOSE) run --rm kb-mcp kb index
