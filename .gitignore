@@ -13,6 +13,8 @@ __pycache__/
 # the deployment's other state, not with the code.
 tokens.json
 .tokens.json.tmp
+compose/tokens/*
+!compose/tokens/.gitkeep
 
 # macOS
 .DS_Store

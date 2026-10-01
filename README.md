@@ -840,6 +840,14 @@ on both `/mcp*` and `/kb/*`, with no restart and nothing required of any other u
 is the whole reason this exists: with tokens in `.env`, withdrawing one credential meant
 restarting the server, which dropped everybody — so in practice it never happened.
 
+**On the compose stack, set `KB_TOKENS_DIR` as well** — the directory holding that file.
+It is what gets bind-mounted into `kb-mcp`, and it has to be the directory rather than the
+file: a single-file bind mount binds the host file's inode, and `kb token` replaces the
+inode on every write, so the container would lose the file on the first issue or revoke.
+`make compose-up` checks that the two settings agree before starting anything, because the
+failure is otherwise silent — `kb token revoke` would report success and change nothing the
+server could see.
+
 **The secret is shown once and is not stored.** Only a sha256 of it is, so the file is not
 a credential: read access to it does not yield anyone's token. If a token is lost, issue
 another and revoke the old one; there is no recovery, by design.
