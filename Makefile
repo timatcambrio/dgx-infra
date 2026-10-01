@@ -100,6 +100,15 @@ COMPOSE = docker compose -f compose/docker-compose.yml $(GPU_COMPOSE_ARGS) --env
 compose-env-check:
 	@test -f .env || { echo "no .env: run 'cp .env.example .env' and set KB_PATH, KB_PUBLIC_HOST, KB_URL_BASE, KB_TOKENS_FILE, KB_TOKENS_DIR"; exit 2; }
 	@grep -qE '^KB_PATH=/' .env || { echo "KB_PATH in .env must be an ABSOLUTE path for the compose stack"; exit 2; }
+	@grep -qE '^KB_URL_BASE=.*/kb/?$$' .env && { \
+		echo "KB_URL_BASE in .env must NOT end in /kb. The stack supplies that segment twice:"; \
+		echo "  - the indexer stores each document as kb/<file>.md, and the citation url is"; \
+		echo "    KB_URL_BASE joined onto that path verbatim;"; \
+		echo "  - compose/Caddyfile routes /kb/* and strips the prefix before kb-static."; \
+		echo "Set it to the site root, e.g. https://\$$KB_PUBLIC_HOST -- otherwise every"; \
+		echo "citation url is https://host/kb/kb/<file>.md and answers 404."; \
+		exit 2; \
+	} || true
 	@$(PYTHON) scripts/check_token_paths.py
 
 gpu-check:  ## Say whether the compose stack will use this host's GPUs (KB_GPU=auto|on|off)
