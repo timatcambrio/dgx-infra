@@ -20,6 +20,7 @@ from __future__ import annotations
 import csv
 import shutil
 import zipfile
+import zlib
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -921,22 +922,70 @@ EQUIPMENT_TABLE_ROWS = [
 ]
 
 
-def _floor_plan_thumbnail_bytes() -> BytesIO:
-    """A tiny, deterministic PNG for the embedded-picture fixture.
+#: The embedded picture, as pixels. 6x6 rather than the 4x4 the addendum names: docling's
+#: `MsWordDocumentBackend` treats any picture at or under `SPACER_IMAGE_AREA_THRESHOLD`
+#: (25px^2) as an invisible layout spacer and drops it from the converted document entirely
+#: (verified against the installed docling version -- a 4x4, 16px^2 image produces zero
+#: `PictureItem`s). 6x6 = 36px^2 clears the threshold while staying a trivial, committable
+#: size.
+_THUMBNAIL_SIZE = 6
+_THUMBNAIL_RGB = (176, 44, 44)
 
-    6x6 rather than the 4x4 the addendum names: docling's `MsWordDocumentBackend` treats any
-    picture at or under `SPACER_IMAGE_AREA_THRESHOLD` (25px^2) as an invisible layout spacer
-    and drops it from the converted document entirely (verified against the installed
-    docling version -- a 4x4, 16px^2 image produces zero `PictureItem`s). 6x6 = 36px^2 clears
-    the threshold while staying a trivial, committable size. PIL's PNG writer embeds no
-    timestamp, so this is byte-stable across runs.
+
+def _png_chunk(kind: bytes, payload: bytes) -> bytes:
+    return (
+        len(payload).to_bytes(4, "big")
+        + kind
+        + payload
+        + zlib.crc32(kind + payload).to_bytes(4, "big")
+    )
+
+
+def _stored_zlib_stream(raw: bytes) -> bytes:
+    """`raw` in a zlib container, stored rather than compressed.
+
+    A single final stored deflate block: `0x01` (BFINAL=1, BTYPE=00) then LEN and its
+    one's complement, little-endian, then the bytes verbatim. Every field is fixed by the
+    format, so there is exactly one correct output for a given input -- which is the whole
+    reason this is here instead of a call to a compressor. `raw` must be under 65,536
+    bytes; at 6x6 RGB it is 114.
     """
-    from PIL import Image
+    assert len(raw) < 0x10000, len(raw)
+    block = b"\x01" + len(raw).to_bytes(2, "little") + (len(raw) ^ 0xFFFF).to_bytes(2, "little")
+    return b"\x78\x01" + block + raw + zlib.adler32(raw).to_bytes(4, "big")
 
-    buffer = BytesIO()
-    Image.new("RGB", (6, 6), (176, 44, 44)).save(buffer, format="PNG")
-    buffer.seek(0)
-    return buffer
+
+def _floor_plan_thumbnail_bytes() -> BytesIO:
+    """A tiny PNG for the embedded-picture fixture, built byte by byte.
+
+    Written here rather than with Pillow's `Image.save(..., format="PNG")` because a PNG's
+    pixel data is a zlib stream, and which bytes a compressor emits for the same pixels
+    depends on the zlib build behind it. Measured 2026-10-01: the committed fixture and one
+    regenerated on Linux decode to identical pixels and differ in the 20 bytes of the IDAT
+    stream, so `test_determinism.py::test_fixtures_regenerate_byte_identically` could not
+    pass on both machines -- it failed on Linux against a fixture generated on macOS. A
+    committed binary fixture that only reproduces on the machine that happened to make it
+    is not reproducible, and the deployment target is Linux.
+
+    So no compressor is involved. The IDAT holds a *stored* deflate stream, and the only
+    library calls are `zlib.crc32` and `zlib.adler32` -- checksums, with one right answer
+    per input on every platform.
+    """
+    side = _THUMBNAIL_SIZE
+    # Filter byte 0 (None) per scanline, then the row's pixels.
+    raw = (b"\x00" + bytes(_THUMBNAIL_RGB) * side) * side
+    header = (
+        side.to_bytes(4, "big")
+        + side.to_bytes(4, "big")
+        + bytes((8, 2, 0, 0, 0))  # 8-bit, truecolour RGB, deflate, no filter, no interlace
+    )
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", _stored_zlib_stream(raw))
+        + _png_chunk(b"IEND", b"")
+    )
+    return BytesIO(png)
 
 
 def tables_and_image_docx(path: Path) -> None:

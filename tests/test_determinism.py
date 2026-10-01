@@ -260,6 +260,54 @@ def test_fixtures_regenerate_byte_identically(tmp_path):
         assert (tmp_path / name).read_bytes() == (committed / name).read_bytes(), name
 
 
+def _make_fixtures_module():
+    spec = importlib.util.spec_from_file_location(
+        "_make_fixtures_inspect", Path(__file__).resolve().parent / "make_fixtures.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _png_chunks(png: bytes) -> dict[bytes, bytes]:
+    out, offset = {}, 8
+    while offset < len(png):
+        length = int.from_bytes(png[offset : offset + 4], "big")
+        kind = png[offset + 4 : offset + 8]
+        out[kind] = png[offset + 8 : offset + 8 + length]
+        offset += 12 + length
+    return out
+
+
+def test_the_embedded_thumbnail_carries_no_compressed_data():
+    """Why `tables_and_image.docx` is reproducible on more than one machine.
+
+    A PNG's pixel data is a zlib stream, and which bytes a compressor emits for the same
+    pixels depends on the zlib build behind it. Measured 2026-10-01: the committed fixture
+    and one regenerated on Linux decoded to identical pixels and differed in the 20 bytes
+    of their IDAT, so the test above failed on Linux against a fixture generated on macOS.
+
+    The IDAT must therefore be a *stored* deflate block, every field of which the format
+    fixes exactly, leaving no choice for a compressor to make differently.
+    """
+    idat = _png_chunks(_make_fixtures_module()._floor_plan_thumbnail_bytes().getvalue())[b"IDAT"]
+    assert idat[:2] == b"\x78\x01", "zlib header for a level-0 stream"
+    assert idat[2] & 0x01 == 1, "a single final block"
+    assert idat[2] & 0x06 == 0, (
+        "BTYPE must be 00 (stored); a compressed block's bytes vary by zlib build, which "
+        "is the irreproducibility this exists to prevent"
+    )
+
+
+def test_the_embedded_thumbnail_still_clears_doclings_spacer_threshold():
+    """docling's `MsWordDocumentBackend` drops any picture at or under 25px^2 as an
+    invisible layout spacer. Shrink this and the fixture's picture disappears from the
+    converted document, taking the DOCX provenance walk's only `PictureItem` with it."""
+    module = _make_fixtures_module()
+    assert module._THUMBNAIL_SIZE ** 2 > 25
+
+
 def test_docx_converts_identically_twice(config, entry_for):
     """Docling's DOCX path is pure parsing, so it must be reproducible."""
     first = convert_fixture_text("simple.docx", config, entry_for)
