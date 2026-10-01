@@ -51,13 +51,25 @@ def _not_implemented(name: str, milestone: str) -> None:
 
 
 def _run_db(coro, *, what: str, dsn: str | None):
-    """`asyncio.run` for commands that talk to Postgres, turning the two failures a user can
-    fix into one line each: the server is not reachable, or the credentials/database are
-    wrong. Anything else propagates unchanged."""
+    """`asyncio.run` for commands that talk to Postgres, turning the three failures a user
+    can fix into one line each: the server is not reachable, the credentials/database are
+    wrong, or the schema was never applied. Anything else propagates unchanged."""
     import asyncpg  # noqa: PLC0415 - behind the `serve` extra
 
     try:
         return asyncio.run(coro)
+    except asyncpg.UndefinedTableError as exc:
+        # The fresh-deployment case. `make compose-up` + `make compose-index` -- the two
+        # commands the quickstart gives -- used to end here in a raw traceback saying
+        # `relation "index_meta" does not exist` and nothing about the step that was
+        # missing, because the compose path had no `--init` of its own.
+        typer.echo(
+            f"{what}: the schema is not applied yet ({exc}). Apply it once, then index:\n"
+            "  make compose-index ARGS=--init     # the compose stack\n"
+            "  uv run kb index --init             # a host venv",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     except (ConnectionRefusedError, OSError) as exc:
         where = _dsn_host_port(dsn)
         typer.echo(
