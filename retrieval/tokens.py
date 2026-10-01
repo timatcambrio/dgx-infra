@@ -37,6 +37,7 @@ import hmac
 import json
 import os
 import secrets
+import stat
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -238,10 +239,42 @@ def write(path: Path, records: Sequence[TokenRecord]) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        _inherit_access(path, tmp)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
     os.replace(tmp, path)
+
+
+def _inherit_access(target: Path, tmp: Path) -> None:
+    """Give the replacement the mode and owner that the file it replaces already had.
+
+    `write` installs a NEW inode, so without this every deployment-level fix to the
+    store's permissions is undone by the next `issue` or `revoke`. Measured 2026-10-01 on
+    the compose stack: `kb-mcp` runs as uid 10001 (compose/Dockerfile) and cannot read a
+    root-owned 0600 store, so `kb serve` exits 2 and the container crash-loops. Chowning
+    the store to that uid fixes it — and the next `kb token` write took it back, silently,
+    which is the same shape as the inode bug that made this function atomic in the first
+    place.
+
+    A fresh store keeps the 0600 it was created with: there is nothing to inherit, and a
+    new credential store must not start out readable by more than its owner.
+
+    Ownership is best effort. Only root may give a file away, and a deployment where
+    `kb token` already runs as the store's owner neither needs to nor can. A refusal there
+    is not worth failing the write over: the records are what matter, the mode has already
+    been carried over, and `make compose-up`'s pre-flight
+    (`scripts/check_token_paths.py`) is what catches a store the server cannot read.
+    """
+    try:
+        previous = target.stat()
+    except FileNotFoundError:
+        return
+    os.chmod(tmp, stat.S_IMODE(previous.st_mode))
+    try:
+        os.chown(tmp, previous.st_uid, previous.st_gid)
+    except (PermissionError, OSError):
+        pass
 
 
 # --------------------------------------------------------------------------------------

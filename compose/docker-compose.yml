@@ -136,6 +136,36 @@ services:
     # No `ports:` entry -- binds 0.0.0.0:8765 inside the compose network only, reachable
     # solely via `caddy`.
 
+  # Issuing, listing and revoking tokens WITHOUT a host venv. The deployment is
+  # container-first -- the DGX gets `docker compose` and nothing else -- so every
+  # documented `uv run kb token ...` was unavailable there, and the quickstart asks for a
+  # token before the stack is even up. One-off, through the Makefile:
+  #
+  #     make token ARGS="issue alice@example.com"
+  #
+  # Built from the same Dockerfile as `kb-mcp`, so it runs as the SAME uid (10001). That
+  # is what makes the store it writes readable by the server: a store written by root on
+  # the host is mode 0600 root-owned, which uid 10001 cannot read at all -- measured
+  # 2026-10-01, `kb serve` exited 2 and the container crash-looped behind a 502. Writing
+  # it from here needs no chown anywhere and does not widen 0600.
+  #
+  # The mount is the one difference from `kb-mcp`'s and the whole point of the service:
+  # read-WRITE. Exactly one thing in the stack writes the store, and it is not the server.
+  #
+  # No `depends_on`: tokens live in a file so that authentication survives Postgres being
+  # down, so revoking one has to work during exactly that outage.
+  kb-token:
+    build:
+      context: ..
+      dockerfile: compose/Dockerfile
+    environment:
+      KB_TOKENS_FILE: /etc/kb/tokens.json
+    volumes:
+      - ${KB_TOKENS_DIR:-./tokens}:/etc/kb:rw
+    entrypoint: ["uv", "run", "kb", "token"]
+    # Not in `prod`: a one-off command must not become a service `make compose-up` starts.
+    profiles: ["tools"]
+
   kb-static:
     image: caddy:2
     restart: unless-stopped
