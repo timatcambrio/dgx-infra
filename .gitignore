@@ -16,6 +16,10 @@ tokens.json
 compose/tokens/*
 !compose/tokens/.gitkeep
 
+# TLS material for the TLS_CERT/TLS_KEY path (scripts/make_tls_cert.sh writes it here).
+# A PRIVATE KEY: never committed, per deployment, regenerated rather than shared.
+tls/
+
 # macOS
 .DS_Store
 
