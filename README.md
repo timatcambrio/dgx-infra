@@ -976,9 +976,39 @@ when `KB_PUBLIC_HOST` **is** that IP, and otherwise clients must use the name (D
 Alternatively, set `TLS_CERT` and `TLS_KEY` in `.env` to the paths of a certificate/key
 pair issued by a CA your users' machines already trust (an internal corporate CA, or a
 client-issued cert) — `compose/caddy-entrypoint.sh` uses that pair instead of `tls
-internal` whenever both are set, and no user-side trust step is needed. Which of the two
+internal` whenever both are set, and no user-side trust step is needed.
+
+**The names on a supplied certificate are yours to get right.** With `tls internal` Caddy
+issues a certificate per name on demand, so the set of names it answers for is open. With
+one supplied pair that set is fixed when the certificate is made, and a client dialling a
+name that is not on it fails verification — a different failure, at a different layer, from
+the SNI one above. The Caddyfile serves one site block for `KB_PUBLIC_HOST`, `localhost`
+and `127.0.0.1`, so all of those (plus the host's own IP, as an IP SAN, which a DNS SAN
+does not cover) belong on it. To exercise this path without an internal CA to hand,
+`scripts/make_tls_cert.sh <public-host> [extra-name-or-ip ...]` writes a self-signed pair
+with exactly those names on it and prints the two `.env` lines. That certificate is for
+testing the path, not for production. Which of the two
 is right for a given deployment is `stage2-retrieval-brief.md` §11.1, open for Tim to
 decide; both are supported without any code change.
+
+### Standing the stack up on a fresh host
+
+The deployment is container-first: `docker compose` and nothing else. Getting a bare Linux
+host to that point needs three host packages, and `scripts/bootstrap_host.sh` installs
+them — Docker Engine, the compose plugin, and the NVIDIA Container Toolkit — then verifies
+GPU passthrough from inside a throwaway container. It deliberately does **not** install
+the NVIDIA kernel driver (see the script's header for why): `nvidia-smi` must already
+work, which on a cloud host is the image's job.
+
+```bash
+sh scripts/bootstrap_host.sh          # install what is missing, then verify
+sh scripts/bootstrap_host.sh --check  # verify only
+```
+
+It is idempotent and safe to re-run. Set `KB_GPU=on` in `.env` on a host whose GPUs are
+the point, so that a missing one stops the stack instead of letting it index slowly and
+silently on the CPU; `make gpu-check` reports which way the decision goes without starting
+anything.
 
 ### Checking a deployment end to end
 
