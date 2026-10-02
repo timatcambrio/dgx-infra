@@ -6,6 +6,20 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-02 [USER] **Next run: the full stack on a fresh AWS GPU instance**, to close the
+  three things the 2026-10-01 remote test could not reach. Runbook written and ready to
+  execute: `../aws-gpu-deployment-runbook.md`, twelve steps. It closes (1) the real
+  embedding model end to end over HTTPS — `nomic-embed-text` pulled and indexed with,
+  instead of the deterministic double; (2) GPU passthrough, verified in four places
+  (toolkit installed, passthrough proven in a throwaway container, the Compose reservation
+  resolving, and `ollama ps` reporting `100% GPU` after an index — that last line is the
+  only one that proves the MODEL used the card); (3) `TLS_CERT`/`TLS_KEY` instead of `tls
+  internal`, via a self-signed pair standing in for the client's internal CA. It also
+  re-runs the proxy-corpus eval with the real model, which would be the first check that
+  the recorded 33% / 58% / 72% floor is a property of the pipeline and not of the dev Mac.
+  [USER] decisions taken 2026-10-02: Tim launches the instance (no AWS API calls from the
+  agent); BOTH corpora, fixtures first then the proxy corpus; self-signed cert via
+  TLS_CERT/TLS_KEY; the host gets the code by `git clone` from GitHub.
 - 2026-10-01 [TOOL] **What the remote test did NOT cover, and is the next thing to do on real
   hardware.** The run was on a fresh Linux host with no GPU and no access to
   `registry.ollama.ai`, so `nomic-embed-text` could not be pulled and the stack was indexed
@@ -208,6 +222,23 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-10-02 [CODE] **The server image does not carry `scripts/`**, so `scripts/http_probe.py`
+  cannot be run with `docker compose run kb-mcp` as written. `compose/Dockerfile` copies
+  `pyproject.toml`, `uv.lock`, `retrieval/`, `pipeline/` and `README.md` and nothing else —
+  the image is the server, not the toolkit. The probe has to be bind-mounted at
+  `/app/scripts` so the `retrieval` package it imports is its sibling, as the runbook now
+  does. Found by checking the runbook's own commands against the Dockerfile rather than by
+  running them; it would have failed on the deployment host at the first probe.
+- 2026-10-02 [CODE] **`kb index` deletes the documents that are no longer on disk**
+  (`retrieval/index.py`: `gone = set(existing) - seen`, then `DELETE FROM documents`). So
+  swapping one corpus for another needs no `--init` and no `--reindex-all`: removing the
+  files and re-running the one command both drops the old documents and takes on the new.
+  This is what makes the runbook's fixtures-then-proxy-corpus sequence a single extra call.
+- 2026-10-02 [CODE] **Nothing in `retrieval/` reads `corpus.yaml`** — it is Stage 1's
+  manifest. The indexer reads `kb/*.md` plus each `.provenance.json` sidecar beside it
+  (`retrieval/kbfiles.py`). Relevant because a corpus transferred to a deployment host
+  needs the sidecars and does not need the manifest; copying only the `.md` files would
+  index documents stripped of their provenance.
 - 2026-10-01 [TOOL] **HTTPS broke IP-addressed clients, one layer below everything the
   README warns about.** Dialling the stack at `https://<ip>/health` failed in the TLS
   handshake — `tlsv1 alert internal error`, alert 80, `no peer certificate available` —
@@ -374,6 +405,46 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-10-02 [TOOL] **The deployment is packaged for a fresh GPU host.** `make check` green
+  at **630 passed, 2 skipped**, both gates PASSED (the 627 baseline on `main` plus three new
+  tests). Nothing about the running stack changed; what was missing was the path from a bare
+  host to it.
+  * `scripts/bootstrap_host.sh` — Docker Engine, the compose plugin and the NVIDIA Container
+    Toolkit, each installed only if missing, idempotent, `--check` to verify only. It ends by
+    running a throwaway CUDA container and reading `nvidia-smi` from inside it, because a
+    host whose own `nvidia-smi` works while a container's does not is exactly the
+    half-configured state `KB_GPU=on` exists to refuse and nothing on the host reveals it.
+    It deliberately does NOT install the kernel driver: not idempotent, usually wants a
+    reboot, and on a cloud host it is the image's job — so it refuses with one line naming
+    the AMI choice instead.
+  * `scripts/make_tls_cert.sh` — a self-signed pair for the `TLS_CERT`/`TLS_KEY` path, with
+    every name the Caddyfile's site block answers for on it (`KB_PUBLIC_HOST`, `localhost`,
+    `127.0.0.1`) plus any extra name or IP given. `tls/` is gitignored; it holds a private
+    key. Exercised locally: the SANs come out as intended, DNS and IP in their separate
+    fields.
+  * `tests/test_compose_tls_cert_names.py` — three tests pinning the failure that only
+    exists on the supplied-certificate path: with `tls internal` Caddy issues a certificate
+    per name on demand so the name set is open, while one supplied certificate closes it at
+    the moment it is made, and a client dialling a name that is not on it fails
+    VERIFICATION — a different failure, at a different layer, from the SNI handshake one
+    `tests/test_compose_tls.py` already pins. Also pins that an IP argument becomes an IP
+    SAN, since a DNS SAN does not match a client that dialled an address, and the AWS run
+    reaches the instance by IP before any name exists for it.
+  * `../aws-gpu-deployment-runbook.md` — the twelve-step run, each step saying what it
+    proves. Its commands were checked against the code rather than trusted: three were wrong
+    as first drafted, see [DISCOVERIES].
+  * `README.md` gained "Standing the stack up on a fresh host" and, in the TLS section, the
+    naming rule for a supplied certificate.
+- 2026-10-02 [TOOL] **`main` is NOT 6 commits ahead of `origin/main`; it equals it.** The
+  2026-10-01 handoff recorded the HTTPS deployment work as unpushed. It is on GitHub:
+  `d9ceb44` (PR #3, `fix/https-stack-deployment`) and `08bb4d1` (PR #4,
+  `docs/repo-conventions`) are merge commits on `origin/main`, and `git rev-list --count
+  origin/main..HEAD` is 0. Since the DGX deploys from GitHub, that work is already in effect
+  there. Recorded because the briefing said otherwise and the next person would plan around
+  a push that has happened.
+- 2026-10-02 [TOOL] Baseline on `main` before any of today's changes: both gates PASSED,
+  **627 passed, 2 skipped**, exit 0 (629 collected — the same count as the remote host's
+  629, where nothing skipped). The 2026-10-01 handoff's figure of 597 is stale.
 - 2026-10-01 [TOOL] **The HTTPS compose stack ran end to end for the first time, on a
   remote Linux host, and five deployment-only defects had to be fixed to get there**
   (branch `fix/https-stack-deployment`). `make check` green at **629 tests**,
