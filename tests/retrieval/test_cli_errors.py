@@ -42,3 +42,33 @@ def test_unreachable_postgres_is_one_line_with_the_fix(unreachable_env, argv):
     assert "docker compose" in result.output
     assert "Traceback" not in result.output
     assert "secret-pw" not in result.output
+
+
+def test_an_unapplied_schema_is_one_line_naming_init(monkeypatch, tmp_path):
+    """The third failure a fresh deployment hits, and the one the quickstart walked into.
+
+    Measured 2026-10-01 against the real compose stack: `make compose-up` followed by
+    `make compose-index` -- the two commands the README's quickstart gives -- ended in a
+    raw asyncpg traceback, `UndefinedTableError: relation "index_meta" does not exist`,
+    because nothing in the compose path had ever run `kb index --init`. Nothing in that
+    output said so.
+    """
+    import asyncpg
+
+    monkeypatch.setenv("KB_PATH", str(tmp_path))
+    monkeypatch.setenv("DATABASE_URL_INDEX", "postgresql://kb_index:secret-pw@127.0.0.1:5432/kb")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://kb_read:secret-pw@127.0.0.1:5432/kb")
+    monkeypatch.setenv("KB_URL_BASE", "http://localhost/kb")
+
+    def boom(coro, *_args, **_kwargs):
+        coro.close()  # nothing awaits it; closing keeps pytest's unraisable hook quiet
+        raise asyncpg.UndefinedTableError('relation "index_meta" does not exist')
+
+    monkeypatch.setattr("asyncio.run", boom)
+
+    result = runner.invoke(app, ["index"])
+    assert result.exit_code == 2, result.output
+    assert "kb index --init" in result.output
+    assert "make compose-index ARGS=--init" in result.output
+    assert "Traceback" not in result.output
+    assert "secret-pw" not in result.output

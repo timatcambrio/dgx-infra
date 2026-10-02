@@ -10,7 +10,7 @@ PYTHON := $(UV) run python
 
 .PHONY: help sync check test gates license-gate model-gate fixtures \
         inventory triage prune convert report report-json answerability profile clean-work \
-        index search serve serve-http eval-retrieval compose-up compose-down \
+        index search serve serve-http eval-retrieval compose-up compose-down token \
         compose-index compose-env-check gpu-check fixtures-retrieval
 
 help:  ## Show this help
@@ -100,6 +100,15 @@ COMPOSE = docker compose -f compose/docker-compose.yml $(GPU_COMPOSE_ARGS) --env
 compose-env-check:
 	@test -f .env || { echo "no .env: run 'cp .env.example .env' and set KB_PATH, KB_PUBLIC_HOST, KB_URL_BASE, KB_TOKENS_FILE, KB_TOKENS_DIR"; exit 2; }
 	@grep -qE '^KB_PATH=/' .env || { echo "KB_PATH in .env must be an ABSOLUTE path for the compose stack"; exit 2; }
+	@grep -qE '^KB_URL_BASE=.*/kb/?$$' .env && { \
+		echo "KB_URL_BASE in .env must NOT end in /kb. The stack supplies that segment twice:"; \
+		echo "  - the indexer stores each document as kb/<file>.md, and the citation url is"; \
+		echo "    KB_URL_BASE joined onto that path verbatim;"; \
+		echo "  - compose/Caddyfile routes /kb/* and strips the prefix before kb-static."; \
+		echo "Set it to the site root, e.g. https://\$$KB_PUBLIC_HOST -- otherwise every"; \
+		echo "citation url is https://host/kb/kb/<file>.md and answers 404."; \
+		exit 2; \
+	} || true
 	@$(PYTHON) scripts/check_token_paths.py
 
 gpu-check:  ## Say whether the compose stack will use this host's GPUs (KB_GPU=auto|on|off)
@@ -111,8 +120,18 @@ compose-up: compose-env-check gpu-check  ## Bring up the full stack (db, ollama,
 compose-down:  ## Tear down the prod compose stack (keeps volumes -- add ARGS=-v to also remove them)
 	$(COMPOSE) --profile prod down $(ARGS)
 
-compose-index: compose-env-check gpu-check  ## Index kb/ from inside the compose network (one-off container)
-	$(COMPOSE) run --rm kb-mcp kb index
+# Container-first token management: `uv run kb token` needs a host venv, which the
+# deployment target does not have. Same image and so the same uid as the server, which is
+# what keeps the store it writes readable by `kb-mcp` (see compose/docker-compose.yml).
+token: compose-env-check  ## Manage tokens in a container: make token ARGS="issue you@example.com"
+	$(COMPOSE) --profile tools run --rm kb-token $(ARGS)
+
+# ARGS for the same reason `index` above has it, and one reason more: `--init` applies the
+# schema, and until this accepted flags there was no way to do that from the compose path
+# at all -- so the quickstart's `make compose-up && make compose-index` met an
+# UndefinedTableError on every new deployment.
+compose-index: compose-env-check gpu-check  ## Index kb/ from inside the compose network. First run needs ARGS=--init
+	$(COMPOSE) run --rm kb-mcp kb index $(ARGS)
 
 fixtures-retrieval:  ## Regenerate tests/retrieval/fixtures/kb/ (should be a no-op)
 	$(PYTHON) tests/retrieval/make_fixtures.py

@@ -9,7 +9,7 @@ converter: docling (docx)
 text_coverage: null
 text_class: clean
 needs_ocr: false
-content_sha256: bf6a488776e2c168c8e8e135ef618b994d15b00297e58ca607f3136055e7a5c8
+content_sha256: dcfdb1907923b1bf7dac7f1e3c48a5e7342f4d03cff1ad1d0d108e27ea531fe6
 ---
 
 > **INCOMPLETE — this document embeds 1 image(s), and their content is not in the text layer.** No OCR was attempted. Each is marked in place below.
