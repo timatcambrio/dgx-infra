@@ -6,6 +6,16 @@
 UV ?= uv
 PYTHON := $(UV) run python
 
+# The container-first targets (compose-up, compose-index, token) must run on a host that
+# has `docker compose` and nothing else -- that is the whole reason `make token` exists,
+# since every other documented path to a token is `uv run kb token`, which the deployment
+# target cannot run. Their one pre-flight, scripts/check_token_paths.py, imports only the
+# standard library plus retrieval/config.py, which is itself stdlib-only, so a system
+# interpreter runs it and $(PYTHON) would drag `uv` back into the one path that must not
+# need it. Measured 2026-10-05: `make token` on a fresh GPU host died with "uv: No such
+# file or directory". See tests/test_make_host_requirements.py.
+PREFLIGHT_PYTHON ?= python3
+
 .DEFAULT_GOAL := help
 
 .PHONY: help sync check test gates license-gate model-gate fixtures \
@@ -109,7 +119,7 @@ compose-env-check:
 		echo "citation url is https://host/kb/kb/<file>.md and answers 404."; \
 		exit 2; \
 	} || true
-	@$(PYTHON) scripts/check_token_paths.py
+	@$(PREFLIGHT_PYTHON) scripts/check_token_paths.py
 
 gpu-check:  ## Say whether the compose stack will use this host's GPUs (KB_GPU=auto|on|off)
 	@compose/gpu-detect.sh >/dev/null
