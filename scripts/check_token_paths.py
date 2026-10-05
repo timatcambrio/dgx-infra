@@ -67,6 +67,25 @@ def _allows(info: "os.stat_result", want: str) -> bool:
     return all(info.st_mode & _BITS[bit][which] for bit in want)
 
 
+def _stat(path: Path) -> "tuple[os.stat_result | None, bool]":
+    """`(info, denied)` for `path`: the stat, or None with whether we were refused.
+
+    `Path.exists()` cannot be used for this. `_ignore_error` swallows ENOENT and ENOTDIR
+    and never EACCES, so on the setup this script RECOMMENDS -- a 0700 directory owned by
+    SERVER_UID -- it raises in the face of the login user instead of answering. Measured
+    2026-10-05 on a fresh host; see tests/test_compose_token_mount.py.
+
+    Absent and unreadable are different answers and the caller treats them differently,
+    so they are reported separately rather than both collapsing to False.
+    """
+    try:
+        return path.stat(), False
+    except (FileNotFoundError, NotADirectoryError):
+        return None, False
+    except PermissionError:
+        return None, True
+
+
 def _setup_hint(token_dir: str) -> str:
     return (
         "The container-first way to avoid this entirely is to let the stack write the\n"
@@ -141,7 +160,17 @@ def main(argv: list[str] | None = None) -> int:
     # not broken -- `kb serve` refuses to start on its own and names `kb token issue` -- and
     # a directory Compose has not been pointed at yet is not this script's business.
     directory = Path(token_dir)
-    if directory.is_dir() and not _allows(directory.stat(), "wx"):
+    dir_info, dir_denied = _stat(directory)
+    if dir_denied:
+        print(
+            f"cannot inspect {token_dir}: permission denied as uid {os.geteuid()}. Its own\n"
+            "parent directory does not allow this user to look, so nothing here can be\n"
+            f"verified -- including whether uid {SERVER_UID} can write the store.\n\n"
+            f"Check it with:\n\n    sudo {sys.executable} {__file__}\n",
+            file=sys.stderr,
+        )
+        return 2
+    if dir_info is not None and stat.S_ISDIR(dir_info.st_mode) and not _allows(dir_info, "wx"):
         print(
             f"{token_dir} is not writable by uid {SERVER_UID}, which is what `make token`\n"
             "runs as. `kb token` writes a temp file beside the store and renames it over\n"
@@ -152,8 +181,25 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     store = Path(token_file)
-    if store.exists() and not _allows(store.stat(), "r"):
-        info = store.stat()
+    info, denied = _stat(store)
+    if denied:
+        # Not a fault, and specifically safe to pass. The directory check above has
+        # already run -- `stat` on a directory needs only `+x` on its PARENT, so it is
+        # reachable even when the directory itself shuts us out -- and it is what pins
+        # the thing that matters: that SERVER_UID can write here. A store we cannot see
+        # inside a directory SERVER_UID owns is the documented setup working, not a
+        # misconfiguration. The root-owned store that took the stack down on 2026-10-01
+        # is still refused, by that directory check, without root.
+        print(
+            f"note: {token_file} could not be inspected as uid {os.geteuid()} -- "
+            f"{token_dir}\nbelongs to another uid and does not let this user in. That is "
+            "the setup this\nscript recommends, and the directory itself checked out, so "
+            "this is not an error.\n\n"
+            f"To verify the store's own mode and owner:\n\n    sudo {sys.executable} {__file__}\n",
+            file=sys.stderr,
+        )
+        return 0
+    if info is not None and not _allows(info, "r"):
         print(
             f"{token_file} is not readable by uid {SERVER_UID}, which is the uid kb-mcp\n"
             f"runs as (it is {stat.S_IMODE(info.st_mode):04o} owned by "
