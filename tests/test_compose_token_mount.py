@@ -93,6 +93,7 @@ def test_caddy_is_not_given_the_tokens() -> None:
 
 import os  # noqa: E402
 import subprocess  # noqa: E402
+import tempfile  # noqa: E402
 import sys  # noqa: E402
 
 CHECK = REPO / "scripts" / "check_token_paths.py"
@@ -326,3 +327,59 @@ def test_a_store_that_does_not_exist_yet_passes(tmp_path: Path) -> None:
     store.chmod(0o777)
     r = _check(tmp_path, f"KB_TOKENS_FILE={store}/tokens.json\nKB_TOKENS_DIR={store}\n")
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root traverses any directory, so EACCES cannot happen")
+def test_a_store_inside_a_directory_we_cannot_enter_passes_with_a_note() -> None:
+    """The pre-flight crashed on exactly the state it tells you to create.
+
+    Measured 2026-10-05 on a fresh AWS host, at step 6 of the runbook. The documented
+    setup is `install -d -o 10001 -g 10001 -m 700 /srv/kb`, so the directory belongs to
+    the server's uid and nobody else may enter it. `make token` then runs as the login
+    user, and `Path.exists()` on the store inside raises instead of answering, because
+    `_ignore_error` swallows ENOENT and ENOTDIR but never EACCES:
+
+        PermissionError: [Errno 13] Permission denied: '/srv/kb/tokens.json'
+
+    A traceback, from the script whose whole job is to replace a confusing failure with
+    one line naming the fix.
+
+    Not being able to look is not a fault in the deployment, and it is specifically safe
+    to pass here: the DIRECTORY check above has already run — `stat` on the directory
+    itself needs only `+x` on its parent — and it is what pins the thing that matters,
+    that uid 10001 can write there. The root-owned store that took the stack down on
+    2026-10-01 is still refused by that check, as a non-root user, which the next test
+    pins.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = root / "store"
+        store.mkdir()
+        (store / "tokens.json").write_text("{}\n", encoding="utf-8")
+        # -wx for "other", nothing for the owner: uid 10001 may write here, and we may
+        # not enter. Exactly the shape of a 0700 directory owned by another uid.
+        store.chmod(0o003)
+        try:
+            r = _check(root, f"KB_TOKENS_FILE={store}/tokens.json\nKB_TOKENS_DIR={store}\n")
+        finally:
+            store.chmod(0o755)
+
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Traceback" not in r.stderr, "a traceback is the failure this test exists to prevent"
+    assert "sudo" in r.stderr, "it must say how to check the store for real"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root traverses any directory, so EACCES cannot happen")
+def test_a_root_owned_directory_is_still_refused_without_root() -> None:
+    """The tolerance above must not swallow the defect the script exists for. A directory
+    the server's uid cannot write is refused even when we are not root and cannot see
+    inside it -- `stat` on the directory needs only `+x` on its parent."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        store = root / "store"
+        store.mkdir()
+        store.chmod(0o700)  # ours, and no bits at all for uid 10001
+        r = _check(root, f"KB_TOKENS_FILE={store}/tokens.json\nKB_TOKENS_DIR={store}\n")
+
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert str(SERVER_UID) in r.stderr
