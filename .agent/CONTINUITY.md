@@ -6,6 +6,30 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-06 [TOOL] **Open question from the AWS run, and the one experiment that settles
+  it: why vector recall is 28 points above the recorded floor.** Measured on the GPU host:
+  lexical **33%** (identical to the floor, case for case), vector **86%** (floor 58%),
+  fused **89%** (floor 72%), 36 cases, `--k 5`. Three causes are ELIMINATED: the model
+  (`nomic-embed-text` digest `0a109f422b47` on both the dev Mac and the host), the text
+  (the lexical leg never touches embeddings and did not move by a single case), and the
+  code (only `9dbbe9b` touched the retrieval path since the floor, and that is the commit
+  the floor was re-recorded for). Two remain: (1) the Mac's floor was depressed by
+  something environmental — embed batches there ran 63 s against a 60 s timeout, so a
+  partially-embedded index would read exactly like this, low vector with perfect lexical;
+  (2) GPU-versus-CPU numerics in ollama, which fits the magnitude far worse. **The
+  decisive test: re-run `kb eval` on the dev Mac now, same model, same cases, against a
+  freshly built index.** ≈86% there means the recorded floor is wrong and the GPU is not
+  the cause; ≈58% means the difference is real and hardware-dependent. Until that runs,
+  **the README floor table is deliberately NOT updated** — adopting the flattering number
+  without a cause is how a measurement becomes folklore.
+- 2026-10-06 [TOOL] **`EMBED_MODEL=nomic-embed-text` is an unpinned tag, and should not
+  stay that way for the client.** The deployment pulls whatever `latest` points at, and
+  `index_meta` records the model NAME, not its digest, so a retag changes every embedding
+  with nothing in the index or the logs to show it. On this run the digests happened to
+  match; that was luck, not a guarantee. For an on-prem federal deployment this is a
+  reproducibility and supply-chain gap and is the kind of thing the access proposal's §8
+  audience asks about. Not yet decided: pin by digest in `.env.example`, record the digest
+  in `index_meta`, or both.
 - 2026-10-02 [USER] **Next run: the full stack on a fresh AWS GPU instance**, to close the
   three things the 2026-10-01 remote test could not reach. Runbook written and ready to
   execute: `../aws-gpu-deployment-runbook.md`, twelve steps. It closes (1) the real
@@ -222,6 +246,35 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-10-06 [TOOL] **Docker creates a missing bind-mount source as root, and that broke
+  the corpus transfer.** `KB_PATH` was set in runbook step 3 and the directory created in
+  step 9, with `make compose-up` between them. `kb-static` mounts `${KB_PATH}/kb`, so
+  Compose created it — owned by root, four minutes after the parent the login user had
+  made. `rsync` then failed with permission denied and `rm` needed `sudo`. The two
+  directories a deployment needs have OPPOSITE requirements and were a step apart with
+  nothing saying so: the content tree belongs to the login user and only has to be
+  *readable* by uid 10001, while the token store must be *owned* by it. Worth keeping
+  because of the silent half: a file in `kb/` that uid 10001 cannot read is served as a
+  404 by `kb-static` while `kb index` embeds it perfectly well through its own mount, so
+  the index looks right and every citation url is dead. `http_probe.py`'s "the cited url
+  is actually fetchable" check is the only thing in the stack that catches it.
+- 2026-10-06 [TOOL] **The probe had never been run from either place it is documented to
+  run from, and was broken in both.** Two defects, one cause each, both in
+  `scripts/http_probe.py`.
+  (1) **From a client it judged the deployment by the local checkout.** The document to
+  request came from globbing this machine's `kb/`, and a citation url was compared against
+  this machine's `KB_URL_BASE`. Run from the dev Mac against a correct AWS stack it
+  reported three failures, all wrong: a 404 for the first of twelve proxy documents asked
+  of a server holding four fixtures, and a correct url judged against
+  `http://localhost/kb` — which also silently skipped the "actually fetchable" check
+  guarded behind it, reporting 16 checks instead of 17. The document now comes from the
+  server's own `list_documents` and the url must point into `--base-url`.
+  (2) **Discovery then read a field the server does not send.** A `DocumentEntry` carries
+  `id` (`ids.doc_id(slug)` → `doc:<slug>`), not `slug`. A missing dict key is only `None`,
+  and the local-corpus fallback cannot help inside the `kb-token` container, which is
+  given no `KB_PATH`, so the probe exited before running a single check against a server
+  holding twelve documents. Now parsed with `ids.parse_id`, with a test pinning the
+  server's own declaration of the field.
 - 2026-10-02 [CODE] **The server image does not carry `scripts/`**, so `scripts/http_probe.py`
   cannot be run with `docker compose run kb-mcp` as written. `compose/Dockerfile` copies
   `pyproject.toml`, `uv.lock`, `retrieval/`, `pipeline/` and `README.md` and nothing else —
@@ -405,6 +458,43 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-10-06 [USER+TOOL] **The deployment ran end to end on a fresh AWS GPU instance, and
+  all three things the 2026-10-01 remote test could not reach are now answered.**
+  `g4dn.xlarge` (one T4, 16 GB), Ubuntu 22.04 Deep Learning Base OSS Nvidia Driver AMI,
+  Elastic IP, code by `git clone` of `origin/main`, corpus by rsync. Runbook:
+  `../aws-gpu-deployment-runbook.md`.
+  * **GPU passthrough: `ollama ps` reported `100% GPU`.** `bootstrap_host.sh` proved
+    passthrough inside a throwaway CUDA container first, `make gpu-check` reported
+    reserving, and the model was resident on the card after an index.
+  * **The real embedding model, end to end over HTTPS.** `nomic-embed-text` pulled from
+    `registry.ollama.ai` and indexed with, replacing the deterministic double the
+    2026-10-01 run was confined to. Fixtures first (`4 reindexed`), then the twelve-document
+    proxy corpus (`12 reindexed, 4 deleted, 0 errors`) — one call, since `kb index` deletes
+    what is no longer on disk.
+  * **A supplied certificate (`TLS_CERT`/`TLS_KEY`) instead of `tls internal`, verified by
+    a real client.** Self-signed from the new `scripts/make_tls_cert.sh`, standing in for
+    the client's internal CA. **17/17 from the dev Mac over the internet** — which is the
+    run that means something, because a probe inside the compose network cannot say
+    whether a remote client trusts the certificate.
+  * **23/23 from the host, including revocation on both routes.** Revoking one user closed
+    `/mcp` and `/kb/*` in **4.2 s against a 5 s bound**, with no restart, and another
+    user's token was untouched. That is the claim the token store exists to make and it had
+    never been tested on a deployment.
+  * **Retrieval, first measurement off the dev Mac:** lexical 33% / vector 86% / fused 89%.
+    See [PLANS] — the vector jump is unexplained and the floor table is not being changed
+    until it is.
+  **Five deployment-only defects, all invisible to `make check`, and the pattern has
+  shifted.** Four were in the deployment (`uv` required by the container-first make
+  targets; the pre-flight crashing with `PermissionError` on the 0700 store directory it
+  recommends; Docker creating `${KB_PATH}/kb` as root; the runbook handing out an `rsync`
+  with no `-i`), and **two were in the probe itself** — the tool that exists to verify
+  deployments, broken in both modes it documents. Every one was invisible on a developer
+  machine for a specific reason: `uv` is always on PATH, tests run as root or the owning
+  user, `KB_PATH` already exists because you cloned it, and the local `.env` happens to
+  describe the server you are probing.
+  **Still untested anywhere:** a certificate from a real internal CA rather than a
+  self-signed stand-in, more than one GPU, and the §10 user record question, which is
+  unchanged and still deliberately open.
 - 2026-10-06 [USER+TOOL] **The GPU path is verified on real hardware, and the real
   embedding model has been indexed with for the first time.** Fresh AWS `g4dn.xlarge`
   (one T4, 16 GB), Ubuntu 22.04 Deep Learning Base OSS Nvidia Driver AMI, Elastic IP
