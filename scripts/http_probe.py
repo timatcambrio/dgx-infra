@@ -48,6 +48,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from retrieval import config as config_module  # noqa: E402
+from retrieval import ids as ids_module  # noqa: E402
 from retrieval import tokens as tokens_module  # noqa: E402
 
 EXPECTED_TOOLS = {"search", "fetch", "list_documents", "get_outline", "get_section"}
@@ -119,6 +120,30 @@ def _kb_file_for_slug(slug: str) -> str:
     return f"{slug}.md"
 
 
+def _kb_file_from_listing(listed: Any) -> str | None:
+    """The `/kb/*` path for the first document in a `list_documents` reply.
+
+    An entry carries **`id`**, not `slug` -- `retrieval/server.py` builds it as
+    `ids.doc_id(slug)`, i.e. `doc:<slug>`. Reading a `slug` key that does not exist is
+    what made discovery return nothing on 2026-10-06, and because the local-corpus
+    fallback cannot work inside the `kb-token` container either (no `KB_PATH` there, so
+    `cfg.kb_path` resolves to a `/dgx-knowledge` that does not exist), the probe stopped
+    before any check ran. Parsed with the repo's own `ids.parse_id` rather than a string
+    split, so the two cannot drift apart silently.
+    """
+    documents = listed.get("documents") if isinstance(listed, dict) else None
+    if not documents or not isinstance(documents[0], dict):
+        return None
+    ident = documents[0].get("id")
+    if not ident:
+        return None
+    try:
+        _kind, slug, _index = ids_module.parse_id(ident)
+    except Exception:
+        return None
+    return _kb_file_for_slug(slug) if slug else None
+
+
 def _discover_kb_file(base: str, ca: str | None, token: str) -> str | None:
     """Ask the SERVER which documents it has, rather than reading a local directory.
 
@@ -136,11 +161,7 @@ def _discover_kb_file(base: str, ca: str | None, token: str) -> str | None:
         listed = asyncio.run(_with_session(base, ca, token, body))
     except Exception:
         return None  # the route checks report the failure themselves, in their own terms
-    documents = listed.get("documents") if isinstance(listed, dict) else None
-    if not documents:
-        return None
-    slug = documents[0].get("slug") if isinstance(documents[0], dict) else None
-    return _kb_file_for_slug(slug) if slug else None
+    return _kb_file_from_listing(listed)
 
 
 def probe_routes(report: Report, base: str, ca: str | None, token: str, kb_file: str) -> None:

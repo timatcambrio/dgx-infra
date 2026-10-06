@@ -75,3 +75,38 @@ def test_the_document_to_request_comes_from_the_server() -> None:
 def test_a_slug_maps_to_the_converted_file() -> None:
     m = _module()
     assert m._kb_file_for_slug("budget-form") == "budget-form.md"
+
+
+def test_discovery_reads_the_field_the_server_actually_sends() -> None:
+    """Measured 2026-10-06 in the `kb-token` container, after the client-mode fix:
+
+        could not work out which document to request: the server listed none and
+        there is no local corpus at /dgx-knowledge/kb. Pass --kb-file <name>.md.
+
+    The server had twelve documents. Discovery read a `slug` key, and a
+    `DocumentEntry` carries **`id`** -- `retrieval/server.py` builds it as
+    `ids.doc_id(slug)`. Nothing failed loudly: a missing key is just `None`, and the
+    local-corpus fallback cannot work in that container either, because the `kb-token`
+    service is given no `KB_PATH` and `cfg.kb_path` resolves to a `/dgx-knowledge` that
+    does not exist. So the probe exited before running a single check.
+    """
+    m = _module()
+    assert m._kb_file_from_listing({"documents": [{"id": "doc:daffars", "title": "D"}]}) == "daffars.md"
+
+
+def test_the_response_shape_this_depends_on_is_the_servers() -> None:
+    """If `DocumentEntry` ever stops carrying `id`, discovery breaks the same quiet way.
+    Pinned against the server rather than against a copy of its shape."""
+    server = (REPO / "retrieval" / "server.py").read_text(encoding="utf-8")
+    entry = re.search(r"class DocumentEntry\(TypedDict\):(.*?)\n\n", server, re.S)
+    assert entry, "DocumentEntry is no longer declared the way this test reads it"
+    assert re.search(r"^\s+id:", entry.group(1), re.M), entry.group(1)
+
+
+def test_an_entry_without_a_usable_id_is_reported_not_guessed() -> None:
+    """Returning None sends main() to its own message naming --kb-file. Inventing a
+    filename would turn a listing change into a 404 against a correct deployment."""
+    m = _module()
+    assert m._kb_file_from_listing({"documents": [{"slug": "daffars"}]}) is None
+    assert m._kb_file_from_listing({"documents": []}) is None
+    assert m._kb_file_from_listing({"documents": [{"id": "not-an-id"}]}) is None
