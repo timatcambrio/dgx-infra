@@ -6,16 +6,25 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
-- 2026-10-06 [TOOL] **Open, and it is the one unverified line in the new DGX runbook:
-  in-container conversion needs the output tree writable by uid 10001, which contradicts
-  the content tree belonging to the login user.** `docs/deployment-dgx.md` step 11
-  documents `chgrp -R 10001` plus `g+rwX` on `${KB_PATH}`, and that is UNCONFIRMED on
-  Linux: Docker Desktop on the dev Mac maps bind-mount ownership to the calling user, so
-  the Mac cannot settle it either way. Three ways out, none chosen: the documented group
-  grant; `--user "$(id -u):$(id -g)"` on the conversion run (needs `UV_CACHE_DIR`
-  overridden too, since /tmp/uv-cache is chowned to 10001 at build); or a host venv for
-  Stage 1 only, which costs the container-first property. Settle it on the first Linux
-  host that converts anything.
+- 2026-10-06 [TOOL] **The in-container conversion ownership question is DECIDED, and only
+  one half of it still wants a Linux host.** The conversion run passes
+  `--user "$(id -u):$(id -g)" -e UV_CACHE_DIR=/tmp/uv-cache-"$(id -u)"`, so the markdown is
+  written as the login user into a tree that belongs to the login user, and step 5's rule —
+  the content tree is yours, uid 10001 only has to READ it — needs no relaxing at all. This
+  SUPERSEDES the group-grant (`chgrp -R 10001` + `g+rwX`) that `docs/deployment-dgx.md`
+  first documented, which would have left the output owned by a uid the operator cannot
+  edit as. Measured on the dev Mac: all four `pipeline` commands run under an overridden
+  uid, output comes out mode 644, and the cache override is **required** rather than
+  belt-and-braces — without it `uv` dies at `failed to open file
+  /tmp/uv-cache/CACHEDIR.TAG: Permission denied`, because the Dockerfile chowns that
+  directory to 10001. `-e HOME` is NOT needed; an earlier run that set both led to thinking
+  it was.
+  STILL UNCONFIRMED, and it is the ownership *outcome* rather than the mechanism: Docker
+  Desktop maps bind-mount ownership to the calling user, so the Mac cannot show that the
+  files land owned by the login user on Linux, nor that uid 10001 can still read them
+  there. A script that settles it in about two minutes on any Linux host with the image
+  built is in the session scratchpad as `uid-write-test.sh`; it checks ownership,
+  world-readability, traversability and that the operator can still edit the output.
 - 2026-10-06 [TOOL] **Open question from the AWS run, and the one experiment that settles
   it: why vector recall is 28 points above the recorded floor.** Measured on the GPU host:
   lexical **33%** (identical to the floor, case for case), vector **86%** (floor 58%),

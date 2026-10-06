@@ -283,6 +283,7 @@ OUT=/home/<you>/dgx-knowledge
 
 convert() {
   docker compose -f compose/docker-compose.yml --env-file .env run --rm --no-deps \
+    --user "$(id -u):$(id -g)" -e UV_CACHE_DIR=/tmp/uv-cache-"$(id -u)" \
     -v "$SRC:/sources:ro" -v "$OUT:/out:rw" \
     -e SOURCE_DIR=/sources -e KB_PATH=/out \
     kb-mcp pipeline "$@"
@@ -303,11 +304,17 @@ Four things about that command shape, each measured rather than assumed:
   file's read-only mount wins, with no error and no warning (measured 2026-10-06). So
   conversion cannot be pointed at `/kb-repo`; it is given `/sources` and `/out`, and
   `SOURCE_DIR` and `KB_PATH` are set to those.
-- **The output directory must be writable by uid 10001**, which is the one place in the
-  deployment where that is true of the content tree. The simplest arrangement that keeps
-  step 5's ownership is to let the group do it:
-  `sudo chgrp -R 10001 "$OUT" && chmod -R g+rwX "$OUT"`. Check afterwards that the written
-  files are still world-readable, since step 5's requirement has not gone away.
+- **It runs as you, not as the image's user, and that is what keeps step 5 true.** This is
+  the only part of the deployment that writes into the content tree, and uid 10001 cannot
+  write a tree that belongs to you — which step 5 says it should. `--user` settles it in the
+  right direction: the markdown comes out owned by you and mode 644, so uid 10001 can still
+  read it and nothing about step 5 has to be relaxed. The cache override is **required**
+  alongside it: the image's own cache directory belongs to uid 10001, and `uv` refuses to
+  start without a writable one (`failed to open file .../CACHEDIR.TAG: Permission denied`).
+  Granting the group instead — `chgrp -R 10001 "$OUT"` and `g+rwX` — would also get the
+  write done and is the worse answer: it leaves the output owned by a uid you cannot edit
+  as, in a tree the rest of the deployment expects to be yours. It is recorded here as the
+  fallback if `--user` ever turns out not to suit a host, not as a second supported route.
 - **What this image can convert**: PDF through geometry reconstruction, Word `.docx`, and
   CSV. It carries no LibreOffice, so legacy `.doc` and `.dot` do not convert here, and no
   ML runtime, so the layout-model escalation for a stubborn PDF is not available either.
