@@ -11,7 +11,14 @@ address, so it exercises what no unit test can — the certificate, the reverse 
 
 Tokens. The read-only checks need two issued tokens, passed as `KB_PROBE_TOKEN` and
 `KB_PROBE_TOKEN_2`, so the probe can run from any client machine and never has to see the
-store. Given `--tokens-file` instead (run on the host that owns the store, or in the
+store.
+
+Nothing about the deployment is taken from the local checkout. That was a real defect: the
+document to request came from globbing this machine's own `kb/`, and a citation url was
+judged against this machine's `KB_URL_BASE`. Run from a client both describe a DIFFERENT
+deployment -- measured 2026-10-06 from the dev Mac against a correct AWS stack, which
+reported three failures, all of them wrong. The document now comes from the server's own
+`list_documents`, and a citation url must point into `--base-url`. Given `--tokens-file` instead (run on the host that owns the store, or in the
 `kb-token` container), it issues its own throwaway pair, runs the revocation checks too,
 and revokes both on the way out. Secrets are never printed, logged, or echoed.
 
@@ -86,6 +93,54 @@ def _client(ca: str | None, token: str | None = None) -> httpx.Client:
 # --------------------------------------------------------------------------------------
 # The plain HTTP surface: what is open, what is closed, and what is not routed at all.
 # --------------------------------------------------------------------------------------
+
+
+def _resolve_url_base(explicit: str | None, base: str) -> str:
+    """What a citation url must point into.
+
+    NOT the local `.env`'s KB_URL_BASE, which this used to read. On a client machine that
+    file describes a DIFFERENT deployment -- measured 2026-10-06 from the dev Mac, where it
+    still said `http://localhost/kb`, so a correct citation url of
+    `https://<host>/kb/budget-form.md` was judged against localhost and failed. The server's
+    own KB_URL_BASE is not knowable from here, and the useful client-side assertion is that
+    the url points back into the address being probed. `--url-base` covers the deployment
+    that publishes citations under a different name from the one being dialled.
+    """
+    return (explicit or base).rstrip("/")
+
+
+def _kb_file_for_slug(slug: str) -> str:
+    """The `/kb/*` path for an indexed document.
+
+    `kb index` stores `rel_path` as `kb/<name>.md` and the slug is derived from that same
+    filename, so the converted file is the slug plus `.md`. If that ever stops holding,
+    the `/kb/*` checks 404 and say so, which is a finding rather than a silent pass.
+    """
+    return f"{slug}.md"
+
+
+def _discover_kb_file(base: str, ca: str | None, token: str) -> str | None:
+    """Ask the SERVER which documents it has, rather than reading a local directory.
+
+    The glob this replaces (`cfg.kb_path / "kb"`) is the corpus of whatever checkout the
+    probe runs from. From a client machine that is a different corpus, or none at all --
+    on the dev Mac it picked the first of twelve proxy documents and asked a server holding
+    four fixtures for it, producing a 404 that was entirely correct and said nothing about
+    the deployment. The documented client mode is the one this broke.
+    """
+
+    async def body(session: ClientSession) -> dict:
+        return _payload(await session.call_tool("list_documents", {})) or {}
+
+    try:
+        listed = asyncio.run(_with_session(base, ca, token, body))
+    except Exception:
+        return None  # the route checks report the failure themselves, in their own terms
+    documents = listed.get("documents") if isinstance(listed, dict) else None
+    if not documents:
+        return None
+    slug = documents[0].get("slug") if isinstance(documents[0], dict) else None
+    return _kb_file_for_slug(slug) if slug else None
 
 
 def probe_routes(report: Report, base: str, ca: str | None, token: str, kb_file: str) -> None:
@@ -289,6 +344,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="CA bundle to trust (Caddy's root.crt for `tls internal`)")
     parser.add_argument("--tokens-file", default=None, type=Path,
                         help="the store, to issue throwaway tokens and test revocation")
+    parser.add_argument("--url-base", default=None,
+                        help="What a citation url must point into. Defaults to --base-url; "
+                             "set it only where the deployment publishes citations under a "
+                             "different name from the one being dialled.")
     parser.add_argument("--kb-file", default=None,
                         help="a path under /kb/ to request (default: a converted file found in KB_PATH)")
     parser.add_argument("--query", default="budget",
@@ -298,14 +357,6 @@ def main(argv: list[str] | None = None) -> int:
     base = args.base_url.rstrip("/")
     cfg = config_module.load()
     report = Report()
-
-    kb_file = args.kb_file
-    if kb_file is None:
-        found = sorted((cfg.kb_path / "kb").glob("*.md"))
-        if not found:
-            print(f"no converted documents in {cfg.kb_path / 'kb'}; pass --kb-file", file=sys.stderr)
-            return 2
-        kb_file = found[0].name
 
     issued: list[str] = []
     store = args.tokens_file
@@ -321,9 +372,25 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr)
             return 2
 
+    # Which document to ask /kb/* for. Resolved here, after a token exists, because the
+    # SERVER is asked first and that needs one.
+    kb_file = args.kb_file
+    if kb_file is None:
+        kb_file = _discover_kb_file(base, args.ca, victim_secret)
+    if kb_file is None:
+        local = cfg.kb_path / "kb"
+        found = sorted(local.glob("*.md")) if local.is_dir() else []
+        kb_file = found[0].name if found else None
+    if kb_file is None:
+        print("could not work out which document to request: the server listed none and\n"
+              f"there is no local corpus at {cfg.kb_path / 'kb'}. Pass --kb-file <name>.md.",
+              file=sys.stderr)
+        return 2
+
     try:
         probe_routes(report, base, args.ca, victim_secret, kb_file)
-        probe_mcp(report, base, args.ca, victim_secret, args.query, cfg.kb_url_base)
+        probe_mcp(report, base, args.ca, victim_secret, args.query,
+                  _resolve_url_base(args.url_base, base))
         if store is not None:
             probe_revocation(report, base, args.ca, store,
                              (victim_secret, issued[0]), bystander_secret, kb_file,
