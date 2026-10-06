@@ -405,6 +405,56 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-10-06 [USER+TOOL] **The GPU path is verified on real hardware, and the real
+  embedding model has been indexed with for the first time.** Fresh AWS `g4dn.xlarge`
+  (one T4, 16 GB), Ubuntu 22.04 Deep Learning Base OSS Nvidia Driver AMI, Elastic IP
+  attached so the address survives stop/start. Code reached the host by `git clone` of
+  `origin/main`.
+  * **`ollama ps` reported `nomic-embed-text` with `PROCESSOR` = `100% GPU`** after an
+    index. That single line is what the GPU claim rests on, and it is the one thing
+    neither `make check` nor the 2026-10-01 remote run could produce — that host had no
+    GPU. `make gpu-check` reported `reserving all NVIDIA GPUs for ollama` beforehand, and
+    `scripts/bootstrap_host.sh` had already proven passthrough from inside a throwaway
+    CUDA container.
+  * **`nomic-embed-text` was pulled from `registry.ollama.ai` and indexed with.** The
+    2026-10-01 run was indexed against the repo's deterministic embedding double, so no
+    ranking claim from it meant anything. `kb index` over the four synthetic retrieval
+    fixtures: `0 unchanged, 4 reindexed, 0 deleted, 0 errors`.
+  * All five prod containers up (`db`, `ollama`, `kb-mcp`, `kb-static`, `caddy`) with
+    `TLS_CERT`/`TLS_KEY` set to a self-signed pair from the new
+    `scripts/make_tls_cert.sh`, standing in for the client's internal CA.
+  **Still UNCONFIRMED on this host, in the order it will be answered:** the TLS handshake
+  from a client against the supplied certificate (the stack starting proves Caddy accepted
+  the pair, not that a client verifies it); `scripts/http_probe.py` end to end, including
+  revocation on both routes; and the proxy-corpus eval against the recorded floor of
+  lexical 33% / vector 58% / fused 72%, which has never been reproduced off the dev Mac.
+- 2026-10-06 [TOOL] **Two more deployment-only defects, both in the same pre-flight, both
+  invisible to `make check`** — found at step 6 of the runbook, on the host.
+  1. **`make token` needed `uv` on a host that has none.** `compose-env-check` ran
+     `scripts/check_token_paths.py` through `$(PYTHON)`, which is `uv run python`, so
+     `token`, `compose-up` and `compose-index` — the three targets that exist *because* the
+     deployment host has `docker compose` and nothing else — all required a host `uv`.
+     `make token` died with `uv: No such file or directory`. The dependency was accidental:
+     the script imports only the standard library plus `retrieval/config.py`, itself
+     stdlib-only. Fixed with a separate `PREFLIGHT_PYTHON ?= python3`; `PYTHON` stays `uv
+     run python` for the developer targets. Installing `uv` on the host was rejected: it
+     would have made the symptom go away and left the container-first claim false.
+     `tests/test_make_host_requirements.py`.
+  2. **The pre-flight crashed on the setup it recommends.** `install -d -o 10001 -g 10001
+     -m 700 /srv/kb` deliberately lets nobody but the server's uid enter the directory, and
+     `Path.exists()` on the store inside then raises `PermissionError` rather than
+     answering — `_ignore_error` swallows ENOENT and ENOTDIR and never EACCES. A traceback,
+     from the script whose job is to replace a confusing failure with one line naming the
+     fix. An unreadable store is now a PASS with a note. What makes that safe rather than
+     permissive: `stat` on a directory needs only `+x` on its PARENT, so the directory
+     check still runs when the directory itself shuts us out, and it is the check that
+     pins what matters — that uid 10001 can write there. A test pins that the root-owned
+     store of 2026-10-01 is still refused, as a non-root user. An unreadable *directory*
+     still exits 2, naming the `sudo` command.
+  **The pattern, now three deployments running:** every defect was in something `make
+  check` passes, and each was invisible on a developer machine for a specific reason — `uv`
+  is always on PATH there, and tests run as the owning user or as root. Both of today's
+  were in the pre-flight added *because* of the last round's defects.
 - 2026-10-02 [TOOL] **The deployment is packaged for a fresh GPU host.** `make check` green
   at **630 passed, 2 skipped**, both gates PASSED (the 627 baseline on `main` plus three new
   tests). Nothing about the running stack changed; what was missing was the path from a bare
