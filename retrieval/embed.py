@@ -209,6 +209,44 @@ def _run(
             client.close()
 
 
+def model_digest(
+    *,
+    base_url: str,
+    model: str,
+    client: Optional[httpx.Client] = None,
+) -> Optional[str]:
+    """The digest of the model build ollama is serving, or None if it cannot be read.
+
+    `EMBED_MODEL=nomic-embed-text` is an UNPINNED tag: it means `nomic-embed-text:latest`,
+    and what that resolves to is whatever the registry last published. `index_meta` records
+    the model NAME, so a retag changes every vector in the next index with nothing in the
+    database, the logs or the config to show it -- and the only symptom is retrieval
+    quality moving for no reason anyone can point at. Recording the digest is what makes
+    that loud. Measured 2026-10-06: the dev Mac and a fresh AWS host both served
+    `0a109f422b47`, which was luck rather than a guarantee.
+
+    None rather than an error on any failure: an older ollama, a proxy that does not expose
+    `/api/tags`, or a server that is simply busy must not stop an index. A digest that
+    cannot be read is a check that cannot run, not a reason to refuse.
+    """
+    own = client or httpx.Client(timeout=10.0)
+    # `nomic-embed-text` and `nomic-embed-text:latest` are the same model; /api/tags
+    # always spells the tag out, so the implicit one is added before comparing.
+    wanted = model if ":" in model else f"{model}:latest"
+    try:
+        response = own.get(f"{base_url.rstrip('/')}/api/tags")
+        response.raise_for_status()
+        for entry in response.json().get("models", []) or []:
+            if entry.get("name") == wanted and entry.get("digest"):
+                return str(entry["digest"])
+        return None
+    except Exception:
+        return None
+    finally:
+        if client is None:
+            own.close()
+
+
 def embed_documents(
     texts: list[str],
     *,
