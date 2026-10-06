@@ -18,7 +18,7 @@ from pgvector.asyncpg import register_vector
 
 from .chunk import build_chunks
 from .config import Config
-from .embed import embed_documents
+from .embed import embed_documents, model_digest
 from .kbfiles import KbFileError, load_document
 from .sections import build_sections
 
@@ -52,7 +52,28 @@ class IndexResult:
         return line
 
 
-async def _check_index_meta(conn: asyncpg.Connection, cfg: Config, *, reindex_all: bool) -> None:
+def _digest_conflict(meta: dict[str, str], live_digest: Optional[str]) -> Optional[str]:
+    """The message for an embedding model that changed under a recorded index, or None.
+
+    Pure so the decision is testable without a database. Both sides have to be known: an
+    index predating this check has no recorded digest and adopts the live one, and a live
+    digest that could not be read leaves the check unrun rather than failing an index.
+    """
+    recorded = meta.get("embed_digest")
+    if not recorded or not live_digest or recorded == live_digest:
+        return None
+    return (
+        f"index_meta recorded the embedding model as digest {recorded} and ollama is now "
+        f"serving {live_digest}. The NAME ({meta.get('embed_model')!r}) is unchanged, so "
+        "this is a retag of an unpinned tag: every vector in this index was produced by a "
+        "different model build than the one that would embed a query now, and search "
+        "results would silently degrade. Run `kb index --reindex-all` to rebuild against "
+        "the model now being served, or point EMBED_MODEL at the pinned tag you meant."
+    )
+
+
+async def _check_index_meta(conn: asyncpg.Connection, cfg: Config, *, reindex_all: bool,
+                            live_digest: Optional[str] = None) -> None:
     rows = await conn.fetch("SELECT key, value FROM index_meta")
     meta = {r["key"]: r["value"] for r in rows}
     if not meta:
@@ -71,14 +92,20 @@ async def _check_index_meta(conn: asyncpg.Connection, cfg: Config, *, reindex_al
             f"`kb index --reindex-all` to rebuild with the new model."
         )
 
+    if not reindex_all:
+        conflict = _digest_conflict(meta, live_digest)
+        if conflict:
+            raise IndexConfigError(conflict)
 
-async def _reindex_all_reset(conn: asyncpg.Connection, cfg: Config) -> None:
+
+async def _reindex_all_reset(conn: asyncpg.Connection, cfg: Config,
+                             live_digest: Optional[str] = None) -> None:
     async with conn.transaction():
         await conn.execute(f"TRUNCATE {', '.join(CONTENT_TABLES)}")
-        for key, value in (
-            ("embed_model", cfg.embed_model),
-            ("embed_dim", str(cfg.embed_dim)),
-        ):
+        pairs = [("embed_model", cfg.embed_model), ("embed_dim", str(cfg.embed_dim))]
+        if live_digest:
+            pairs.append(("embed_digest", live_digest))
+        for key, value in pairs:
             await conn.execute(
                 "INSERT INTO index_meta (key, value) VALUES ($1, $2) "
                 "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
@@ -99,9 +126,15 @@ async def run_index(
     try:
         await register_vector(conn)
 
-        await _check_index_meta(conn, cfg, reindex_all=reindex_all)
+        # Which build of the model is actually being served. Read once per run, before
+        # anything is embedded, so a retag is caught instead of mixed into the index.
+        live_digest = model_digest(
+            base_url=cfg.ollama_base_url, model=cfg.embed_model, client=embed_client
+        )
+
+        await _check_index_meta(conn, cfg, reindex_all=reindex_all, live_digest=live_digest)
         if reindex_all:
-            await _reindex_all_reset(conn, cfg)
+            await _reindex_all_reset(conn, cfg, live_digest)
 
         files = sorted(cfg.kb_dir.glob("**/*.md"))
         existing_rows = await conn.fetch("SELECT slug, kb_sha256 FROM documents")
