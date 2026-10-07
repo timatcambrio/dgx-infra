@@ -298,6 +298,24 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-10-07 [USER+TOOL] **RESOLVED: the ollama version was the cause. The entry below is
+  superseded.** Tim upgraded the dev Mac from ollama 0.21.0 to 0.40.0, reindexed, and
+  `kb eval` returned lexical 33% / vector **86%** / fused **89%**, matching the AWS GPU
+  host exactly. Same machine, same CPU, same corpus, same code, same model digest: the only
+  variable was the server. So the GPU was never the cause, and the recorded floor of
+  58% / 72% was an artefact of ollama 0.21.0. The floor is now 33% / 86% / 89% and the
+  README says which versions produced each column.
+  **Why five rounds of testing missed it, which is the lesson worth keeping.** Every
+  cross-version comparison sent ONE text per request. `embed.py` sends batches of up to 32
+  texts and 40,000 characters. A single-input embedding agreed to five decimal places
+  across versions, both unit length, and the prefix-plateau test agreed to six, so the
+  embedding path looked identical while the thing the indexer actually does was never
+  compared. The mechanism is still UNCONFIRMED and the leading candidate is multi-input
+  handling in the older server; it would corrupt stored vectors while leaving every probe
+  clean, which is exactly what was observed. Not worth chasing further unless an old
+  server has to be supported.
+  **Acted on:** `.env.example` now records 0.21.0 as known bad and 0.35.1/0.40.0 as known
+  good, with the measurement, beside `OLLAMA_BASE_URL`.
 - 2026-10-07 [TOOL] **The 28 point vector-leg difference between the dev Mac and the AWS
   GPU host is UNEXPLAINED, and five hypotheses were eliminated by measurement.** Recorded
   in full because the eliminations are the durable part: anyone revisiting this should not

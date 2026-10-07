@@ -620,29 +620,30 @@ checked by an expected phrase and, where the source has pages, an expected page.
 case is verified satisfiable by `scripts/check_eval_cases.py`. The case file lives outside
 the repository because its questions describe the documents.
 
-| leg | dev Mac, 2026-09-24 | AWS GPU host, 2026-10-06 |
+| leg | ollama 0.21.0 | ollama 0.35.1 or 0.40.0 |
 |---|---|---|
 | lexical | 33% | 33% |
 | vector | 58% | 86% |
 | fused | 72% | 89% |
 
-**Two measurements, and the difference is not explained.** The same 36 cases over the same
-twelve documents were re-run on a GPU host (one NVIDIA T4) on 2026-10-06 and the vector leg
-came back 28 points higher. Report both columns, not the better one.
+**The embedding server's version decides this, so run a current one.** The 58% column was
+measured against ollama 0.21.0 and stood as the recorded floor from 2026-09-24. The 86%
+column was measured twice, on different hardware: on a GPU host running 0.35.1
+(2026-10-06), and on the same CPU machine that produced the 58%, after upgrading it to
+0.40.0 and reindexing (2026-10-07). Nothing else changed between those two runs on that
+machine, so the difference is the server, not the hardware, the corpus or the chunking.
 
-What is established, because each was measured rather than assumed: the embedding model was
-the same build on both machines (digest `0a109f422b47`); the text and the chunking were the
-same, which is why the lexical leg is identical case for case, that leg being the one no
-embedding touches; both servers return unit length vectors agreeing to five decimal places
-for a short string, and both stop reading a long input at the same point, so neither
-truncates differently; and raising `hnsw.ef_search` to 1000 on the slower machine, which
-makes the approximate vector index effectively exact, changed nothing at all, not one case.
+Treat **33% / 86% / 89%** as the floor, and 0.21.0 as a version that silently costs 28
+points of vector recall. What it costs is invisible by every other measure: the lexical leg
+is identical case for case, a single text embedded on 0.21.0 and on 0.35.1 agrees to five
+decimal places with both unit length, both versions discard the same tail of an over-length
+input, and `kb index` reports no errors. The index looks healthy and ranks worse.
 
-The two hosts differed in ollama version (0.21.0 against 0.35.1), in pgvector (0.8.6
-against 0.8.7) and in embedding on CPU against a GPU. Which of those matters, or whether
-something else does, is **UNCONFIRMED**. Treat 58% as the figure a CPU host of that vintage
-produced and 86% as the figure that GPU host produced, and do not quote either as the
-pipeline's retrieval quality without saying which machine measured it.
+The mechanism is **UNCONFIRMED**. The leading candidate is batching: `embed.py` sends up to
+32 texts and 40,000 characters per request, while every comparison above used one text per
+request, so a defect in multi-input handling would corrupt stored vectors while leaving
+every single-input check clean. Not worth chasing unless an old server must be supported;
+the remedy is to run a current one.
 
 Supersedes the 2026-09-24 floor of 31% / 53% / 67% over the same 36 cases, which stood
 until sections stopped being cut between a caption and the thing it introduces
