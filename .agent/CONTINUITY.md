@@ -554,6 +554,7 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-10-07 [USER+TOOL] **Proofreading pass on `docs/deployment-dgx.md`, applied.** Corrections, each checked: step 0 said three commands need `sudo` and listed two (now two plus step 5's conditional `chown`); the intro's "no Python, no step asks for one" now says step 13's probe runs from a client machine with `uv` and a checkout; "23 of 23" now says it is the host run and that a client-side run is 17 (both figures from the 2026-10-06 AWS run); step 4 notes `.env.example` has these lines commented out; step 11's "commit the result" now names `corpus.yaml`, the only tracked file in the content repository besides the README and `.gitignore` (`kb/` is gitignored); the model-from-file claim is marked not exercised. Wording: supplied phrases and a duplicated bare-address paragraph removed. No em dashes before or after. `make check`: 660 passed, 2 skipped.
 - 2026-10-06 [TOOL] **`docs/deployment-dgx.md`: the DGX deployment runbook, fourteen
   steps**, with a pointer to it from the README's "Standing the stack up on a fresh host".
   It is the AWS procedure with the instance, the rsync and the teardown removed and the
