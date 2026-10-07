@@ -19,12 +19,13 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   /tmp/uv-cache/CACHEDIR.TAG: Permission denied`, because the Dockerfile chowns that
   directory to 10001. `-e HOME` is NOT needed; an earlier run that set both led to thinking
   it was.
-  STILL UNCONFIRMED, and it is the ownership *outcome* rather than the mechanism: Docker
-  Desktop maps bind-mount ownership to the calling user, so the Mac cannot show that the
-  files land owned by the login user on Linux, nor that uid 10001 can still read them
-  there. A script that settles it in about two minutes on any Linux host with the image
-  built is in the session scratchpad as `uid-write-test.sh`; it checks ownership,
-  world-readability, traversability and that the operator can still edit the output.
+  **CONFIRMED on Linux 2026-10-07** (the AWS g4dn host, `ubuntu` 1000:1000, umask 0002),
+  which is what the Mac could not show: all four `pipeline` commands pass under `--user`,
+  everything written is owned by the login user, files come out 644 and directories 755 or
+  775, every directory is traversable, and the operator can still edit the output
+  afterwards — so git, rsync and re-conversion all work and uid 10001 can serve what was
+  written. The same run also confirmed the premise: as the image's own uid, into a tree
+  owned by the login user, it is refused. This question is closed.
 - 2026-10-06 [TOOL] **Open question from the AWS run, and the one experiment that settles
   it: why vector recall is 28 points above the recorded floor.** Measured on the GPU host:
   lexical **33%** (identical to the floor, case for case), vector **86%** (floor 58%),
@@ -265,6 +266,17 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-10-07 [TOOL] **An unwritable `KB_PATH` fails as a raw traceback, not as a named
+  error, and it fails at the first command.** Found while confirming the conversion
+  ownership question on Linux: dropping `--user` makes `pipeline inventory` die inside
+  `manifest.save` (`pipeline/manifest.py:103`), which calls `path.write_text` with no
+  guard, so the operator sees a `PermissionError` traceback through rich rather than one
+  line naming the output directory and the fix. `convert.py:148` and `:152` write the
+  markdown and its sidecar the same way. This is the failure mode of the single most
+  likely mistake in the new runbook's longest command, and the house style is explicit
+  that a line naming the fix beats a traceback. `docs/deployment-dgx.md`'s symptom table
+  now translates it; the code does not yet. NOT FIXED — scoped as failing test first, then
+  a readable error at the three write sites.
 - 2026-10-06 [TOOL] **A `docker compose run -v` at a container path the compose file
   already declares is silently ignored; at a new path it is added.** Measured both ways
   with a two-line compose file: a `-v host:/kb-repo:rw` override against the stack's

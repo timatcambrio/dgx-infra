@@ -311,6 +311,9 @@ Four things about that command shape, each measured rather than assumed:
   read it and nothing about step 5 has to be relaxed. The cache override is **required**
   alongside it: the image's own cache directory belongs to uid 10001, and `uv` refuses to
   start without a writable one (`failed to open file .../CACHEDIR.TAG: Permission denied`).
+  Confirmed on a Linux host 2026-10-07: output owned by the login user, files 644,
+  directories traversable, and still editable afterwards by the operator. Dropping
+  `--user` there fails at the first command, in a traceback rather than a message.
   Granting the group instead — `chgrp -R 10001 "$OUT"` and `g+rwX` — would also get the
   write done and is the worse answer: it leaves the output owned by a uid you cannot edit
   as, in a tree the rest of the deployment expects to be yours. It is recorded here as the
@@ -456,3 +459,4 @@ required of any other user.
 | A client gets an error about the host | `KB_PUBLIC_HOST` is not the name the client dials (step 4) |
 | Indexing is slow and the GPU is idle | `ollama ps` says `100% CPU`. With `KB_GPU=on` the stack should have refused to start; `make gpu-check` says what it decides and why |
 | A credential stops working within seconds | it was withdrawn. `make token ARGS=list` |
+| Conversion ends in a Python traceback on the first command | the output tree is not writable as the uid the run used. Almost always a dropped `--user` in step 11. The pipeline does not yet name this failure — the traceback ends in a `PermissionError` from the manifest write, and that is what it means |
