@@ -1,6 +1,6 @@
 # Deploying on the DGX, end to end
 
-Fourteen steps, in order, each saying what it proves and where it has gone wrong before.
+Fourteen steps, in order, most saying what they prove and where it has gone wrong before.
 Everything here has been run: the full stack came up on a fresh GPU host on 2026-10-06 and
 the steps below are that procedure with the cloud-specific parts removed and the
 document-conversion step added, since on the DGX the documents are on the box.
@@ -13,7 +13,8 @@ about the installation is a separate document; this one is the operator's.
 **Container-first.** The only host packages installed are Docker, its compose plugin and
 the NVIDIA Container Toolkit, by one script in step 3. Everything after that runs in
 containers: converting documents, applying the database schema, indexing, issuing
-credentials, serving. There is no Python on the host, and no step below asks for one.
+credentials, serving. There is no Python on the host, and no step below asks for one. The probe in step 13 runs from a machine with `uv` and a
+checkout of this repository; that machine is not the host.
 
 ---
 
@@ -23,9 +24,9 @@ credentials, serving. There is no Python on the host, and no step below asks for
 |---|---|
 | `nvidia-smi` works and lists at least one GPU | step 1 refuses otherwise; the driver is not ours to install |
 | ~150 GB free on the filesystem holding `/var/lib/docker` | images, the database volume and the model volume all land there |
-| A host name clients will dial, resolvable by them | the certificate is issued for a name, and a client dialling a bare address fails verification |
+| A host name clients will dial, resolvable by them | the certificate is issued for a name, and a client dialling a bare address fails verification unless the certificate carries that address |
 | Inbound 443/tcp from the user networks | the only port anything in the stack publishes |
-| The login user can `sudo` | three commands need it: the bootstrap script, and one `install -d` |
+| The login user can `sudo` | two commands need it, the bootstrap script and one `install -d`; step 5's repair `chown` is a conditional third |
 
 Two things you will want before step 7 and cannot produce yourself: a certificate and key
 from the organisation's own CA for that host name, and the list of people who get access.
@@ -61,7 +62,7 @@ deployment's copy of it is the one the server serves:
 git clone https://github.com/timatcambrio/dgx-knowledge.git ~/dgx-knowledge
 ```
 
-Its `kb/` directory is deliberately not in version control, so a fresh clone carries no
+Its `kb/` directory is deliberately not in version control, so a fresh clone contains no
 documents. Step 11 fills it.
 
 ## 3. Bootstrap the host
@@ -77,14 +78,14 @@ half-configured state nothing on the host reveals.
 
 It fetches from Docker's and NVIDIA's apt repositories, and pulls one small CUDA image for
 the check. If the host reaches a proxy or an internal mirror rather than the internet
-directly, the usual apt and Docker proxy configuration applies; the script does nothing
-unusual.
+directly, the usual apt and Docker proxy configuration applies; the script uses plain apt and HTTPS
+downloads.
 
 If it says it added you to the `docker` group, **log out and back in** before continuing.
 Group membership is read at login, and every `make` target below would otherwise need
 `sudo`.
 
-**Expect** it to end at `== Ready`. Re-run it, or `--check`, as often as you like.
+**Expect** it to end at `== Ready`. It is safe to re-run, with or without `--check`.
 
 ## 4. The environment file
 
@@ -92,7 +93,7 @@ Group membership is read at login, and every `make` target below would otherwise
 cp .env.example .env
 ```
 
-Set these:
+Set these (the example file has them commented out; remove the `#`):
 
 ```bash
 KB_PATH=/home/<you>/dgx-knowledge
@@ -108,7 +109,7 @@ Set real passwords for `POSTGRES_PASSWORD`, `KB_INDEX_PASSWORD` and `KB_READ_PAS
 too. The values in `.env.example` are development defaults, and the file is not in version
 control.
 
-Four of these have each broken a deployment, so they are worth reading rather than
+Four of these have each broken a deployment, so read them rather than
 copying:
 
 - **`KB_PATH` must be absolute.** Compose resolves a relative bind-mount source against
@@ -124,7 +125,7 @@ copying:
   because issuing or revoking a credential replaces the file and a single-file mount would
   bind the old copy. `make compose-up` checks this.
 
-`EMBED_MODEL` is worth pinning to an explicit tag once you know which tags the model
+Pin `EMBED_MODEL` to an explicit tag once you know which tags the model
 publishes. A bare name means the latest published build, and months from now the same name
 can hand you different weights. Every vector in the index would then come from a
 different build than the one embedding queries. The indexer records the model's digest and
@@ -196,7 +197,7 @@ TLS_CERT=/etc/ssl/dgx-kb/cert.pem
 TLS_KEY=/etc/ssl/dgx-kb/key.pem
 ```
 
-**The names on a supplied certificate are yours to get right.** The proxy serves one site
+**Get the names on a supplied certificate right.** The proxy serves one site
 for `KB_PUBLIC_HOST`, `localhost` and `127.0.0.1`, so all of those belong on it, plus the
 host's own address as an IP entry if anyone will dial it that way. A DNS entry does not
 cover an address. Only a self-signed stand-in has been tested through this path; the code
@@ -211,10 +212,6 @@ tends to become permanent. Fetch it with:
 docker compose -f compose/docker-compose.yml cp \
   caddy:/data/caddy/pki/authorities/local/root.crt ./dgx-kb-ca.crt
 ```
-
-Either way, clients must dial a **name** that is on the certificate. A client dialling a
-bare address sends no name in the handshake and is served whatever `KB_PUBLIC_HOST` names,
-which will not validate against an address unless the certificate carries it.
 
 ## 8. Issue the first credentials, before the stack is up
 
@@ -252,8 +249,8 @@ docker compose -f compose/docker-compose.yml --env-file .env \
 ```
 
 About 270 MB, once, from the model registry. It lands in a named volume and survives
-restarts. If the host cannot reach that registry, the model can be loaded from a file
-instead; ask before assuming it has to be.
+restarts. If the host cannot reach that registry, the model can in principle be loaded from a
+file instead; that has not been exercised.
 
 ## 10. Confirm the GPU reached the container
 
@@ -295,7 +292,7 @@ convert convert     # write the markdown into kb/
 convert report      # print what happened, and what to spot-check
 ```
 
-Four things about that command shape, each measured rather than assumed:
+Four things about that command's structure, each measured rather than assumed:
 
 - **`--no-deps` matters.** Without it Compose starts the database and the model server for
   a job that uses neither.
@@ -329,7 +326,7 @@ Read `report` before moving on. It says which documents are clean, which are mos
 picture, and which have tables that geometry may have flattened. A document that converted
 badly will be found and returned badly; retrieval does not repair a conversion.
 
-Commit the result in the content repository if you want the record of what was converted
+Commit `corpus.yaml` in the content repository if you want the record of what was converted
 to survive the host. `kb/` itself is not in version control.
 
 ## 12. Apply the schema, index, and confirm the model used the card
@@ -348,7 +345,7 @@ make compose-index
 
 On a fresh database, skipping `--init` ends in an error naming a missing table. The
 `--init` run also records the embedding model and its dimension, which every later run is
-checked against, so this is where a model mismatch surfaces.
+checked against, so a model mismatch is caught here.
 
 Indexing has just loaded the model and it stays resident for a few minutes, so ask
 immediately:
@@ -374,7 +371,7 @@ stack over TLS at its public address.
 
 Run it the way a client reaches it: from a machine on the user network, not from the host.
 An in-network run passes while saying nothing about whether a real client trusts the
-certificate, which on the supplied-certificate path is the whole question.
+certificate, which is the question that matters on the supplied-certificate path.
 
 ```bash
 read -rs KB_PROBE_TOKEN && export KB_PROBE_TOKEN
@@ -412,7 +409,8 @@ It issues its own throwaway pair, withdraws one, confirms that closes **both** r
 within the cache window while the other keeps working, and withdraws both on the way out.
 No secret is printed.
 
-**Expect** every check to pass and exit 0. The last full run was 23 of 23.
+**Expect** every check to pass and exit 0. The last full run was 23 of 23 from the host; a run from a client machine is 17 checks, because the
+revocation checks need the host.
 
 ## 14. Give each person their credential
 
@@ -425,7 +423,8 @@ make token ARGS=list
 
 The secret prints once. Hand it over the way the organisation hands over any other
 credential; it ends up in a configuration file on that person's machine, which is the
-honest limit of this scheme and the reason an identity provider is worth asking about.
+limit of this scheme, and the reason to ask whether the organisation has an identity
+provider.
 
 To withdraw access:
 
