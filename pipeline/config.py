@@ -161,6 +161,37 @@ class Config:
             raise ConfigError(f"Source directory is not readable: {path}")
         return path
 
+    def writable_kb_path(self) -> Path:
+        """`kb_path`, or a clear error saying which directory cannot be written and by whom.
+
+        The mirror of `source_dir` on the output side, and it exists because the failure it
+        replaces was unreadable. A deployment host converting in a container without
+        `--user` runs as the image's uid while KB_PATH belongs to the login user; every
+        write then fails, the first one inside `manifest.save`, and a bare `PermissionError`
+        reached the operator as a traceback naming none of that (measured 2026-10-07).
+
+        It asks about the nearest EXISTING ancestor, not about `kb_path` itself, because
+        `manifest.save` and `convert` both create their parents: on a first run the
+        directory legitimately does not exist yet, and a check that demanded it would refuse
+        every fresh clone. `W_OK | X_OK` together because creating an entry in a directory
+        needs both, and a directory that cannot be entered fails in the same confusing way.
+        """
+        probe = self.kb_path
+        while not probe.exists() and probe.parent != probe:
+            probe = probe.parent
+        if not probe.is_dir():
+            raise ConfigError(f"Output path is not a directory: {probe}")
+        if not os.access(probe, os.W_OK | os.X_OK):
+            raise ConfigError(
+                f"Cannot write to the output directory: {probe}\n"
+                f"  The pipeline writes corpus.yaml and kb/ under KB_PATH ({self.kb_path}), "
+                f"but that directory is not writable by the user running it "
+                f"(uid {os.getuid()}).\n"
+                "  Converting in a container? Pass --user \"$(id -u):$(id -g)\" so the "
+                "output belongs to you. Otherwise fix the directory's ownership."
+            )
+        return self.kb_path
+
 
 def load(source_dir: Path | str | None = None, *, env_file: Path | str | None = None) -> Config:
     """Build a `Config` from the environment, with `source_dir` overriding `SOURCE_DIR`."""

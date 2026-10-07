@@ -67,6 +67,21 @@ def _resolved_source(config: Config) -> Path:
         raise typer.Exit(1) from exc
 
 
+def _writable_output(config: Config) -> Path:
+    """Refuse an unwritable KB_PATH here, before any document is touched.
+
+    Called by every command that writes. Without it the first write fails deep inside
+    `manifest.save` and the operator gets a `PermissionError` traceback instead of the
+    directory's name -- which is what a deployment host produced when a conversion run in
+    a container was missing `--user` (see `Config.writable_kb_path`).
+    """
+    try:
+        return config.writable_kb_path()
+    except ConfigError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+
+
 def _selected(manifest: dict[str, Any], only: str | None) -> list[dict[str, Any]]:
     """Entries whose source file name or slug matches `only`.
 
@@ -104,6 +119,7 @@ def inventory(
     """Scan SOURCE_DIR and upsert corpus.yaml entries. Copies nothing, writes nothing there."""
     config = _load_config(source_dir)
     root = _resolved_source(config)
+    _writable_output(config)
     manifest = manifest_module.load(config.manifest_path)
 
     outcomes: Counter[str] = Counter()
@@ -164,6 +180,7 @@ def prune(
     """
     config = _load_config(source_dir)
     _resolved_source(config)
+    _writable_output(config)
     manifest = manifest_module.load(config.manifest_path)
     entries = _selected(manifest, only)
 
@@ -214,6 +231,7 @@ def triage(
     """Measure text-layer coverage per document and write the metrics into corpus.yaml."""
     config = _load_config(source_dir)
     root = _resolved_source(config)
+    _writable_output(config)
     manifest = manifest_module.load(config.manifest_path)
     entries = _selected(manifest, only)
 
@@ -257,6 +275,7 @@ def convert(
     """Convert SOURCE_DIR documents into kb/ markdown."""
     config = _load_config(source_dir)
     _resolved_source(config)
+    _writable_output(config)
     manifest = manifest_module.load(config.manifest_path)
     entries = _selected(manifest, only)
 
