@@ -275,8 +275,15 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   markdown and its sidecar the same way. This is the failure mode of the single most
   likely mistake in the new runbook's longest command, and the house style is explicit
   that a line naming the fix beats a traceback. `docs/deployment-dgx.md`'s symptom table
-  now translates it; the code does not yet. NOT FIXED — scoped as failing test first, then
-  a readable error at the three write sites.
+  now translates it. **FIXED** the same day: `Config.writable_kb_path` is the mirror of
+  `source_dir` on the output side, and `inventory`, `triage`, `convert` and `prune` call it
+  before touching anything, so the run stops before converting half a corpus. Two choices
+  worth keeping. It asks about the nearest EXISTING ancestor, not about `kb_path` itself —
+  the writers create their own parents, so a check demanding the directory exist would
+  refuse every fresh clone, and `tests/test_output_writable.py` pins that case. And the
+  message names the uid, because without it the error reads as nonsense to the person
+  holding the terminal: the directory *is* writable by them. Tests first (6ffc9b6, all
+  seven failing), fix after (4f0b392). `make check`: **660 passed, 2 skipped**.
 - 2026-10-06 [TOOL] **A `docker compose run -v` at a container path the compose file
   already declares is silently ignored; at a new path it is added.** Measured both ways
   with a two-line compose file: a `-v host:/kb-repo:rw` override against the stack's
