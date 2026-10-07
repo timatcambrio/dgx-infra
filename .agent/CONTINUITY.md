@@ -12,7 +12,13 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   to `nomic-embed-text:v1.5` (same digest `0a109f422b47` as `latest` on 2026-10-07 [TOOL]);
   full probe runs on the host only (23 checks), client machine uses curl plus Codex; test on a
   few documents first, then load the full set (inventory, prune, convert, report, index).
-  UNCONFIRMED: Codex over HTTPS with that self-signed cert has never been run.
+  Codex over HTTPS with that cert: see the 2026-10-07 entry below (SUPERSEDES "never run").
+- 2026-10-07 [USER] Codex (ChatGPT desktop, Tim's Mac) against the AWS stack over HTTPS with
+  the `make_tls_cert.sh` self-signed cert: before trusting the cert in the System keychain,
+  Codex reported no tools for the server; after `security add-trusted-cert`, it searched and
+  answered. So Codex verifies certificates and accepts this one once trusted; Caddy's
+  `tls internal` fallback was not needed. Windows step 14 remains UNCONFIRMED (not run).
+  AWS instance to be terminated.
 - 2026-10-07 [USER] Guide follow-ups: step 14 has Mac and Windows versions (some users are on
   Windows; the first user is probably on a Mac); second computer is assumed to SSH to the DGX;
   operator may work at the DGX console or over SSH; contact is "the Cambrio team"; the old
