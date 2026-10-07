@@ -6,6 +6,26 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-06 [TOOL] **The in-container conversion ownership question is DECIDED, and only
+  one half of it still wants a Linux host.** The conversion run passes
+  `--user "$(id -u):$(id -g)" -e UV_CACHE_DIR=/tmp/uv-cache-"$(id -u)"`, so the markdown is
+  written as the login user into a tree that belongs to the login user, and step 5's rule —
+  the content tree is yours, uid 10001 only has to READ it — needs no relaxing at all. This
+  SUPERSEDES the group-grant (`chgrp -R 10001` + `g+rwX`) that `docs/deployment-dgx.md`
+  first documented, which would have left the output owned by a uid the operator cannot
+  edit as. Measured on the dev Mac: all four `pipeline` commands run under an overridden
+  uid, output comes out mode 644, and the cache override is **required** rather than
+  belt-and-braces — without it `uv` dies at `failed to open file
+  /tmp/uv-cache/CACHEDIR.TAG: Permission denied`, because the Dockerfile chowns that
+  directory to 10001. `-e HOME` is NOT needed; an earlier run that set both led to thinking
+  it was.
+  **CONFIRMED on Linux 2026-10-07** (the AWS g4dn host, `ubuntu` 1000:1000, umask 0002),
+  which is what the Mac could not show: all four `pipeline` commands pass under `--user`,
+  everything written is owned by the login user, files come out 644 and directories 755 or
+  775, every directory is traversable, and the operator can still edit the output
+  afterwards — so git, rsync and re-conversion all work and uid 10001 can serve what was
+  written. The same run also confirmed the premise: as the image's own uid, into a tree
+  owned by the login user, it is refused. This question is closed.
 - 2026-10-06 [TOOL] **Open question from the AWS run, and the one experiment that settles
   it: why vector recall is 28 points above the recorded floor.** Measured on the GPU host:
   lexical **33%** (identical to the floor, case for case), vector **86%** (floor 58%),
@@ -246,6 +266,39 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-10-07 [TOOL] **An unwritable `KB_PATH` fails as a raw traceback, not as a named
+  error, and it fails at the first command.** Found while confirming the conversion
+  ownership question on Linux: dropping `--user` makes `pipeline inventory` die inside
+  `manifest.save` (`pipeline/manifest.py:103`), which calls `path.write_text` with no
+  guard, so the operator sees a `PermissionError` traceback through rich rather than one
+  line naming the output directory and the fix. `convert.py:148` and `:152` write the
+  markdown and its sidecar the same way. This is the failure mode of the single most
+  likely mistake in the new runbook's longest command, and the house style is explicit
+  that a line naming the fix beats a traceback. `docs/deployment-dgx.md`'s symptom table
+  now translates it; the code does not yet. NOT FIXED — scoped as failing test first, then
+  a readable error at the three write sites.
+- 2026-10-06 [TOOL] **A `docker compose run -v` at a container path the compose file
+  already declares is silently ignored; at a new path it is added.** Measured both ways
+  with a two-line compose file: a `-v host:/kb-repo:rw` override against the stack's
+  `${KB_PATH}:/kb-repo:ro` did not take — the write was refused as read-only, with no
+  error and no warning that the override had been dropped — while a `-v host:/out:rw` at a
+  path the file does not mention worked. This is what shapes the conversion step in
+  `docs/deployment-dgx.md`: Stage 1 in the deployment image cannot be pointed at
+  `/kb-repo`, it has to be given `/sources` and `/out` and have `SOURCE_DIR` and `KB_PATH`
+  overridden to match. Worth keeping because the failure mode is a silent read-only mount
+  rather than a refusal, so the obvious command reads as a permissions problem.
+- 2026-10-06 [TOOL] **Stage 1 conversion runs in the `kb-mcp` image with no host Python,
+  no database and no model server.** Verified end to end — `pipeline inventory`, `triage`,
+  `convert`, `report` over a PDF, a DOCX and a CSV fixture — writing `kb/*.md` plus the
+  `.provenance.json` sidecars. This closes a gap neither previous deployment touched: the
+  AWS run transferred an already-converted corpus, so nothing had ever converted a
+  document on a deployment host, and the container-first claim was untested for Stage 1.
+  Three facts the runbook now rests on: `--no-deps` is required (Compose otherwise starts
+  `db` and `ollama` for a job that uses neither, and on a host already running ollama the
+  port bind fails outright); the image has **no `soffice`**, so legacy `.doc`/`.dot` cannot
+  convert there; and it has **no `torch`**, so the Docling PDF escalation is unavailable —
+  geometry PDF, DOCX and CSV only. Both absences are deliberate (`--extra serve`, no
+  `--extra pdf`) and both are reported rather than silent.
 - 2026-10-06 [TOOL] **Docker creates a missing bind-mount source as root, and that broke
   the corpus transfer.** `KB_PATH` was set in runbook step 3 and the directory created in
   step 9, with `make compose-up` between them. `kb-static` mounts `${KB_PATH}/kb`, so
@@ -458,6 +511,18 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-10-06 [TOOL] **`docs/deployment-dgx.md`: the DGX deployment runbook, fourteen
+  steps**, with a pointer to it from the README's "Standing the stack up on a fresh host".
+  It is the AWS procedure with the instance, the rsync and the teardown removed and the
+  document-conversion step added, since on the DGX the documents are on the box and the
+  AWS run sidestepped Stage 1 entirely by transferring an already-converted corpus. It
+  lives in the code repo rather than beside the AWS runbook so that it travels with the
+  `git clone` that is step 2 of itself. Carries every measured trap: the two directories
+  with opposite ownership requirements, `KB_URL_BASE` with no `/kb`, the directory-not-file
+  token mount, `default_sni`, `--no-sync`, and the silent 404 a content file uid 10001
+  cannot read. No retrieval number appears in it, the eval question being open.
+  `make check` after: **653 passed, 2 skipped** (both gates passed; higher than the 603/52
+  in the handoff only because the dev `db` container was up, so the Stage 2 tests ran).
 - 2026-10-06 [USER+TOOL] **The deployment ran end to end on a fresh AWS GPU instance, and
   all three things the 2026-10-01 remote test could not reach are now answered.**
   `g4dn.xlarge` (one T4, 16 GB), Ubuntu 22.04 Deep Learning Base OSS Nvidia Driver AMI,

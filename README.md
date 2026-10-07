@@ -1010,6 +1010,11 @@ the point, so that a missing one stops the stack instead of letting it index slo
 silently on the CPU; `make gpu-check` reports which way the decision goes without starting
 anything.
 
+That is the host-preparation half. For the whole deployment in order — the two directories
+whose ownership requirements are opposite, the certificate, the credentials, converting the
+documents in a container, indexing, and the end-to-end probe — follow
+[`docs/deployment-dgx.md`](docs/deployment-dgx.md).
+
 ### Checking a deployment end to end
 
 `make check` proves the code. It cannot prove the certificate, the reverse proxy, the
