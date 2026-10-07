@@ -11,7 +11,7 @@ You need:
 | | |
 |---|---|
 | The DGX, with `nvidia-smi` working | the GPU driver is already installed |
-| A login on the DGX that can use `sudo` | |
+| A login on the DGX that can use `sudo` | used to create the `kbadmin` account the service runs under, in [step 0](#0-create-the-service-account) |
 | About 150 GB free on the disk that has `/var/lib/docker` | for images, the database and the model |
 | Internet access from the DGX | to download software and the embedding model |
 | The DGX's host name and IP address on the user network | see [Finding the host name and address](#finding-the-host-name-and-address) |
@@ -26,7 +26,6 @@ command. Everything else runs as written. The values are:
 
 | Placeholder | Replace with | Example |
 |---|---|---|
-| `<YOU>` | your login name on the DGX (run `whoami`) | `jsmith` |
 | `<KB_HOST>` | the host name users will connect to | `dgx01.local` |
 | `<DGX_IP>` | the DGX's IP address on the user network | `10.20.30.40` |
 
@@ -44,8 +43,8 @@ hostname -I
 ```
 
 `hostname -f` prints the machine's full name. `hostname -I` prints its IP addresses; ignore
-any starting with `172.17.` (that is Docker's internal network). IT can confirm which name
-and address users' computers can reach.
+any starting with `172.17.` (that is Docker's internal network). Use a name and address that
+the users' computers can reach; the check below confirms the name.
 
 To check the name works from the second computer, run this there (Mac Terminal or Windows
 PowerShell):
@@ -56,6 +55,28 @@ nslookup <KB_HOST>
 
 **Expect** an address listed. If the name does not resolve, use the IP address as
 `<KB_HOST>` everywhere in this guide.
+
+## 0. Create the service account
+
+Creates `kbadmin`, the account that installs and runs the service, so the deployment does
+not depend on anyone's personal login. Run these from your own login:
+
+```bash
+sudo adduser kbadmin
+sudo usermod -aG sudo kbadmin
+```
+
+`adduser` asks for a password for the new account, then for optional details; press Return
+to skip those.
+
+Log out, then log in as `kbadmin`, either at the DGX's keyboard or with
+`ssh kbadmin@<KB_HOST>`. Every step from here on runs as `kbadmin`.
+
+```bash
+groups
+```
+
+**Expect** `sudo` among the groups listed.
 
 ## 1. Check the host
 
@@ -119,8 +140,8 @@ same name, remove the `#` in front of it if there is one, and set the value. Rep
 placeholders; keep the rest exactly as shown.
 
 ```bash
-SOURCE_DIR=/home/<YOU>/kb-sources
-KB_PATH=/home/<YOU>/dgx-knowledge
+SOURCE_DIR=/home/kbadmin/kb-sources
+KB_PATH=/home/kbadmin/dgx-knowledge
 KB_PUBLIC_HOST=<KB_HOST>
 KB_URL_BASE=https://<KB_HOST>
 KB_TOKENS_FILE=/srv/kb/tokens.json
@@ -184,8 +205,8 @@ sh scripts/make_tls_cert.sh <KB_HOST> <DGX_IP>
 It writes `tls/cert.pem` and `tls/key.pem`, and prints two lines. Add them to `.env`:
 
 ```bash
-TLS_CERT=/home/<YOU>/dgx-infra/tls/cert.pem
-TLS_KEY=/home/<YOU>/dgx-infra/tls/key.pem
+TLS_CERT=/home/kbadmin/dgx-infra/tls/cert.pem
+TLS_KEY=/home/kbadmin/dgx-infra/tls/key.pem
 ```
 
 The certificate is valid for 825 days.
@@ -350,7 +371,7 @@ Run these in Terminal.
 Copy the certificate from the DGX:
 
 ```bash
-scp <YOU>@<KB_HOST>:dgx-infra/tls/cert.pem ~/dgx-kb.crt
+scp kbadmin@<KB_HOST>:dgx-infra/tls/cert.pem ~/dgx-kb.crt
 ```
 
 Store your credential from [step 8](#8-issue-your-credential) for the checks below. The
@@ -412,7 +433,7 @@ command.
 Copy the certificate from the DGX:
 
 ```powershell
-scp <YOU>@<KB_HOST>:dgx-infra/tls/cert.pem "$HOME\dgx-kb.crt"
+scp kbadmin@<KB_HOST>:dgx-infra/tls/cert.pem "$HOME\dgx-kb.crt"
 ```
 
 Trust the certificate for your Windows account. Windows shows a security warning asking
