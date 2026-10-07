@@ -13,6 +13,10 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   full probe runs on the host only (23 checks), client machine uses curl plus Codex; test on a
   few documents first, then load the full set (inventory, prune, convert, report, index).
   Codex over HTTPS with that cert: see the 2026-10-07 entry below (SUPERSEDES "never run").
+- 2026-10-07 [USER] The DGX is user-provisioned; the guide leaves IT out. Deployment runs
+  under a dedicated `kbadmin` account (sudo group) created in guide step 0, not a personal
+  login, so it does not depend on one person's account. `<YOU>` placeholder replaced by the
+  literal `kbadmin`. SSH password login as `kbadmin` (for the step 14 `scp`) is assumed.
 - 2026-10-07 [USER] Codex (ChatGPT desktop, Tim's Mac) against the AWS stack over HTTPS with
   the `make_tls_cert.sh` self-signed cert: before trusting the cert in the System keychain,
   Codex reported no tools for the server; after `security add-trusted-cert`, it searched and
