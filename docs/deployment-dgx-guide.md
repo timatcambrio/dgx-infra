@@ -474,7 +474,7 @@ reopen it.
 ### Ask a question
 
 In Codex, ask something one of the test documents can answer, for example: "Search the
-knowledge base for <a topic from a test document> and cite the source."
+knowledge base for *[a topic from a test document]* and cite the source."
 
 **Expect** an answer that cites one of the test documents.
 
