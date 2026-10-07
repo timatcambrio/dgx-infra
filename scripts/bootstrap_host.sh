@@ -93,25 +93,30 @@ else
 fi
 
 step "Docker group membership (so the deploy needs no sudo)"
+# Group membership is read at login, so a user added below still cannot reach the daemon
+# from this session. The passthrough check then goes through sudo; a plain `docker run`
+# was refused at the socket and reported as a GPU failure on a host whose GPUs were fine.
+DOCKER="docker"
+JUST_ADDED=""
 if [ "$(id -u)" = "0" ] || id -nG | tr ' ' '\n' | grep -qx docker; then
     say "ok"
 else
-    if [ -n "$CHECK_ONLY" ]; then
-        say "NOT in the docker group: every make target would need sudo"
-    else
-        $SUDO usermod -aG docker "$(id -un)"
-        say "added $(id -un) to the docker group -- LOG OUT AND BACK IN before the make targets,"
-        say "or the rest of this run will still need sudo (group membership is read at login)."
-    fi
+    [ -n "$CHECK_ONLY" ] && fail "this login session is not in the docker group. If this script added you,
+       log out and back in, then run it again. Every make target needs the group."
+    $SUDO usermod -aG docker "$(id -un)"
+    DOCKER="$SUDO docker"
+    JUST_ADDED=1
+    say "added $(id -un) to the docker group -- LOG OUT AND BACK IN before the make targets"
+    say "(group membership is read at login). The check below uses sudo until then."
 fi
 
 step "GPU passthrough, verified inside a container"
 # The whole reason this script ends here rather than at the install. A host whose own
 # nvidia-smi works while the container's does not is the silent half-configured state
 # `KB_GPU=on` exists to catch, and nothing on the host reveals it.
-if docker run --rm --gpus all "$CUDA_IMAGE" nvidia-smi -L >/dev/null 2>&1; then
+if $DOCKER run --rm --gpus all "$CUDA_IMAGE" nvidia-smi -L >/dev/null 2>&1; then
     say "ok: a container sees"
-    docker run --rm --gpus all "$CUDA_IMAGE" nvidia-smi -L >&2
+    $DOCKER run --rm --gpus all "$CUDA_IMAGE" nvidia-smi -L >&2
 else
     fail "a container cannot see the GPUs even though the host can. Try 'sudo systemctl restart docker';
        if it persists, 'nvidia-ctk runtime configure --runtime=docker' did not take. Until this
@@ -121,3 +126,5 @@ fi
 step "Ready"
 say "This host can run the stack on its GPUs. Next: compose/gpu-detect.sh (or 'make gpu-check')"
 say "reports the same verdict from the repo, and 'make compose-up' acts on it."
+[ -n "$JUST_ADDED" ] && say "Log out and back in first, then confirm with: sh scripts/bootstrap_host.sh --check"
+exit 0
