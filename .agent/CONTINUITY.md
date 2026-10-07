@@ -26,6 +26,11 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   afterwards — so git, rsync and re-conversion all work and uid 10001 can serve what was
   written. The same run also confirmed the premise: as the image's own uid, into a tree
   owned by the login user, it is refused. This question is closed.
+- 2026-10-07 [USER] **SUPERSEDED, investigation closed by decision.** The entry below
+  named one experiment as decisive; five were run, all five eliminated their hypothesis,
+  and the cause is not established. Both measurements are now recorded side by side in the
+  README with their conditions. Not to be reopened without a new idea; the ideas not yet
+  tried are listed in [DISCOVERIES] 2026-10-07.
 - 2026-10-06 [TOOL] **Open question from the AWS run, and the one experiment that settles
   it: why vector recall is 28 points above the recorded floor.** Measured on the GPU host:
   lexical **33%** (identical to the floor, case for case), vector **86%** (floor 58%),
@@ -266,6 +271,37 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   extras)`; `extras` flow through `_dispatch` into the manifest's `conversion` record.
 
 ## [DISCOVERIES]
+- 2026-10-07 [TOOL] **The 28 point vector-leg difference between the dev Mac and the AWS
+  GPU host is UNEXPLAINED, and five hypotheses were eliminated by measurement.** Recorded
+  in full because the eliminations are the durable part: anyone revisiting this should not
+  repeat them.
+  * **Measurements.** AWS `g4dn.xlarge`, GPU, ollama 0.35.1, pgvector 0.8.7: lexical 33% /
+    vector 86% / fused 89%. Dev Mac, CPU, ollama 0.21.0, pgvector 0.8.6: 33% / 58% / 72%,
+    on the September index AND again on a fresh `kb index --reindex-all`, per case
+    identical between those two runs.
+  * **Not a degraded index.** A full re-embed on the Mac reproduced the floor exactly, so
+    the original index was not built from failed batches. This was the leading hypothesis
+    and it is wrong.
+  * **Not the model.** `nomic-embed-text` digest `0a109f422b47` on both hosts.
+  * **Not the text or the chunking.** The lexical leg is identical case for case, and that
+    leg never touches an embedding.
+  * **Not short-input embedding.** The same string embedded on both servers agrees to five
+    decimal places, both unit norm, so the runtimes are not producing different vectors.
+  * **Not approximate search recall.** `chunks_embedding_idx` is HNSW, so vector search is
+    approximate by default (`hnsw.ef_search` 40). Setting it to 1000 on the Mac, which
+    makes the search effectively exact, changed **nothing, not one case**.
+  * **Not server-side truncation of long inputs.** A prefix sweep against a 14,906
+    character input plateaus at cosine 1.0 at 4,000 characters on BOTH hosts, agreeing to
+    six decimals, so both discard the same tail. The 15 truncations the Mac reported are
+    real but confined to `gsam`, whose three cases hit on both machines, so they are not
+    the cause either. (Those chunks reach 39k characters because `chunk.py` keeps a single
+    table row whole above `CHUNK_MAX`; that is by design and already documented there.)
+  * **Still untried, if anyone revisits it:** compare the stored vectors for one specific
+    failing case (`almanac-captains-count`, `nd-private-markets-aum`) between the two
+    indexes rather than for synthetic strings; check whether the QUERY embedding path
+    differs from the document path across ollama versions; compare chunk counts per
+    document in the two indexes. The failing cases cluster in the table and CSV heavy
+    documents (`almanac`, `nd`, `lac`, `pca`), which is the only pattern that survived.
 - 2026-10-07 [TOOL] **An unwritable `KB_PATH` fails as a raw traceback, not as a named
   error, and it fails at the first command.** Found while confirming the conversion
   ownership question on Linux: dropping `--user` makes `pipeline inventory` die inside
