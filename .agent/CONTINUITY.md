@@ -6,6 +6,23 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-07 [USER] Rewrote the DGX runbook for operators as `docs/deployment-dgx-guide.md`
+  (old `docs/deployment-dgx.md` kept, not yet removed). Decisions: own self-signed cert via
+  `scripts/make_tls_cert.sh` only, no client-CA path; DGX assumed online; `EMBED_MODEL` pinned
+  to `nomic-embed-text:v1.5` (same digest `0a109f422b47` as `latest` on 2026-10-07 [TOOL]);
+  full probe runs on the host only (23 checks), client machine uses curl plus Codex; test on a
+  few documents first, then load the full set (inventory, prune, convert, report, index).
+  UNCONFIRMED: Codex over HTTPS with that self-signed cert has never been run.
+- 2026-10-07 [USER] Guide follow-ups: step 14 has Mac and Windows versions (some users are on
+  Windows; the first user is probably on a Mac); second computer is assumed to SSH to the DGX;
+  operator may work at the DGX console or over SSH; contact is "the Cambrio team"; the old
+  `docs/deployment-dgx.md` is kept. Plan: rehearse the guide end to end on a fresh AWS GPU
+  instance, including step 14 from Tim's Mac, before the on-site day.
+- 2026-10-07 [CODE] `bootstrap_host.sh` fixed: when it adds the user to `docker`, the
+  passthrough check now runs via sudo (membership applies only at next login, so plain
+  `docker run` was refused and reported as a GPU fault); `--check` without the group fails
+  naming the group. Pinned by `tests/test_bootstrap_host.py`. `make check`: 663 passed,
+  2 skipped (Stage 2 db tests ran; WORK_DIR=/private/tmp/dgx-empty-work).
 - 2026-10-06 [TOOL] **The in-container conversion ownership question is DECIDED, and only
   one half of it still wants a Linux host.** The conversion run passes
   `--user "$(id -u):$(id -g)" -e UV_CACHE_DIR=/tmp/uv-cache-"$(id -u)"`, so the markdown is
