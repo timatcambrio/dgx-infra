@@ -620,11 +620,29 @@ checked by an expected phrase and, where the source has pages, an expected page.
 case is verified satisfiable by `scripts/check_eval_cases.py`. The case file lives outside
 the repository because its questions describe the documents.
 
-| leg | hit@5 |
-|---|---|
-| lexical | 33% |
-| vector | 58% |
-| fused | 72% |
+| leg | dev Mac, 2026-09-24 | AWS GPU host, 2026-10-06 |
+|---|---|---|
+| lexical | 33% | 33% |
+| vector | 58% | 86% |
+| fused | 72% | 89% |
+
+**Two measurements, and the difference is not explained.** The same 36 cases over the same
+twelve documents were re-run on a GPU host (one NVIDIA T4) on 2026-10-06 and the vector leg
+came back 28 points higher. Report both columns, not the better one.
+
+What is established, because each was measured rather than assumed: the embedding model was
+the same build on both machines (digest `0a109f422b47`); the text and the chunking were the
+same, which is why the lexical leg is identical case for case, that leg being the one no
+embedding touches; both servers return unit length vectors agreeing to five decimal places
+for a short string, and both stop reading a long input at the same point, so neither
+truncates differently; and raising `hnsw.ef_search` to 1000 on the slower machine, which
+makes the approximate vector index effectively exact, changed nothing at all, not one case.
+
+The two hosts differed in ollama version (0.21.0 against 0.35.1), in pgvector (0.8.6
+against 0.8.7) and in embedding on CPU against a GPU. Which of those matters, or whether
+something else does, is **UNCONFIRMED**. Treat 58% as the figure a CPU host of that vintage
+produced and 86% as the figure that GPU host produced, and do not quote either as the
+pipeline's retrieval quality without saying which machine measured it.
 
 Supersedes the 2026-09-24 floor of 31% / 53% / 67% over the same 36 cases, which stood
 until sections stopped being cut between a caption and the thing it introduces
