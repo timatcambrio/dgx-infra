@@ -11,9 +11,9 @@ networks the users sit on. Nothing else is required of the network. What IT need
 about the installation is a separate document; this one is the operator's.
 
 **Container-first.** The only host packages installed are Docker, its compose plugin and
-the NVIDIA Container Toolkit, by one script in step 3. Everything after that — converting
-documents, applying the database schema, indexing, issuing credentials, serving — runs in
-containers. There is no Python on the host, and no step below asks for one.
+the NVIDIA Container Toolkit, by one script in step 3. Everything after that runs in
+containers: converting documents, applying the database schema, indexing, issuing
+credentials, serving. There is no Python on the host, and no step below asks for one.
 
 ---
 
@@ -39,7 +39,7 @@ df -h /var/lib/docker
 ```
 
 **Expect** at least one GPU listed. If `nvidia-smi` is missing or lists none, stop here and
-have the driver installed — `scripts/bootstrap_host.sh` deliberately does not install a
+have the driver installed. `scripts/bootstrap_host.sh` deliberately does not install a
 kernel driver (its header says why), and the stack is configured in step 4 to refuse to
 start without a usable GPU rather than index slowly and silently on the CPU.
 
@@ -50,7 +50,7 @@ git clone https://github.com/timatcambrio/dgx-infra.git
 cd dgx-infra
 ```
 
-If the host cannot reach GitHub, copy a clone over instead — `git archive`, `scp`, or a
+If the host cannot reach GitHub, copy a clone over instead, by `git archive`, `scp`, or a
 tarball of the working tree. Nothing in the deployment reads git history; the files are
 what matter.
 
@@ -126,7 +126,7 @@ copying:
 
 `EMBED_MODEL` is worth pinning to an explicit tag once you know which tags the model
 publishes. A bare name means the latest published build, and months from now the same name
-can hand you different weights — every vector in the index would then come from a
+can hand you different weights. Every vector in the index would then come from a
 different build than the one embedding queries. The indexer records the model's digest and
 refuses to add to an index whose digest has changed, so this cannot happen silently, but a
 pinned tag is better than a backstop.
@@ -146,7 +146,7 @@ Docker creates a missing bind-mount source **as root**. The static file server m
 `${KB_PATH}/kb`, so a `make compose-up` that runs first leaves you a root-owned directory
 you cannot write and need `sudo` to clear. Both of the stack's mounts of this tree are
 read-only; nothing in the stack writes it. What the containers need is only that they can
-**read** it as uid 10001 — world-readable files, traversable directories, which `cp`, `git`
+**read** it as uid 10001: world-readable files, traversable directories, which `cp`, `git`
 and `rsync` give you by default. To repair it:
 
 ```bash
@@ -155,7 +155,7 @@ chmod -R a+rX /home/<you>/dgx-knowledge
 ```
 
 A file in there that uid 10001 cannot read is served as a 404 with nothing naming the
-permission, while the index holds it perfectly well — so the index looks right and the
+permission, while the index holds it perfectly well, so the index looks right and the
 citation is dead. The end-to-end probe in step 13 is the only thing in the stack that
 catches this.
 
@@ -198,7 +198,7 @@ TLS_KEY=/etc/ssl/dgx-kb/key.pem
 
 **The names on a supplied certificate are yours to get right.** The proxy serves one site
 for `KB_PUBLIC_HOST`, `localhost` and `127.0.0.1`, so all of those belong on it, plus the
-host's own address as an IP entry if anyone will dial it that way — a DNS entry does not
+host's own address as an IP entry if anyone will dial it that way. A DNS entry does not
 cover an address. Only a self-signed stand-in has been tested through this path; the code
 path is the same, but a real CA's certificate has not been through it.
 
@@ -223,7 +223,7 @@ make token ARGS="issue you@example.com"
 ```
 
 A one-off container built from the same image as the server, so the store it writes is
-owned by the uid that reads it. **The secret prints once and is not recoverable** — keep
+owned by the uid that reads it. **The secret prints once and is not recoverable**, so keep
 this one for step 13. There is no dependency on the database: credentials live in a file
 precisely so that authentication keeps working, and stays repairable, when the database
 does not.
@@ -244,7 +244,7 @@ make compose-up
 **Expect** the GPU verdict again, then five containers: the database, the model server, the
 MCP server, the static file server, and the proxy. Only the proxy publishes a port.
 
-The model is a separate, deliberate step — nothing in the stack pulls a model by itself:
+The model is a separate, deliberate step. Nothing in the stack pulls a model by itself:
 
 ```bash
 docker compose -f compose/docker-compose.yml --env-file .env \
@@ -262,7 +262,7 @@ docker compose -f compose/docker-compose.yml --env-file .env exec ollama nvidia-
 ```
 
 **Expect** the cards listed. The toolkit injects the driver into the container, so
-`nvidia-smi` exists there only because the reservation resolved — which is what makes this
+`nvidia-smi` exists there only because the reservation resolved, which is what makes this
 a test and not a formality.
 
 Whether the **model** uses a card is a separate claim and cannot be checked yet. An
@@ -300,28 +300,29 @@ Four things about that command shape, each measured rather than assumed:
 - **`--no-deps` matters.** Without it Compose starts the database and the model server for
   a job that uses neither.
 - **The mounts are at new paths, and the two settings are overridden to match.** A `-v` at
-  a container path the compose file already declares is **silently ignored** — the compose
+  a container path the compose file already declares is **silently ignored**. The compose
   file's read-only mount wins, with no error and no warning (measured 2026-10-06). So
   conversion cannot be pointed at `/kb-repo`; it is given `/sources` and `/out`, and
   `SOURCE_DIR` and `KB_PATH` are set to those.
 - **It runs as you, not as the image's user, and that is what keeps step 5 true.** This is
   the only part of the deployment that writes into the content tree, and uid 10001 cannot
-  write a tree that belongs to you — which step 5 says it should. `--user` settles it in the
+  write a tree that belongs to you, which step 5 says it should. `--user` settles it in the
   right direction: the markdown comes out owned by you and mode 644, so uid 10001 can still
   read it and nothing about step 5 has to be relaxed. The cache override is **required**
   alongside it: the image's own cache directory belongs to uid 10001, and `uv` refuses to
   start without a writable one (`failed to open file .../CACHEDIR.TAG: Permission denied`).
   Confirmed on a Linux host 2026-10-07: output owned by the login user, files 644,
   directories traversable, and still editable afterwards by the operator. Dropping
-  `--user` there fails at the first command, in a traceback rather than a message.
-  Granting the group instead — `chgrp -R 10001 "$OUT"` and `g+rwX` — would also get the
-  write done and is the worse answer: it leaves the output owned by a uid you cannot edit
+  `--user` there fails at the first command, with a message naming the directory and the
+  uid it was running as.
+  Granting the group instead, with `chgrp -R 10001 "$OUT"` and `g+rwX`, would also get
+  the write done and is the worse answer: it leaves the output owned by a uid you cannot edit
   as, in a tree the rest of the deployment expects to be yours. It is recorded here as the
   fallback if `--user` ever turns out not to suit a host, not as a second supported route.
 - **What this image can convert**: PDF through geometry reconstruction, Word `.docx`, and
   CSV. It carries no LibreOffice, so legacy `.doc` and `.dot` do not convert here, and no
   ML runtime, so the layout-model escalation for a stubborn PDF is not available either.
-  Both are deliberate — the image is the server, kept small on purpose — and both are
+  Both are deliberate, the image being the server and kept small on purpose, and both are
   reportable rather than silent: `report` names what did not convert.
 
 Read `report` before moving on. It says which documents are clean, which are mostly
@@ -347,7 +348,7 @@ make compose-index
 
 On a fresh database, skipping `--init` ends in an error naming a missing table. The
 `--init` run also records the embedding model and its dimension, which every later run is
-checked against — so this is where a model mismatch surfaces.
+checked against, so this is where a model mismatch surfaces.
 
 Indexing has just loaded the model and it stays resident for a few minutes, so ask
 immediately:
@@ -357,7 +358,7 @@ docker compose -f compose/docker-compose.yml --env-file .env exec ollama ollama 
 ```
 
 **Expect** the model listed with a processor of `100% GPU`. **`100% CPU` means the
-reservation resolved and the model still did not use the card** — the stack is up and the
+reservation resolved and the model still did not use the card**. The stack is up and the
 GPU path is not proven. Record which it said. If the listing is empty the keep-alive
 window has passed; re-run the index and ask again.
 
@@ -371,7 +372,7 @@ takes. No `--init`, no `--reindex-all`.
 reverse proxy or a live credential store. `scripts/http_probe.py` drives the **running**
 stack over TLS at its public address.
 
-Run it the way a client reaches it — from a machine on the user network, not from the host.
+Run it the way a client reaches it: from a machine on the user network, not from the host.
 An in-network run passes while saying nothing about whether a real client trusts the
 certificate, which on the supplied-certificate path is the whole question.
 
@@ -388,7 +389,7 @@ server's own listing, and a citation link is judged against `--base-url`.
 
 It checks what is open and what is closed, drives the MCP protocol through a search and a
 fetch, and **follows the citation link it gets back to confirm the cited document is
-actually fetchable** — the check that catches step 5's silent permission failure.
+actually fetchable**, the check that catches step 5's silent permission failure.
 
 The revocation checks have to write the credential store, which exists only on the host, so
 that half runs there, through the one service whose mount is read-write:
@@ -433,7 +434,7 @@ make token ARGS="revoke <token-id>"
 ```
 
 `list` shows the ids; it never shows a secret. A withdrawal takes effect on both routes
-within `KB_TOKEN_CACHE_SECONDS` — five seconds by default — with no restart and nothing
+within `KB_TOKEN_CACHE_SECONDS`, five seconds by default, with no restart and nothing
 required of any other user.
 
 ---
@@ -459,4 +460,4 @@ required of any other user.
 | A client gets an error about the host | `KB_PUBLIC_HOST` is not the name the client dials (step 4) |
 | Indexing is slow and the GPU is idle | `ollama ps` says `100% CPU`. With `KB_GPU=on` the stack should have refused to start; `make gpu-check` says what it decides and why |
 | A credential stops working within seconds | it was withdrawn. `make token ARGS=list` |
-| Conversion ends in a Python traceback on the first command | the output tree is not writable as the uid the run used. Almost always a dropped `--user` in step 11. The pipeline does not yet name this failure — the traceback ends in a `PermissionError` from the manifest write, and that is what it means |
+| `Cannot write to the output directory` | exactly what it says: the tree is not writable as the uid the run used. Almost always a dropped `--user` in step 11, and the message names the uid so you can tell |
