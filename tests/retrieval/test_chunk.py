@@ -1,4 +1,4 @@
-"""`retrieval.chunk.build_chunks` (brief §5.4)."""
+"""`retrieval.chunk.build_chunks`."""
 
 from __future__ import annotations
 

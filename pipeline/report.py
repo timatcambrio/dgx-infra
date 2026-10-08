@@ -1,4 +1,4 @@
-"""The coverage and conversion report — M1's actual deliverable.
+"""The coverage and conversion report.
 
 The numbers this prints are a decision gate: they size the OCR problem before anyone commits
 to an OCR model. So the report states the thresholds it used alongside the results, and it

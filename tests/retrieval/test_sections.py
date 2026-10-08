@@ -1,4 +1,4 @@
-"""`retrieval.sections.build_sections` (brief §5.4)."""
+"""`retrieval.sections.build_sections`."""
 
 from __future__ import annotations
 

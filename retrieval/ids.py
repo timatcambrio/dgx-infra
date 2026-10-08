@@ -1,4 +1,4 @@
-"""The four id forms used across the retrieval package and the MCP tools (brief §5.5).
+"""The four id forms used across the retrieval package and the MCP tools.
 
 ```
 doc:<slug>

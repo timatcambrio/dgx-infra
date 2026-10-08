@@ -1,4 +1,4 @@
-"""Bearer-token authentication for `kb serve --transport http` (brief §6.5.6) — DECIDED:
+"""Bearer-token authentication for `kb serve --transport http` — DECIDED:
 a plain ASGI middleware, not FastMCP's `AuthSettings`/`TokenVerifier`. Those advertise
 OAuth protected-resource metadata for an authorization server we do not have; our tokens
 are pre-shared secrets, not something a client negotiates.
@@ -34,8 +34,8 @@ from .tokens import Identity, TokenFileError, TokenStore
 if TYPE_CHECKING:  # pragma: no cover
     from .config import Config
 
-#: Only paths under this prefix require a bearer token. `/health` (brief §6.5.4) and any
-#: other route a future milestone adds outside `/mcp` are open by design.
+#: Only paths under this prefix require a bearer token. `/health` and any
+#: other route added later outside `/mcp` are open by design.
 #:
 #: NOTE for the OAuth work, if it is ever done: this is a plain `startswith`, so
 #: `/mcp/.well-known/...` is treated as protected and answered 401. RFC 9728 discovery
@@ -60,7 +60,7 @@ PROTECTED_PREFIX = "/mcp"
 AUTH_CHECK_PATH = "/auth/check"
 
 #: One JSON line per authentication decision, on stderr beside the tool-call log
-#: (brief §6.5.3). This is the per-user audit trail that one-token-per-user buys and a
+#:. This is the per-user audit trail that one-token-per-user buys and a
 #: shared static token could never provide: `token` and `user` identify *who*, not just
 #: that someone with a valid token called.
 _AUTH_LOGGER = logging.getLogger("kb.server.auth")
@@ -102,7 +102,7 @@ def _supplied_secret(header_value: bytes) -> str | None:
 
 
 async def _send_401(send: Send) -> None:
-    """Empty body, `WWW-Authenticate: Bearer` (brief §6.5.6)."""
+    """Empty body, `WWW-Authenticate: Bearer`."""
     await send(
         {
             "type": "http.response.start",
@@ -122,7 +122,7 @@ async def _send_204(send: Send) -> None:
 
 
 class BearerMiddleware:
-    """Pure ASGI middleware (brief §6.5.6). Wrap `mcp.streamable_http_app()` with this
+    """Pure ASGI middleware. Wrap `mcp.streamable_http_app()` with this
     before handing the result to uvicorn."""
 
     def __init__(self, app: ASGIApp, store: TokenStore) -> None:
@@ -173,7 +173,7 @@ class BearerMiddleware:
             await _send_204(send)
             return
 
-        # Recorded for the roadmap per-team ACL work (§10): scoping retrieval to the
+        # Recorded for the roadmap per-team ACL work: scoping retrieval to the
         # documents the *caller* may see needs the caller's identity to reach the tool
         # layer, and this is where it is known. Nothing reads it yet.
         scope.setdefault("state", {})["kb_identity"] = identity

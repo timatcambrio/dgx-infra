@@ -1,4 +1,4 @@
-"""Layout rule (brief §2.6, §4): `pipeline/` never imports `retrieval/`.
+"""Layout rule: `pipeline/` never imports `retrieval/`.
 
 Stage 2 must not fatten or complicate Stage 1. `retrieval/` may import `pipeline.frontmatter`
 (and nothing else from `pipeline/`); the reverse is never allowed. Grep-style, at the AST
@@ -33,7 +33,7 @@ def test_pipeline_never_imports_retrieval() -> None:
         if "retrieval" in _imported_top_level_names(path):
             offenders.append(path)
     assert not offenders, (
-        "pipeline/ must never import retrieval/ (brief §4): "
+        "pipeline/ must never import retrieval/: "
         f"{[str(p.relative_to(REPO_ROOT)) for p in offenders]}"
     )
 
@@ -58,13 +58,13 @@ def test_retrieval_only_imports_frontmatter_from_pipeline() -> None:
                         if alias.name != "pipeline.frontmatter":
                             offenders.append((path, alias.name))
     assert not offenders, (
-        "retrieval/ may only import pipeline.frontmatter from pipeline/ (brief §4): "
+        "retrieval/ may only import pipeline.frontmatter from pipeline/: "
         f"{offenders}"
     )
 
 
 def test_make_fixtures_only_imports_frontmatter_from_pipeline() -> None:
-    """The fixture generator is the other place brief §4 allows a `pipeline.frontmatter`
+    """The fixture generator is the other place the layout rule allows a `pipeline.frontmatter`
     import from."""
     path = Path(__file__).resolve().parent / "make_fixtures.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

@@ -164,7 +164,7 @@ def test_unlisted_cached_model_fails(tmp_path):
 
 
 def test_pending_model_found_in_cache_fails(tmp_path):
-    """Starting M2 by downloading a model whose provenance is unresolved must break."""
+    """Starting PDF conversion by downloading a model whose provenance is unresolved must break."""
     (tmp_path / "models--docling-project--TableFormerV2").mkdir()
     _, pending, _ = model_gate.load_models(REPO_ROOT / "models.yaml")
 

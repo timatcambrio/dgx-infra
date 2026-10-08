@@ -1,4 +1,4 @@
-"""Retrieval (brief §6.4): lexical + vector legs over `chunks`, fused with RRF, collapsed
+"""Retrieval: lexical + vector legs over `chunks`, fused with RRF, collapsed
 to sections.
 
 `search()` is the primary entry point (fused by default). `search_legs()` runs any subset
@@ -7,7 +7,7 @@ of `{"lexical", "vector", "fused"}` in one round trip against the same SQL, so `
 
 Callers own the connection (a single `asyncpg.Connection` with the pgvector codec
 registered — see `retrieval.db.create_pool`'s `init=` callback) and the embedder: this
-module never opens a connection or talks to ollama itself, so it is trivial for the S3 MCP
+module never opens a connection or talks to ollama itself, so it is trivial for the MCP
 server to reuse against its pool.
 """
 
@@ -20,10 +20,10 @@ from typing import Callable, Hashable, Iterable, Optional
 
 import asyncpg
 
-#: Top-N per leg before fusion (brief §6.4).
+#: Top-N per leg before fusion.
 LEXICAL_LIMIT = 20
 VECTOR_LIMIT = 20
-#: RRF constant (brief §6.4). Not tunable to chase the eval (brief §6.7, hard rule 7).
+#: RRF constant. Not tunable to chase the eval.
 RRF_K = 60
 SNIPPET_CHARS = 300
 K_MIN = 1
@@ -52,13 +52,13 @@ class SectionHit:
     score: float
     best_chunk_index: int
     #: 1-based rank of the winning chunk in each leg, or `None` when it did not appear in
-    #: that leg at all (brief §6.4: "keep them, the eval needs them").
+    #: that leg at all.
     lexical_rank: Optional[int]
     vector_rank: Optional[int]
 
 
 def clamp_k(k: int) -> int:
-    """`k` clamped to 1..25 (brief §6.4)."""
+    """`k` clamped to 1..25."""
     return max(K_MIN, min(K_MAX, k))
 
 
@@ -67,12 +67,12 @@ def collapse_whitespace(text: str) -> str:
 
 
 def make_snippet(text: str) -> str:
-    """First 300 chars of `text`, whitespace collapsed (brief §6.4)."""
+    """First 300 chars of `text`, whitespace collapsed."""
     return collapse_whitespace(text)[:SNIPPET_CHARS]
 
 
 def fuse_rrf(legs: Iterable[list[Hashable]], k: int = RRF_K) -> dict[Hashable, float]:
-    """Reciprocal rank fusion (brief §6.4): each item in a ranked list (1-based rank =
+    """Reciprocal rank fusion: each item in a ranked list (1-based rank =
     position + 1) gets `1/(k+rank)`, summed across every list it appears in.
 
     Pure function over already-ranked id lists — no database access — so RRF math is
@@ -88,7 +88,7 @@ def fuse_rrf(legs: Iterable[list[Hashable]], k: int = RRF_K) -> dict[Hashable, f
 def _filter_clause(
     filters: Optional[dict], alias: str, start: int, need_text_class: bool
 ) -> tuple[list[str], list]:
-    """SQL `WHERE` fragments + params for `filters` (brief §6.4: slug, text_class,
+    """SQL `WHERE` fragments + params for `filters` (slug, text_class,
     page_min/page_max applied to `chunks.page_first`), starting at parameter `$start`.
     """
     clauses: list[str] = []
@@ -117,11 +117,10 @@ def _filter_clause(
 async def _lexical_chunks(
     conn: asyncpg.Connection, query: str, filters: Optional[dict]
 ) -> list[asyncpg.Record]:
-    """Top-20 chunks by `ts_rank_cd` (brief §6.4). Skips the leg (returns `[]`) when
+    """Top-20 chunks by `ts_rank_cd`. Skips the leg (returns `[]`) when
     `websearch_to_tsquery` parses to an empty query, e.g. an all-stop-words query — matching
     nothing would look identical, but checking first means we never rely on that
-    coincidence (brief §13: "matches nothing; skip the leg rather than fusing an empty
-    list")."""
+    coincidence: an empty leg is skipped rather than fused as an empty list."""
     tsq_text = await conn.fetchval("SELECT websearch_to_tsquery('english', $1)::text", query)
     if not tsq_text:
         return []
@@ -144,7 +143,7 @@ async def _lexical_chunks(
 async def _vector_chunks(
     conn: asyncpg.Connection, vector: list[float], filters: Optional[dict]
 ) -> list[asyncpg.Record]:
-    """Top-20 chunks by cosine similarity (brief §6.4). `$1` is the query embedding, sent
+    """Top-20 chunks by cosine similarity. `$1` is the query embedding, sent
     through the pgvector asyncpg codec registered on `conn`."""
     need_tc = bool(filters and filters.get("text_class"))
     join = "JOIN documents d ON d.slug = c.slug" if need_tc else ""
@@ -213,7 +212,7 @@ async def _collapse_to_sections(
     """Group `ordered_chunk_ids` (already sorted best-first for this leg) by
     `(slug, section_index)`, keep the first (= best) chunk per section as the snippet
     source, sort sections by score desc with a deterministic `(slug, section_index)`
-    tie-break, and take `k` (brief §6.4)."""
+    tie-break, and take `k`."""
     best_for_section: dict[SectionKey, ChunkId] = {}
     for cid in ordered_chunk_ids:
         sec_key = (cid[0], section_of[cid])
@@ -321,7 +320,7 @@ async def search(
     embed_query_fn: Callable[[str], list[float]],
     leg: str = "fused",
 ) -> list[SectionHit]:
-    """`search(query, k=8, filters=None) -> list[SectionHit]` (brief §6.4). `leg` selects
+    """`search(query, k=8, filters=None) -> list[SectionHit]`. `leg` selects
     `"lexical"`, `"vector"`, or the default `"fused"`, sharing `search_legs`'s SQL."""
     if leg not in ("lexical", "vector", "fused"):
         raise ValueError(f"leg must be lexical|vector|fused, got {leg!r}")

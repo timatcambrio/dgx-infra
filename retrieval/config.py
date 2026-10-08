@@ -1,4 +1,4 @@
-"""Configuration for Stage 2 (brief §7.1): one frozen dataclass, loaded from the
+"""Configuration for Stage 2: one frozen dataclass, loaded from the
 environment / `.env`, failing loudly (exit 2, naming the key) rather than guessing.
 
 Deliberately separate from `pipeline.config`: the two packages share nothing but the `kb/`

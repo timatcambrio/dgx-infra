@@ -13,9 +13,9 @@
 # plus the gate's cache scan therefore asserts something true and useful right now -- that
 # no model has been downloaded -- and it will fail the moment one appears.
 #
-# `pending_review` records models Docling WOULD fetch once M2 conversion runs, together with
+# `pending_review` records models Docling WOULD fetch once PDF conversion runs, together with
 # what is actually known about each. These are not approved. The gate reports them on every
-# run and fails if one is found in a cache, so M2 cannot quietly begin by downloading a model
+# run and fails if one is found in a cache, so PDF conversion cannot quietly begin by downloading a model
 # whose provenance is still an open question.
 
 version: 1
@@ -66,7 +66,7 @@ pending_review:
       weights (Nassar et al., IBM Research), not a fine-tune of a third-party base.
     blocker: |
       None known on licence or provenance. Left in pending_review only because this phase
-      fetches no model at all; promote it to allowed_models when M2 starts.
+      fetches no model at all; promote it to allowed_models when PDF conversion starts.
 
   - model: "docling-project/TableFormerV2"
     license: "UNDECLARED"

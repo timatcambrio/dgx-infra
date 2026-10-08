@@ -1,4 +1,4 @@
-# Caddy: TLS termination + reverse proxy for the Stage 2 stack (brief §7.2, §7.4, §9 S4).
+# Caddy: TLS termination + reverse proxy for the Stage 2 stack.
 #
 # Routes:
 #   /mcp*, /health  -> kb-mcp:8765    the MCP server. kb-mcp's own bearer middleware

@@ -1,4 +1,4 @@
--- Stage 2 schema (brief §6.1). Applied by `kb index --init`, idempotently.
+-- Stage 2 schema. Applied by `kb index --init`, idempotently.
 --
 -- `{EMBED_DIM}` is substituted with the configured EMBED_DIM by `db.py` before this file is
 -- executed. Section text is not stored anywhere: it is assembled from `blocks` on fetch, so

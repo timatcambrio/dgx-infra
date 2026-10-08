@@ -1,8 +1,7 @@
 """`kb` — the Stage 2 CLI: `index`, `search`, `serve`, `eval`, `catalog`.
 
-S0 (this milestone) only wires up `kb index --init`: applying the schema and creating the
-read-only role. The other subcommands exist so `kb --help` shows the full shape, and exit 2
-naming the milestone that adds them.
+`catalog` is not implemented yet: it exists so `kb --help` shows the full shape, and exits
+2 saying so.
 """
 
 from __future__ import annotations
@@ -43,9 +42,9 @@ def _load_config(env_file: Optional[Path]) -> Config:
         raise typer.Exit(EXIT_CONFIG_ERROR) from exc
 
 
-def _not_implemented(name: str, milestone: str) -> None:
+def _not_implemented(name: str) -> None:
     typer.secho(
-        f"`kb {name}` is not implemented until {milestone}.", fg=typer.colors.YELLOW, err=True
+        f"`kb {name}` is not implemented yet.", fg=typer.colors.YELLOW, err=True
     )
     raise typer.Exit(EXIT_NOT_IMPLEMENTED)
 
@@ -294,7 +293,7 @@ def serve(
         mcp_server.run(transport="stdio")
         return
 
-    # --transport http|streamable-http (brief §9 S4, hard rule 6): refuse an
+    # --transport http|streamable-http: refuse an
     # unauthenticated HTTP server unless the operator explicitly opts in. The question is
     # now "can anything authenticate", answered by the store across both sources (the
     # token file and legacy KB_TOKENS), not "is KB_TOKENS non-empty".
@@ -395,9 +394,9 @@ def catalog(
     summarize: bool = typer.Option(False, "--summarize"),
     env_file: Optional[Path] = ENV_FILE_OPTION,
 ) -> None:
-    """Document catalog / summaries. Not implemented until S5."""
+    """Document catalog / summaries. Not implemented yet."""
     _load_config(env_file)
-    _not_implemented("catalog", "S5")
+    _not_implemented("catalog")
 
 
 # --------------------------------------------------------------------------------------

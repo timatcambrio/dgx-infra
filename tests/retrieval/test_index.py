@@ -1,4 +1,4 @@
-"""`kb index` (brief §6.2) acceptance tests, against the test DB and a fake ollama.
+"""`kb index` acceptance tests, against the test DB and a fake ollama.
 
 Skips (via `db_dsn`) with a clear message if the test database is unreachable.
 """

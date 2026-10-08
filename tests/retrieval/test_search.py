@@ -1,4 +1,4 @@
-"""`retrieval.search` (brief §6.4) against the fixtures, indexed once per session with the
+"""`retrieval.search` against the fixtures, indexed once per session with the
 fake ollama (reusing `test_index.py`'s setup).
 
 Every asyncpg connection is opened and closed inside a single `asyncio.run(...)` call per

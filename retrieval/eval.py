@@ -1,11 +1,11 @@
-"""`kb eval` — retrieval regression harness (brief §6.7).
+"""`kb eval` — retrieval regression harness.
 
 Metric: **section hit@k** — a case passes for a leg if any of that leg's top-k sections has
 `slug == expected_slug` and satisfies every optional condition given (`expected_phrase` in
 the section's full text, case-insensitively; `expected_page` within the section's page
-range). Exit 0 always: the number is recorded, not enforced, except in the S2 tests where
+range). Exit 0 always: the number is recorded, not enforced, except in the tests where
 the fixture cases must all hit. Never tune `k`, chunk sizes, or the RRF constant to chase
-this (brief hard rule 7) — plant a more distinctive token in the fixture, or fix a bug.
+this — plant a more distinctive token in the fixture, or fix a bug.
 """
 
 from __future__ import annotations

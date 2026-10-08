@@ -1,4 +1,4 @@
-"""A fake ollama `/api/embed` (brief §8.2): deterministic, meaningless vectors.
+"""A fake ollama `/api/embed`: deterministic, meaningless vectors.
 
 For each input string, derive a vector from `sha256(text)`: seed a `random.Random` with
 the hex digest, draw `dim` uniforms, L2-normalise. Same text -> same vector, always; no

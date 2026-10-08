@@ -1,7 +1,7 @@
-"""Reading `kb/`: frontmatter + body + sidecar -> `Document` (brief §5.1-§5.3).
+"""Reading `kb/`: frontmatter + body + sidecar -> `Document`.
 
-`retrieval/` may import `pipeline.frontmatter` and nothing else from `pipeline/` (brief
-§4): this module is the one place that happens, to validate frontmatter with the exact
+`retrieval/` may import `pipeline.frontmatter` and nothing else from `pipeline/`: this
+module is the one place that happens, to validate frontmatter with the exact
 contract Stage 1 writes.
 """
 
@@ -17,14 +17,13 @@ import frontmatter as frontmatter_lib
 
 from pipeline import frontmatter as pipeline_frontmatter
 
-#: Anchors: `<!-- dgx:block=<slug>:pNNN:bNNN -->` at the start of a line, brief §5.2 step 3.
+#: Anchors: `<!-- dgx:block=<slug>:pNNN:bNNN -->` at the start of a line.
 _ANCHOR_RE = re.compile(r"^<!-- dgx:block=([^ ]+) -->\n", re.M)
 
-#: `INCOMPLETE — pages 1, 2, 3 ...` — accept an em dash or a plain hyphen (brief §5.2 step
-#: 7 says "also accept a plain hyphen for the dash").
+#: `INCOMPLETE — pages 1, 2, 3 ...` — accept an em dash or a plain hyphen.
 _INCOMPLETE_RE = re.compile(r"INCOMPLETE\s+(?:—|-)\s+pages?\s+([\d, ]+)")
 
-#: Fallback split for documents with no sidecar (brief §5.3): heading lines at level 1-3.
+#: Fallback split for documents with no sidecar: heading lines at level 1-3.
 _FALLBACK_HEADING_RE = re.compile(r"(?m)^(#{1,3}[ \t]+.*)$")
 
 
@@ -55,8 +54,8 @@ class Document:
     incomplete_pages: list[int]
     page_count: Optional[int]
     dropped_empty_blocks: int
-    #: Length of the raw markdown body (post-frontmatter), brief §6.2: "documents.chars =
-    #: the body length."
+    #: Length of the raw markdown body (post-frontmatter): `documents.chars`
+    #: is the body length.
     chars: int
 
     @property
@@ -66,7 +65,7 @@ class Document:
 
 def _heading_level(text: str) -> int:
     """Leading '#' count of the first line, 1-6; 3 if the block does not start with '#'
-    (brief §5.2 step 6)."""
+   ."""
     first_line = text.splitlines()[0] if text else ""
     m = re.match(r"^(#{1,6})(?:\s|$)", first_line)
     if m:
@@ -82,7 +81,7 @@ def _parse_incomplete_pages(body: str) -> list[int]:
 
 
 def load_document(md_path: Path) -> Document:
-    """Parse one `kb/<slug>.md` (+ its sidecar, if any) into a `Document` (brief §5.2)."""
+    """Parse one `kb/<slug>.md` (+ its sidecar, if any) into a `Document`."""
     md_path = Path(md_path)
     slug = md_path.stem
     raw = md_path.read_text(encoding="utf-8")
@@ -181,7 +180,7 @@ def _load_with_sidecar(
 
 
 def _load_fallback(slug: str, md_path: Path, meta: dict[str, Any], body: str) -> Document:
-    """§5.3: documents with no sidecar (DOCX, CSV). Split at heading lines; a body that is
+    """Documents with no sidecar (DOCX, CSV). Split at heading lines; a body that is
     a single markdown table becomes one `kind='table'` block."""
     text = body.strip("\n")
     lines = [ln for ln in text.splitlines() if ln.strip()]

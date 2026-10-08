@@ -397,7 +397,7 @@ class TokenStore:
         `hmac.compare_digest` over hex digests rather than `==`: the digests make the
         comparison uncorrelated with the secret already, but a non-constant-time compare
         would still leak which *record* was being tested through timing, and the cost of
-        avoiding that is nothing (brief §8.4).
+        avoiding that is nothing.
         """
         digest = hash_secret(supplied)
 

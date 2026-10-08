@@ -1,4 +1,4 @@
-"""`retrieval.auth` (brief §6.5.6, §8.4): the bearer middleware in front of the HTTP
+"""`retrieval.auth`: the bearer middleware in front of the HTTP
 transport, tested against a minimal ASGI app so these tests need neither Postgres nor a
 running MCP session — `test_server_http.py` covers the real `/mcp` traffic end to end.
 
@@ -123,7 +123,7 @@ def test_mcp_with_second_configured_token_is_also_let_through() -> None:
 
 def test_constant_time_compare_is_used() -> None:
     """`hmac.compare_digest` is referenced by the store the middleware resolves through
-    (brief §8.4). It moved out of `auth.py` with the store; the property has not."""
+   . It moved out of `auth.py` with the store; the property has not."""
     assert "hmac.compare_digest" in inspect.getsource(tokens_module)
 
 
@@ -231,7 +231,7 @@ def test_allow_anonymous_still_prefers_a_real_identity(tmp_path: Path) -> None:
 
 
 def test_each_decision_is_logged_as_one_json_line_naming_the_user(tmp_path: Path) -> None:
-    """The per-user audit trail one-token-per-user buys (brief §6.5.3's logging shape): a
+    """The per-user audit trail one-token-per-user buys: a
     shared static token could record that *someone* called, never who.
 
     """

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate `tests/retrieval/fixtures/kb/` (brief §8.1): synthetic, seeded, nonsense-but-
+"""Generate `tests/retrieval/fixtures/kb/`: synthetic, seeded, nonsense-but-
 searchable `kb/` documents in Stage 1's exact contract. Content is never read from a real
 document — every word here comes from a fixed word list and a seeded RNG.
 
@@ -8,19 +8,19 @@ fixtures-retrieval` is checked for a no-op diff). Frontmatter is written through
 `pipeline.frontmatter.build`/`render` so the contract cannot drift out from under the
 fixtures.
 
-Four documents (brief §8.1):
+Four documents:
   - `handbook`       — 40 "pages", ~60k chars, headings at levels 1-4, two tables (one
                         opening a section, one oversized), one oversized paragraph.
   - `budget-form`     — 6 pages, ~12k chars, ten annotation blocks, six boxed_text blocks,
                         an INCOMPLETE callout, and the planted tokens `FORM-7731` and
-                        `carry over` used by the retrieval eval fixtures (S2).
+                        `carry over` used by the retrieval eval fixtures.
   - `deck`            — 30 pages, ~15k chars, one `###` heading per page, 2-3 blocks each.
-  - `reference-table` — a CSV-style document with no sidecar and no block anchors (§5.3
+  - `reference-table` — a CSV-style document with no sidecar and no block anchors (the
                         fallback path), one markdown table.
 
 `expected.json` is derived from what this script actually generates (never hand-typed), so
-it cannot drift from the fixtures it describes. Section/chunk counts are not recorded yet —
-the chunker (`retrieval/chunk.py`) is built in S1.
+it cannot drift from the fixtures it describes. Section/chunk counts come from the real
+chunker (`retrieval/chunk.py`).
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ WORDS = (
 
 CALLOUT_TOKEN = "FORM-7731"
 CARRY_OVER = "carry over"
-#: Planted for the S2 retrieval eval (brief §6.7): each appears exactly once in its
+#: Planted for the retrieval eval: each appears exactly once in its
 #: document so a lexical query for it has an unambiguous target, including the two
 #: documents (`deck`, `reference-table`) that otherwise contain only nonsense words.
 DECK_TOKEN = "DECKMARK-4412"
@@ -95,7 +95,7 @@ def table(rng: random.Random, rows: int, cols: int, plant: str | None = None) ->
 
 
 class DocBuilder:
-    """Collects (page, kind, text) blocks and renders them into the §5.1 contract."""
+    """Collects (page, kind, text) blocks and renders them into the `kb/` contract."""
 
     def __init__(self, slug: str) -> None:
         self.slug = slug
@@ -321,8 +321,8 @@ def build_budget_form() -> dict:
 def build_deck() -> dict:
     rng = rng_for("deck")
     doc = DocBuilder("deck")
-    # Content before the first heading: exercises the genuine "section 0" case (brief
-    # §5.4: "Section 0 with no heading gets heading_path = title").
+    # Content before the first heading: exercises the genuine "section 0" case: a
+    # section 0 with no heading gets the document title as its heading_path.
     doc.add(1, "paragraph", paragraph(rng, 2))
     doc.add(1, "heading", "# Program Review Deck")
 
@@ -341,8 +341,8 @@ def build_deck() -> dict:
 
 
 def build_reference_table() -> dict:
-    """CSV-style document: no sidecar, no anchors, body is a single markdown table (§5.3
-    "a CSV body that is a single markdown table becomes one `kind='table'` block")."""
+    """CSV-style document: no sidecar, no anchors, body is a single markdown table,
+    which becomes one `kind='table'` block."""
     rng = rng_for("reference-table")
     doc = DocBuilder("reference-table")
     doc.add(None, "table", table(rng, rows=12, cols=5, plant=REFTAB_TOKEN))
@@ -369,7 +369,7 @@ def main() -> None:
         build_reference_table(),
     ]
 
-    # Section/chunk counts (S1): computed from the fixtures actually written above, via
+    # Section/chunk counts: computed from the fixtures actually written above, via
     # the real implementation, so this file cannot drift from what `kb index` will do.
     from retrieval.chunk import build_chunks
     from retrieval.kbfiles import load_document

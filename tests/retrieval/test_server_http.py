@@ -1,4 +1,4 @@
-"""`kb serve --transport http` (brief §9 S4, §8.4): a real subprocess, bound to
+"""`kb serve --transport http`: a real subprocess, bound to
 `127.0.0.1` on a free port, against the fixtures indexed once per session with the fake
 ollama (same `indexed_dsn`/`fake_ollama_http` fixtures as `test_server.py`). Driven with
 `mcp.client.streamable_http` + `ClientSession`, plus plain `httpx` for `/health` and the

@@ -922,7 +922,7 @@ EQUIPMENT_TABLE_ROWS = [
 ]
 
 
-#: The embedded picture, as pixels. 6x6 rather than the 4x4 the addendum names: docling's
+#: The embedded picture, as pixels. 6x6 rather than the smallest possible 4x4: docling's
 #: `MsWordDocumentBackend` treats any picture at or under `SPACER_IMAGE_AREA_THRESHOLD`
 #: (25px^2) as an invisible layout spacer and drops it from the converted document entirely
 #: (verified against the installed docling version -- a 4x4, 16px^2 image produces zero

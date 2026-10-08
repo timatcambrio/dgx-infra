@@ -196,7 +196,7 @@ def scan_caches(
     """Fail on anything cached that is not on the allowlist.
 
     A `pending_review` model found in a cache gets its own message, because "someone started
-    M2 before the provenance question was answered" is a different problem from "an unknown
+    PDF conversion before the provenance question was answered" is a different problem from "an unknown
     model appeared" and deserves to read that way.
     """
     findings: list[Finding] = []

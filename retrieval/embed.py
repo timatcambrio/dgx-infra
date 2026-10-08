@@ -1,4 +1,4 @@
-"""Embeddings: ollama, `nomic-embed-text` (brief §6.3).
+"""Embeddings: ollama, `nomic-embed-text`.
 
 `POST {OLLAMA_BASE_URL}/api/embed` with `{"model", "input": [...], "truncate": true}`,
 batch <= 32 texts and <= `BATCH_MAX_CHARS` characters (a single longer text travels

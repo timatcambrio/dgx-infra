@@ -1,4 +1,4 @@
-"""`kb eval` (brief §6.7) against the fixture cases and the indexed fixtures.
+"""`kb eval` against the fixture cases and the indexed fixtures.
 
 Reuses `test_search.py`'s session-scoped `indexed_dsn` fixture (and its `_with_conn`/
 `_embed_fn` helpers) so the fixtures are indexed only once and every connection stays

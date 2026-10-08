@@ -1,5 +1,5 @@
-"""The citation string (brief §6.5.2), and the small lookups it needs from `documents`/
-`blocks`. Kept separate from `search.py` so `kb search`'s CLI output and the S3 MCP
+"""The citation string, and the small lookups it needs from `documents`/
+`blocks`. Kept separate from `search.py` so `kb search`'s CLI output and the MCP
 server's `fetch`/`get_section` share one implementation instead of two.
 
 Citation format: `"{title}, {heading_path} (source: {source_file}, pages {a}-{b}, dated

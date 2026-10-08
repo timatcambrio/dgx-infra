@@ -1,4 +1,4 @@
-"""Text-layer coverage measurement — the core of M1.
+"""Text-layer coverage measurement.
 
 Measures how much usable text a PDF already carries, so the size of the OCR problem is a
 number rather than a guess. Model-free by design: `pypdfium2` reads the existing text layer

@@ -473,7 +473,7 @@ uv run kb serve --transport stdio          # runs the MCP server over stdio
 The Stage 2 keys are described in [What the Stage 2 keys in `.env` mean](#what-the-stage-2-keys-in-env-mean).
 
 `kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); `catalog`
-currently exits with "not implemented until S5".
+currently exits with "not implemented yet".
 
 ### `kb index`
 

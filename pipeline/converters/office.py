@@ -266,8 +266,8 @@ def _walk_items(document) -> tuple[list[tuple[str, str, str]], int, int]:
     Produces `(markdown, kind, confidence)` triples instead of calling
     `document.export_to_markdown()`, so each block keeps its own kind -- a table stays a
     `table` block and a picture stays a `picture` block rather than collapsing into
-    undifferentiated prose. See the Stage 1 sidecar addendum §3.2 for the mapping this
-    implements; verified against the installed docling-core's item classes and labels rather
+    undifferentiated prose. The mapping from docling item to block kind is
+    verified against the installed docling-core's item classes and labels rather
     than assumed.
     """
     from docling_core.types.doc import (  # noqa: PLC0415 - lazy, matches the rest of the file

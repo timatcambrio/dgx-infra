@@ -1,4 +1,4 @@
-"""`retrieval.cite.build_citation` (brief §6.5.2)."""
+"""`retrieval.cite.build_citation`."""
 
 from __future__ import annotations
 

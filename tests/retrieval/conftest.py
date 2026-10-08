@@ -1,7 +1,7 @@
 """Shared fixtures for `tests/retrieval/`.
 
 Async tests are plain `def` functions that call `asyncio.run(...)` themselves rather than
-using `pytest-asyncio` — that dependency is not on the brief's approved list (§2.5), and one
+using `pytest-asyncio` — that dependency is not on the approved list, and one
 `asyncio.run` per test is all these need.
 
 The test database defaults to `DATABASE_URL_TEST=postgresql://kb_index:kb@localhost:5432/
@@ -204,7 +204,7 @@ def indexed_dsn(_schema_ready: str, tmp_path_factory: pytest.TempPathFactory) ->
 class _EmbedHandler(BaseHTTPRequestHandler):
     """A real (loopback) HTTP `/api/embed`, for subprocess tests — a subprocess cannot
     share this process's `httpx.MockTransport`, so it needs an actual server to talk to
-    (brief §8.2: "a tiny ... HTTP server on a free port for the CLI tests")."""
+   ."""
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         pass
