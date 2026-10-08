@@ -14,6 +14,7 @@ You need:
 | A login on the DGX that can use `sudo` | used to create the `kbadmin` account the service runs under, in [step 0](#0-create-the-service-account) |
 | About 150 GB free on the disk that has `/var/lib/docker` | for images, the database and the model |
 | Internet access from the DGX | to download software and the embedding model |
+| Access to the `dgx-infra` and `dgx-knowledge` repositories on GitHub, over SSH, from the `kbadmin` account on the DGX | used in [step 2](#2-get-the-code) to download the code, and later to update it |
 | The DGX's host name and IP address on the user network | see [Finding the host name and address](#finding-the-host-name-and-address) |
 | Inbound TCP port 443 to the DGX from the user network | the only port the service uses |
 | A second computer on the user network (Mac or Windows) with the ChatGPT desktop app (Codex), able to connect to the DGX over SSH | used in [step 14](#14-check-from-a-second-computer) to connect the way a user does |
@@ -96,8 +97,8 @@ Downloads the deployment code and the repository for the converted documents.
 
 ```bash
 cd ~
-git clone https://github.com/timatcambrio/dgx-infra.git
-git clone https://github.com/timatcambrio/dgx-knowledge.git
+git clone git@github.com:timatcambrio/dgx-infra.git
+git clone git@github.com:timatcambrio/dgx-knowledge.git
 cd ~/dgx-infra
 ```
 
