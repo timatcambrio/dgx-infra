@@ -1,4 +1,4 @@
-"""`kb index` (brief §6.2) acceptance tests, against the test DB and a fake ollama.
+"""`kb index` acceptance tests, against the test DB and a fake ollama.
 
 Skips (via `db_dsn`) with a clear message if the test database is unreachable.
 """
@@ -146,7 +146,7 @@ def test_modifying_one_fixture_byte_reindexes_only_that_document(tmp_path: Path,
     target = kb_dir / "deck.md"
     text = target.read_text(encoding="utf-8")
     # A byte change that keeps the frontmatter/sha contract irrelevant: kb_sha256 is the
-    # markdown file's own bytes, computed fresh every run — it is not re-validated against
+    # markdown file's own bytes, computed fresh every run; it is not re-validated against
     # anything, so any byte edit is enough to change it.
     target.write_text(text + " ", encoding="utf-8")
 

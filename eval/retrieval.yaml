@@ -1,4 +1,4 @@
-# Retrieval regression cases (brief §6.7). Run with `kb eval` (or `make eval-retrieval`).
+# Retrieval regression cases. Run with `kb eval` (or `make eval-retrieval`).
 #
 # These eight run against the synthetic fixtures in `tests/retrieval/fixtures/kb/` and are
 # asserted to reach 100% fused hit@5 in `tests/retrieval/test_eval.py`. They exercise the
@@ -6,8 +6,8 @@
 # REFTAB-ANCHOR-4471) plus a few handbook section headings, which are the only real-English
 # text in an otherwise nonsense-word corpus and so are themselves unambiguous.
 #
-# This file is NOT the recorded numbers for the real corpus -- Tim runs `kb eval` there and
-# records those in the README separately (brief §6.7, README "How to read the eval table").
+# This file is NOT the recorded numbers for a real corpus -- run `kb eval` there with
+# your own cases and record the results alongside the deployment.
 
 #
 # Question wording note: `websearch_to_tsquery` ANDs every unquoted word, so a question

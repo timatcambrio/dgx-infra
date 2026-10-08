@@ -75,7 +75,7 @@ clean-work:  ## Delete WORK_DIR. Costs time to rebuild, never information.
 	$(PYTHON) -c "import shutil; from pipeline.config import load; \
 		d = load().work_dir; shutil.rmtree(d, ignore_errors=True); print('removed', d)"
 
-# --- Stage 2: index kb/ into Postgres and serve it over MCP (needs `uv sync --extra serve`)
+# --- Search and serve (`kb`): index kb/ into Postgres and serve it over MCP (needs `uv sync --extra serve`)
 
 index:  ## Index kb/ into Postgres. Pass flags with ARGS, e.g. make index ARGS=--init
 	$(UV) run kb index $(ARGS)

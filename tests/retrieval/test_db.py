@@ -1,6 +1,6 @@
-"""Smoke test (brief §9, S0): `--init` applies the schema and `SELECT` on `chunks` works.
+"""Smoke test: `--init` applies the schema and `SELECT` on `chunks` works.
 
-Skips with a clear message if the test database is unreachable — see
+Skips with a clear message if the test database is unreachable; see
 `tests/retrieval/conftest.py`.
 """
 

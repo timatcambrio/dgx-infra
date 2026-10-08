@@ -1,4 +1,4 @@
-"""`retrieval.chunk.build_chunks` (brief §5.4)."""
+"""`retrieval.chunk.build_chunks`."""
 
 from __future__ import annotations
 
@@ -155,7 +155,7 @@ def test_annotations_after_a_split_table_stay_with_its_last_piece() -> None:
 
 
 def test_oversized_table_block_without_pipe_rows_splits_at_blank_lines() -> None:
-    """A block Stage 1 labelled `table` but rendered without pipe rows has no row
+    """A block conversion labelled `table` but rendered without pipe rows has no row
     boundaries to honour; it is treated like an oversized paragraph."""
     text = "\n\n".join(f"Flattened cell run number {i} " * 8 for i in range(40))
     assert len(text) > CHUNK_MAX and "|" not in text

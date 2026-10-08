@@ -1,4 +1,4 @@
-"""`retrieval.embed` (brief §6.3) against a fake ollama via `httpx.MockTransport`."""
+"""`retrieval.embed` against a fake ollama via `httpx.MockTransport`."""
 
 from __future__ import annotations
 

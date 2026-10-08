@@ -1,5 +1,5 @@
-"""The citation string (brief §6.5.2), and the small lookups it needs from `documents`/
-`blocks`. Kept separate from `search.py` so `kb search`'s CLI output and the S3 MCP
+"""The citation string, and the small lookups it needs from `documents`/
+`blocks`. Kept separate from `search.py` so `kb search`'s CLI output and the MCP
 server's `fetch`/`get_section` share one implementation instead of two.
 
 Citation format: `"{title}, {heading_path} (source: {source_file}, pages {a}-{b}, dated
@@ -42,7 +42,7 @@ async def fetch_block_ids(
     conn: asyncpg.Connection, slug: str, first_ordinal: int, last_ordinal: int
 ) -> tuple[str, str]:
     """The `block_id` strings for the ordinals `sections.block_first`/`block_last` (or a
-    chunk's) record — those columns are integer ordinals, not the `<slug>:pNNN:bNNN` ids a
+    chunk's) record: those columns are integer ordinals, not the `<slug>:pNNN:bNNN` ids a
     citation needs."""
     first = await conn.fetchval(
         "SELECT block_id FROM blocks WHERE slug = $1 AND ordinal = $2", slug, first_ordinal

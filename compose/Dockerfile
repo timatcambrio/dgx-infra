@@ -1,4 +1,4 @@
-# Image for `kb-mcp` (brief §7.2, §9 S4): runs `kb serve --transport http` inside the
+# Image for `kb-mcp`: runs `kb serve --transport http` inside the
 # compose network. Also used as a one-off for `kb index` (`docker compose run --rm kb-mcp
 # kb index`) and `kb index --init` -- the image carries the whole `kb` CLI, not just the
 # server.
@@ -28,7 +28,7 @@ RUN useradd --create-home --uid 10001 kb \
 USER kb
 
 # ENTRYPOINT is `uv run` (not `uv run kb`) so `docker compose run --rm kb-mcp kb index`
-# (brief §7.2) works unmodified: compose appends "kb index" to the entrypoint, giving
+# works unmodified: compose appends "kb index" to the entrypoint, giving
 # `uv run kb index`, rather than duplicating "kb" if the entrypoint already named it.
 #
 # `--no-sync` because `uv run` otherwise syncs the project AGAIN at container start, with

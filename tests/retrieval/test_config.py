@@ -1,4 +1,4 @@
-"""`retrieval.config` (brief §7.1)."""
+"""`retrieval.config`."""
 
 from __future__ import annotations
 

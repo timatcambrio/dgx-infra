@@ -46,7 +46,7 @@ def test_matches_golden(fixture_name, config, golden_dir, entry_for):
     golden = golden_dir / GOLDEN_BY_FIXTURE[fixture_name]
     if not golden.is_file():
         pytest.skip(
-            f"{golden.name} not generated yet — this is an M2 artefact, since producing it "
+            f"{golden.name} not generated yet: it is produced by PDF conversion, which "
             "requires running Docling and downloading models that models.yaml has not "
             "cleared."
         )

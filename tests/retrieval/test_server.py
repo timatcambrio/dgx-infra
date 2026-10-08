@@ -1,14 +1,14 @@
-"""`retrieval.server` (brief §6.5, §8.4): the five MCP tools, against the fixtures indexed
+"""`retrieval.server`: the five MCP tools, against the fixtures indexed
 once per session with the fake ollama (same pattern as `test_search.py`'s `indexed_dsn`).
 
 Two flavours of test:
 
-- In-memory, via `mcp.shared.memory.create_connected_server_and_client_session` — fast,
+- In-memory, via `mcp.shared.memory.create_connected_server_and_client_session`: fast,
   exercises the tool logic and the dual content/structuredContent encoding.
-- One real subprocess over stdio (hard rule 6: stdout is the protocol channel) — the only
+- One real subprocess over stdio (stdout is the protocol channel), the only
   test that would actually fail if a stray `print` or a misconfigured logger wrote to
   stdout, since a polluted stdout breaks JSON-RPC framing and the SDK's stdio client raises
-  or hangs rather than quietly succeeding.
+  or hangs rather than silently succeeding.
 """
 
 from __future__ import annotations
@@ -185,7 +185,7 @@ def test_get_section_neighbours_spans_three_sections(indexed_dsn: str) -> None:
 
 def test_fetch_section_that_opens_with_table_has_heading_and_table(indexed_dsn: str) -> None:
     """`sec:handbook:1` ("Introduction") opens with a table that is glued to its heading
-    block (brief §5.4 rule 1) — confirmed against `sections`/`blocks` for the fixture."""
+    block, confirmed against `sections`/`blocks` for the fixture."""
     cfg = _cfg(FIXTURES.parent, indexed_dsn)
 
     async def _go():
@@ -250,7 +250,7 @@ def test_get_outline_has_one_entry_per_section_with_sec_ids(indexed_dsn: str) ->
             return json.loads(res.content[0].text)
 
     result = _run(_go)
-    assert len(result["sections"]) == 19  # brief expected.json: handbook section_count
+    assert len(result["sections"]) == 19  # expected.json: handbook section_count
     for entry in result["sections"]:
         assert entry["id"].startswith("sec:handbook:")
 
@@ -297,7 +297,7 @@ def test_one_tool_call_produces_exactly_one_json_log_line(
 
 
 # ----------------------------------------------------------------------------------------
-# Real subprocess over stdio (hard rule 6).
+# Real subprocess over stdio.
 # ----------------------------------------------------------------------------------------
 
 
@@ -306,8 +306,8 @@ def test_stdio_subprocess_initialize_list_search_fetch(
 ) -> None:
     """Starts `kb serve --transport stdio` as a real subprocess and drives it with the
     SDK's stdio client. A stray `print` (or any non-JSON-RPC bytes) on the server's
-    stdout breaks the framing this test relies on, so this is the test hard rule 6 asks
-    for: it fails, rather than passing by coincidence, if stdout is ever polluted."""
+    stdout breaks the framing this test relies on, so this is the test that guards
+    it: it fails, rather than passing by coincidence, if stdout is ever polluted."""
     env = {
         "PATH": os.environ.get("PATH", ""),
         "KB_PATH": str(FIXTURES.parent),

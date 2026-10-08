@@ -1,4 +1,4 @@
-"""The coverage and conversion report — M1's actual deliverable.
+"""The coverage and conversion report.
 
 The numbers this prints are a decision gate: they size the OCR problem before anyone commits
 to an OCR model. So the report states the thresholds it used alongside the results, and it
@@ -171,7 +171,7 @@ def _stop_and_ask(
 
 
 def render_table(report: dict[str, Any]) -> str:
-    """Fixed-width text table. No colour, no unicode box drawing — this gets pasted around."""
+    """Fixed-width text table. No colour, no unicode box drawing: this gets pasted around."""
     thresholds = report["thresholds"]
     lines = [
         "TEXT-LAYER COVERAGE REPORT",

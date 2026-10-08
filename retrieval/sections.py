@@ -1,4 +1,4 @@
-"""Sections: a heading block plus everything under it (brief §5.4).
+"""Sections: a heading block plus everything under it.
 
 `build_sections(doc)` walks `doc.blocks` in order and groups them under the nearest
 heading of level 1-3. `####` and deeper stay inside the enclosing section. A document with

@@ -1,9 +1,8 @@
-"""Postgres access: connection pool with the pgvector codec, and schema application
-(brief §6.1).
+"""Postgres access: connection pool with the pgvector codec, and schema application.
 
 The pgvector codec is registered in the pool's `init=` callback so that **every** pooled
-connection gets it — registering it once on a single connection and reusing the pool is the
-mistake the brief calls out in §13 ("vectors arrive as strings").
+connection gets it. Registering it once on a single connection and reusing the pool is the
+mistake that makes vectors arrive as strings.
 """
 
 from __future__ import annotations

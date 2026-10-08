@@ -1,4 +1,4 @@
-"""`retrieval.ids` (brief §5.5)."""
+"""`retrieval.ids`."""
 
 from __future__ import annotations
 

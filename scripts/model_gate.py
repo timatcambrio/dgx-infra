@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Model gate — two independent tests, both of which a model must pass.
+"""Model gate: two independent tests, both of which a model must pass.
 
 1. **Licence.** Weights must be permissively licensed. A permissive *code* licence attached
    to restrictively-licensed *weights* does not count; the weights are what gets shipped.
@@ -8,7 +8,7 @@
    not clear the rule.
 
 `models.yaml` is an explicit allowlist. Anything found in a model cache that is not listed
-fails, which is what makes the gate catch an OCR model appearing by accident — precisely the
+fails, which is what makes the gate catch an OCR model appearing by accident, the
 scenario this phase is built to avoid, since OCR is meant to be off entirely.
 
 The gate is deliberately meaningful from day one: in this phase the allowlist holds only
@@ -196,7 +196,7 @@ def scan_caches(
     """Fail on anything cached that is not on the allowlist.
 
     A `pending_review` model found in a cache gets its own message, because "someone started
-    M2 before the provenance question was answered" is a different problem from "an unknown
+    PDF conversion before the provenance question was answered" is a different problem from "an unknown
     model appeared" and deserves to read that way.
     """
     findings: list[Finding] = []

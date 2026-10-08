@@ -1,10 +1,9 @@
-# Stage 2 compose (brief §7.2, §9 S4):
+# Compose stack for search and serve (`kb`):
 #
 #   - `db` is real: pgvector/pgvector:pg16, a volume, a pg_isready healthcheck, and an init
 #     script that creates database `kb` and the two roles (`kb_index` owner, `kb_read`
 #     SELECT-only).
-#   - `ollama` serves the embedding model; a `GET /api/tags` healthcheck (added this
-#     milestone) lets `kb-mcp` wait for it to actually be up before starting, not merely
+#   - `ollama` serves the embedding model; a `GET /api/tags` healthcheck lets `kb-mcp` wait for it to actually be up before starting, not merely
 #     for the container to exist. Pulling a model (`docker compose exec ollama ollama pull
 #     nomic-embed-text`) is a separate, manual step -- compose never does it.
 #   - `kb-mcp` is built from `compose/Dockerfile` and runs `kb serve --transport http`,
@@ -26,8 +25,8 @@
 #     picture; only their host port publication is a `dev`-only concern, not their
 #     existence.
 #
-# Only `caddy` publishes a port to the LAN (hard rule 7). `db`/`ollama`'s `dev`-profile
-# ports are loopback-bound (`127.0.0.1:`), pre-existing from S0, and unrelated to whether
+# Only `caddy` publishes a port to the LAN. `db`/`ollama`'s `dev`-profile
+# ports are loopback-bound (`127.0.0.1:`), for local development, and unrelated to whether
 # `prod` is active.
 
 services:

@@ -1,22 +1,22 @@
-"""The MCP server (brief §6.5): five read-only tools over the indexed `kb/`.
+"""The MCP server: five read-only tools over the indexed `kb/`.
 
 `build_server(cfg)` returns a configured `FastMCP`, usable either way:
 
 - `kb serve --transport stdio` (`cli.py`) calls `mcp.run(transport="stdio")` directly.
-- `kb serve --transport http` (S4, brief §9) calls `build_http_app(cfg)` instead, which
-  wraps `mcp.streamable_http_app()` in the bearer middleware (`auth.py`, brief §6.5.6) and
+- `kb serve --transport http` calls `build_http_app(cfg)` instead, which
+  wraps `mcp.streamable_http_app()` in the bearer middleware (`auth.py`) and
   hands the result to uvicorn (`cli.py`). The host/port/transport-security settings baked
-  into `build_server` (brief §6.5.5) are inert under stdio — nothing reads them there — so
+  into `build_server` are inert under stdio (nothing reads them there), so
   one constructor serves both transports without a second code path.
 
 **No fetch path returns unbounded text.** `FETCH_MAX_CHARS` is a ceiling on every
 `FetchResponse.text`, not only on a whole-document fetch: `_oversize_response` is where a
 section, page or chunk over the cap goes instead, and a document's outline listing is
-bounded the same way. A section is *not* a bounded unit — see `_oversize_response`.
+bounded the same way. A section is *not* a bounded unit; see `_oversize_response`.
 
 **stdout is the protocol channel in stdio mode.** Nothing in this module or anything it
 imports at import time or at call time may `print` or otherwise write to stdout. All
-logging — including the one-JSON-line-per-call log (brief §6.5.3) — goes to stderr.
+logging, including the one-JSON-line-per-call log, goes to stderr.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ from .config import Config
 from .embed import embed_query
 
 # --------------------------------------------------------------------------------------
-# Logging (brief §6.5.3): one JSON line per tool call, to stderr. Never stdout.
+# Logging: one JSON line per tool call, to stderr. Never stdout.
 # --------------------------------------------------------------------------------------
 
 _CALL_LOGGER = logging.getLogger("kb.server.calls")
@@ -76,10 +76,10 @@ def _log_call(tool: str, args: dict[str, Any], result_ids: list[str], ms: int, e
 
 
 class _CallTimer:
-    """Times one tool call and logs it on exit (brief §6.5.3), success or error.
+    """Times one tool call and logs it on exit, success or error.
 
     A plain (non-async) context manager: the `with` block itself contains `await`s, which
-    is fine — only `__enter__`/`__exit__` need to be synchronous.
+    is fine: only `__enter__`/`__exit__` need to be synchronous.
     """
 
     def __init__(self, tool: str, args: dict[str, Any]) -> None:
@@ -99,7 +99,7 @@ class _CallTimer:
 
 
 # --------------------------------------------------------------------------------------
-# `instructions` — verbatim, brief §6.5.1.
+# `instructions`: what the assistant is told about this server.
 # --------------------------------------------------------------------------------------
 
 INSTRUCTIONS = """\
@@ -156,7 +156,7 @@ def _make_lifespan(cfg: Config):
 
 
 # --------------------------------------------------------------------------------------
-# Output shapes (brief §6.5.2) — TypedDicts so FastMCP emits `outputSchema` and
+# Output shapes: TypedDicts so FastMCP emits `outputSchema` and
 # `structuredContent`, and never `Optional[...]` as a tool's own return type (nullable
 # *fields* inside are fine).
 # --------------------------------------------------------------------------------------
@@ -248,7 +248,7 @@ def _strip_title(title: str, heading_path: str) -> str:
 
 
 def _section_title(title: str, heading_path: str) -> str:
-    """`f"{doc.title} › {heading_path_without_title}"` (brief §6.5.2), falling back to
+    """`f"{doc.title} › {heading_path_without_title}"`, falling back to
     the bare title when there is no heading to append (section 0, no heading)."""
     tail = _strip_title(title, heading_path)
     return f"{title} › {tail}" if tail else title
@@ -299,7 +299,7 @@ def _landmark(text: str, limit: int = 110) -> str:
     """One line of `text`, clipped to `limit` characters, chosen to tell this chunk from
     its neighbours: the first line normally, but the *last* row of a pipe table, because
     table-row chunking repeats the header row (and the previous piece's last row) on every
-    piece — so every piece of one table opens identically. Runs of whitespace collapse: a
+    piece, so every piece of one table opens identically. Runs of whitespace collapse: a
     table row is mostly column padding, and 110 characters of padding say nothing.
     """
     lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
@@ -310,7 +310,7 @@ def _landmark(text: str, limit: int = 110) -> str:
 
 
 async def _section_chars(conn: asyncpg.Connection, slug: str) -> dict[int, int]:
-    """`{section_index: length of the text a section fetch would return}` — the same join
+    """`{section_index: length of the text a section fetch would return}`: the same join
     `get_outline` reports `chars` from, so the two agree."""
     rows = await conn.fetch(
         """
@@ -347,12 +347,12 @@ async def _oversize_response(
 
     `_fetch_document` has always refused an over-cap document, but a *section* is not a
     bounded unit: in the DOCX-derived documents one heading can span thousands of blocks,
-    and sections of over half a million characters exist — more than the document path
+    and sections of over half a million characters exist, more than the document path
     declines to send, while that refusal recommends section ids. So every fetch path ends
     here instead when its joined text crosses the cap, and returns what the caller needs
     to ask a smaller question: the block range it declined, the chunk ids that cover it
     (`fetch` on one returns that chunk alone), and a landmark line from a sample of them.
-    The reply is bounded by construction — a fixed number of landmark lines, never one
+    The reply is bounded by construction: a fixed number of landmark lines, never one
     line per block or per chunk.
     """
     slug = doc["slug"]
@@ -394,7 +394,7 @@ async def _oversize_response(
             "that range a valid id. `fetch` on a chunk id returns that chunk alone."
         )
     if page_first is not None and page_last is not None and page_last > page_first:
-        # Only a *range* of pages is worth naming. One page containing an over-cap unit is
+        # Only a *range* of pages is named. One page containing an over-cap unit is
         # at least as large as it, so its own fetch would come back here again.
         lines.append(
             f"- **Pages** `{ids_module.page_id(slug, page_first)}` … "
@@ -490,7 +490,7 @@ async def _fetch_document(conn: asyncpg.Connection, cfg: Config, doc: asyncpg.Re
 
         # The outline is not bounded either: a 1,500-section manual's full listing can
         # itself approach the cap. Drop to shallower headings until it fits, and only then
-        # cut the list — a caller given the top two levels can still `get_outline` for the
+        # cut the list: a caller given the top two levels can still `get_outline` for the
         # rest, which a silently clipped listing would not tell them.
         entries = list(outline)
         text = "\n".join(lines + [_entry_line(e) for e in entries])
@@ -614,14 +614,14 @@ async def _fetch_section_range(
     requested_idx: int,
     kind: str = "section",
 ) -> FetchResponse:
-    """Fetch sections `lo_idx..hi_idx` inclusive as one reading unit (brief §6.5.2:
-    `get_section(neighbours=n)`; also used for a plain `sec:`/`chunk:` fetch with
+    """Fetch sections `lo_idx..hi_idx` inclusive as one reading unit
+    (`get_section(neighbours=n)`; also used for a plain `sec:`/`chunk:` fetch with
     `lo_idx == hi_idx == requested_idx`).
 
     Block ordinals are contiguous across sections in document order, and each section's
-    own heading block is already the first block of that section — so concatenating every
-    block in the overall ordinal range naturally gives "each [section] with its own
-    heading line" (brief §6.5.2) without any synthetic heading construction.
+    own heading block is already the first block of that section, so concatenating every
+    block in the overall ordinal range gives "each [section] with its own
+    heading line" without any synthetic heading construction.
     """
     slug = doc["slug"]
     sections = await conn.fetch(
@@ -777,8 +777,8 @@ async def _fetch_chunk(
 
     A `chunk:` fetch used to widen to the whole enclosing section, on the grounds that a
     section is the readable unit. It cannot: a section is unbounded (see
-    `_oversize_response`), so an over-cap section's breakdown — whose only sub-unit to
-    offer is the chunk — would hand back ids that widen straight to the breakdown again.
+    `_oversize_response`), so an over-cap section's breakdown (whose only sub-unit to
+    offer is the chunk) would hand back ids that widen straight to the breakdown again.
     A chunk is what the index bounds (`CHUNK_MAX`, bar a single table row larger than it),
     so it is what a caller can narrow *to*. `get_section` on the section id is still there
     for the wider read.
@@ -813,7 +813,7 @@ async def _fetch_chunk(
     text = chunk["text"]
 
     if len(text) > cfg.fetch_max_chars and blocks:
-        # A chunk over the cap is one indivisible table row (brief §6.7's exception); there
+        # A chunk over the cap is one indivisible table row; there
         # is no smaller id to offer, and saying so is better than sending the text.
         return await _oversize_response(
             conn,
@@ -884,7 +884,7 @@ async def _fetch_any(conn: asyncpg.Connection, cfg: Config, raw_id: str) -> Fetc
         assert n is not None
         return await _fetch_chunk(conn, cfg, doc, n, raw_id)
 
-    raise ValueError(f"unknown id: {raw_id}")  # pragma: no cover — parse_id covers every kind
+    raise ValueError(f"unknown id: {raw_id}")  # pragma: no cover: parse_id covers every kind
 
 
 async def _get_section_any(
@@ -934,15 +934,13 @@ async def _get_section_any(
 
 
 def _transport_security(cfg: Config) -> TransportSecuritySettings:
-    """Brief §6.5.5: DNS-rebinding protection, explicit because binding `0.0.0.0` (inside
-    the container, S4) disables FastMCP's own auto-enable (which only fires for a literal
-    `127.0.0.1`/`localhost`/`::1` host — brief §13's "Binding 0.0.0.0 disables FastMCP's
-    DNS-rebinding protection" warning). `allowed_hosts` is the brief's list verbatim, plus
-    the bare `KB_PUBLIC_HOST` (no port) since Caddy terminates TLS on 443 and a bare Host
-    header with no port is what a browser/client sends for the default HTTPS port.
-    `allowed_origins` is left to this implementation (brief §6.5.5 says "[...]"): every
-    origin a legitimate client could present — the public HTTPS origin at the default and
-    an explicit port, and loopback for the stdio-adjacent dev path — nothing else.
+    """DNS-rebinding protection, explicit because binding `0.0.0.0` (inside the container)
+    disables FastMCP's own auto-enable (which only fires for a literal
+    `127.0.0.1`/`localhost`/`::1` host). `allowed_hosts` is `KB_PUBLIC_HOST` and loopback
+    with any port, plus the bare `KB_PUBLIC_HOST` (no port) since Caddy terminates TLS on
+    443 and a bare Host header with no port is what a browser/client sends for the default
+    HTTPS port. `allowed_origins` is every origin a legitimate client could present (the public HTTPS origin at the default and
+    an explicit port, and loopback for the stdio-adjacent dev path) and nothing else.
     """
     host = cfg.kb_public_host
     return TransportSecuritySettings(
@@ -1132,9 +1130,9 @@ def build_server(cfg: Config) -> "FastMCP[ServerContext]":
             return response
 
     @mcp.custom_route("/health", methods=["GET"])
-    async def health(_request: Request) -> JSONResponse:  # pragma: no cover — reachable over HTTP only (S4)
-        """Unauthenticated health check (brief §6.5.4). Only reachable once `kb serve
-        --transport http` (S4) is running; registering it now costs nothing under stdio,
+    async def health(_request: Request) -> JSONResponse:  # pragma: no cover: reachable over HTTP only
+        """Unauthenticated health check. Only reachable once `kb serve
+        --transport http` is running; registering it now costs nothing under stdio,
         since a `custom_route` is only ever served by `streamable_http_app()`."""
         try:
             conn = await asyncpg.connect(cfg.require_database_url())
@@ -1152,10 +1150,10 @@ def build_server(cfg: Config) -> "FastMCP[ServerContext]":
 def build_http_app(
     cfg: Config, *, store: tokens_module.TokenStore | None = None, allow_anonymous: bool = False
 ) -> ASGIApp:
-    """The ASGI app for `kb serve --transport http` (brief §9 S4): `build_server(cfg)`'s
-    `streamable_http_app()` — a Starlette app whose own `lifespan` enters
-    `mcp.session_manager.run()` (see `auth.py`'s module docstring) — wrapped in the bearer
-    middleware (brief §6.5.6). `cli.py` runs the result with uvicorn; it must not be run
+    """The ASGI app for `kb serve --transport http`: `build_server(cfg)`'s
+    `streamable_http_app()` (a Starlette app whose own `lifespan` enters
+    `mcp.session_manager.run()`; see `auth.py`'s module docstring), wrapped in the bearer
+    middleware. `cli.py` runs the result with uvicorn; it must not be run
     any other way, or `/mcp*` is served with no auth.
 
     The middleware gets a live `TokenStore`, not a token list: see `tokens.py` for why

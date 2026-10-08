@@ -3,7 +3,7 @@
 Legacy `.doc` / `.dot` go through `soffice` as a **subprocess**. That is the whole reason
 LibreOffice is usable here: invoking a separate program is not linking, so its copyleft
 obligations do not reach our code, whereas importing a copyleft library would. If `soffice`
-is missing the run fails with an actionable error — it never falls back to a copyleft Python
+is missing the run fails with an actionable error; it never falls back to a copyleft Python
 library such as PyMuPDF.
 
 The intermediate `.docx` is written into `WORK_DIR`, never back into `SOURCE_DIR`, which is
@@ -266,8 +266,8 @@ def _walk_items(document) -> tuple[list[tuple[str, str, str]], int, int]:
     Produces `(markdown, kind, confidence)` triples instead of calling
     `document.export_to_markdown()`, so each block keeps its own kind -- a table stays a
     `table` block and a picture stays a `picture` block rather than collapsing into
-    undifferentiated prose. See the Stage 1 sidecar addendum §3.2 for the mapping this
-    implements; verified against the installed docling-core's item classes and labels rather
+    undifferentiated prose. The mapping from docling item to block kind is
+    verified against the installed docling-core's item classes and labels rather
     than assumed.
     """
     from docling_core.types.doc import (  # noqa: PLC0415 - lazy, matches the rest of the file

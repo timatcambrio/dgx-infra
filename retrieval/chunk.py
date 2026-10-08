@@ -1,5 +1,4 @@
-"""Chunks: small runs of blocks inside one section, the unit search matches against
-(brief §5.4).
+"""Chunks: small runs of blocks inside one section, the unit search matches against.
 
 Four rules, in priority order:
 
@@ -54,7 +53,7 @@ class Chunk:
 def _split_at_blank_lines(text: str, max_chars: int) -> list[str]:
     """Split `text` into pieces at blank lines, greedily filling each piece up to
     `max_chars`. A single paragraph with no blank line to split at stays whole even if it
-    still exceeds `max_chars` — the brief authorises splitting only at blank lines."""
+    still exceeds `max_chars`: splitting happens only at blank lines, never mid-paragraph."""
     paras = [p for p in _BLANK_LINE_RE.split(text) if p.strip()]
     if not paras:
         return [text]

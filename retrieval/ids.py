@@ -1,4 +1,4 @@
-"""The four id forms used across the retrieval package and the MCP tools (brief §5.5).
+"""The four id forms used across the retrieval package and the MCP tools.
 
 ```
 doc:<slug>
@@ -7,7 +7,7 @@ page:<slug>:p<NNN>              # NNN zero-padded to 3
 chunk:<slug>:<chunk_index>
 ```
 
-`search` returns section ids; `fetch` accepts all four. Slugs match Stage 1's guarantee
+`search` returns section ids; `fetch` accepts all four. Slugs match conversion's guarantee
 `^[a-z0-9][a-z0-9-]*$`.
 """
 

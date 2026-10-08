@@ -1,4 +1,4 @@
-"""`retrieval.kbfiles` (brief §5.2/§5.3)."""
+"""`retrieval.kbfiles`."""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ def test_sidecar_sha_mismatch_raises(tmp_path: Path) -> None:
 
 
 def test_missing_anchor_in_sidecar_raises(tmp_path: Path) -> None:
-    """A markdown block whose id is absent from the sidecar raises (brief §5.2 step 4)."""
+    """A markdown block whose id is absent from the sidecar raises."""
     md_path = _write_doc(
         tmp_path,
         "noanchor",
