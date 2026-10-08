@@ -1,7 +1,7 @@
 """Postgres access: connection pool with the pgvector codec, and schema application.
 
 The pgvector codec is registered in the pool's `init=` callback so that **every** pooled
-connection gets it — registering it once on a single connection and reusing the pool is the
+connection gets it. Registering it once on a single connection and reusing the pool is the
 mistake that makes vectors arrive as strings.
 """
 

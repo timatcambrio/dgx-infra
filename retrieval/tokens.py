@@ -1,7 +1,7 @@
 """The bearer-token store: hashed, individually revocable credentials in a JSON file.
 
 WHY THIS EXISTS. Until this module, `kb serve --transport http` took its tokens from
-`KB_TOKENS` — read once at process start (`config.py`) and handed to `BearerMiddleware` as
+`KB_TOKENS`, read once at process start (`config.py`) and handed to `BearerMiddleware` as
 a fixed tuple. Three consequences, all bad: withdrawing one person's access meant editing
 `.env` and restarting, which drops *every* user; there was no record of who a token
 belongs to, so a per-user audit was impossible; and `.env` held the secrets in plaintext,
@@ -16,8 +16,8 @@ issuing and revoking are file writes that take effect within `KB_TOKEN_CACHE_SEC
 (default 5) with no restart and nothing required of any other user.
 
 WHY A FILE AND NOT A TABLE. Postgres is already in the stack and the roadmap per-team ACL
-work will live there, but auth is the one thing that must keep working — and stay
-repairable — when the database does not. A file also needs no migration, is trivial to
+work will be built there, but auth must keep working, and stay repairable, when the
+database does not. A file also needs no migration, is trivial to
 back up, and can be inspected with `cat` during an incident.
 
 WHY sha256 AND NOT bcrypt/argon2. These are not passwords. `issue()` generates 32 bytes
@@ -25,9 +25,9 @@ from `secrets.token_urlsafe`, so there is no dictionary to attack and no work fa
 buy; a single sha256 is the right trade for a hash computed on every request. Hashing here
 buys exactly one thing: a stolen *file* does not yield usable credentials.
 
-NOT IMPLEMENTED HERE: the client-side half of the rotation problem (the secret still lives
-in a config file on each laptop). That is a deployment question — rotate on incident, push
-the credential as a managed setting, or OAuth — not something the server can fix.
+NOT IMPLEMENTED HERE: the client-side half of the rotation problem (the secret is still stored
+in a config file on each laptop). That is a deployment question (rotate on incident, push
+the credential as a managed setting, or OAuth), not something the server can fix.
 """
 
 from __future__ import annotations
@@ -87,7 +87,7 @@ def _parse_iso(value: str, *, field: str) -> datetime:
 
 @dataclass(frozen=True)
 class TokenRecord:
-    """One issued credential. Holds no secret — `hash` is all that is stored."""
+    """One issued credential. Holds no secret: `hash` is all that is stored."""
 
     id: str
     user: str
@@ -99,7 +99,7 @@ class TokenRecord:
 
     @property
     def status(self) -> str:
-        """`active`, `revoked`, or `expired` — what `kb token list` prints."""
+        """`active`, `revoked`, or `expired`: what `kb token list` prints."""
         if self.revoked is not None:
             return "revoked"
         if self.expires is not None and _parse_iso(self.expires, field="expires") <= _utcnow():
@@ -178,7 +178,7 @@ def _record_from_json(raw: Any, *, index: int) -> TokenRecord:
 
 
 def read(path: Path) -> tuple[TokenRecord, ...]:
-    """Every record in the file. A missing or empty file is no records, not an error — the
+    """Every record in the file. A missing or empty file is no records, not an error: the
     compose stack bind-mounts `/dev/null` when no token file is configured, and a fresh
     deployment has not issued anything yet."""
     try:
@@ -253,8 +253,8 @@ def _inherit_access(target: Path, tmp: Path) -> None:
     store's permissions is undone by the next `issue` or `revoke`. Measured 2026-10-01 on
     the compose stack: `kb-mcp` runs as uid 10001 (compose/Dockerfile) and cannot read a
     root-owned 0600 store, so `kb serve` exits 2 and the container crash-loops. Chowning
-    the store to that uid fixes it — and the next `kb token` write took it back, silently,
-    which is the same shape as the inode bug that made this function atomic in the first
+    the store to that uid fixes it, and the next `kb token` write took it back, silently,
+    which is the same kind of failure as the inode bug that made this function atomic in the first
     place.
 
     A fresh store keeps the 0600 it was created with: there is nothing to inherit, and a
@@ -262,7 +262,7 @@ def _inherit_access(target: Path, tmp: Path) -> None:
 
     Ownership is best effort. Only root may give a file away, and a deployment where
     `kb token` already runs as the store's owner neither needs to nor can. A refusal there
-    is not worth failing the write over: the records are what matter, the mode has already
+    should not fail the write: the records are what count, the mode has already
     been carried over, and `make compose-up`'s pre-flight
     (`scripts/check_token_paths.py`) is what catches a store the server cannot read.
     """
@@ -292,7 +292,7 @@ def issue(
     """Add a record for a freshly generated secret. Returns `(secret, record)`.
 
     The secret is returned once and never stored; if it is lost, issue another and revoke
-    this one. The record id is the first 12 characters of the hash digest — derived, so
+    this one. The record id is the first 12 characters of the hash digest: derived, so
     two ids never collide for different secrets, and safe to log or print because it is a
     truncated hash of a 32-byte random value, not a fragment of the secret itself.
     """
@@ -314,7 +314,7 @@ def issue(
 
 def revoke(path: Path, token_id: str) -> TokenRecord:
     """Mark one record revoked, as of now. Idempotent: re-revoking keeps the first
-    timestamp, because when access was withdrawn is the fact worth preserving."""
+    timestamp, because the time access was withdrawn is the fact to preserve."""
     records = read(path)
     for index, record in enumerate(records):
         if record.id != token_id:
@@ -340,7 +340,7 @@ class TokenStore:
     only when mtime or size actually changed.
 
     `static_tokens` carries `KB_TOKENS` through unchanged. It is deliberately still
-    supported — the dev path, the test suite and any existing deployment use it — but it
+    supported (the dev path, the test suite and any existing deployment use it), but it
     has none of this module's properties: no owner, no revocation short of a restart,
     plaintext on disk. `kb serve` warns when it is the only source.
 
@@ -348,7 +348,7 @@ class TokenStore:
     a typo in the file into a silent lockout of everyone. The last good copy keeps serving
     and the error is reported through `last_error` (and logged by the middleware), so a
     broken edit fails safe in the direction of continuity rather than outage. The one
-    exception is the very first read, where there is no last good copy — that propagates,
+    exception is the very first read, where there is no last good copy: that propagates,
     and `kb serve` refuses to start.
     """
 
@@ -455,7 +455,7 @@ class TokenStore:
 
     def _fail(self, message: str) -> None:
         """A refresh failed. Keep the last good copy if there is one; otherwise raise, so
-        the failure surfaces at startup rather than as a silent deny-all."""
+        the failure shows at startup rather than as a silent deny-all."""
         self.last_error = message
         if not self._loaded:
             raise TokenFileError(message)

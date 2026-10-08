@@ -171,7 +171,7 @@ def _stop_and_ask(
 
 
 def render_table(report: dict[str, Any]) -> str:
-    """Fixed-width text table. No colour, no unicode box drawing — this gets pasted around."""
+    """Fixed-width text table. No colour, no unicode box drawing: this gets pasted around."""
     thresholds = report["thresholds"]
     lines = [
         "TEXT-LAYER COVERAGE REPORT",

@@ -1,4 +1,11 @@
-# dgx-infra: document conversion
+# dgx-infra: document conversion and search
+
+Two commands over one `kb/` folder. [Document conversion](#document-conversion)
+(`pipeline`) turns a folder of documents into markdown in `kb/`.
+[Search and serve](#search-and-serve) (`kb`) indexes `kb/` and serves it to AI assistants
+over MCP, and has its own install step.
+
+## Document conversion
 
 Point this at a folder of documents (PDF, DOCX, legacy DOC, CSV). It writes clean markdown
 with metadata, and a report saying which documents converted completely and which did not.
@@ -14,7 +21,7 @@ files as well. **Please check [Reading the report](#reading-the-report) to avoid
 silent failures, and [Reading the converted markdown](#reading-the-converted-markdown)
 for the markers.**
 
-## Setup
+### Setup
 
 You need [uv](https://docs.astral.sh/uv/). It installs Python 3.12 and every dependency.
 
@@ -36,7 +43,7 @@ and edit it.
 Legacy `.doc` and `.dot` files also need LibreOffice. See [LibreOffice (subprocess
 only)](#libreoffice-subprocess-only). Every other format works with `uv sync` alone.
 
-### Where things go
+#### Where things go
 
 | | |
 | --- | --- |
@@ -48,7 +55,7 @@ only)](#libreoffice-subprocess-only). Every other format works with `uv sync` al
 Source documents are kept outside both repos on purpose. If `SOURCE_DIR` is unset, commands stop
 with an error rather than guess.
 
-## Running it
+### Running it
 
 Four commands, in order:
 
@@ -68,9 +75,9 @@ conversion run. Use it to see what a folder holds before you commit to anything.
 counts, never document text, so you can run it on documents that cannot leave their machine
 and paste the result into a ticket.
 
-## Reading the report
+### Reading the report
 
-### The class on each document
+#### The class on each document
 
 `triage` measures three things per PDF and turns them into a class:
 
@@ -96,12 +103,12 @@ These measurements diagnose the document set and inform decisions taken later in
 They also decide how each document is handled: one classed `needs_ocr` gets a stub written
 instead of a conversion. Avoid changing them.
 
-### LOW-TEXT PAGES
+#### LOW-TEXT PAGES
 
 Pages inside otherwise usable documents that gave almost no text. Check them by eye. A cover
 page or a divider is fine. A scanned figure is content that will be missing from `kb/`.
 
-### LAYOUT NOTES
+#### LAYOUT NOTES
 
 Where the geometry most likely struggled. Two kinds:
 
@@ -111,7 +118,7 @@ Where the geometry most likely struggled. Two kinds:
   columns. Spot-check these. The bias is towards missing a table rather than inventing one,
   because an invented table garbles the paragraph it absorbs.
 
-### EVIDENCE NOTES
+#### EVIDENCE NOTES
 
 This section lists content a document contains outside its text layer, compared with what
 the conversion extracted. It is where a document that converted without errors but lost
@@ -139,7 +146,7 @@ The document comes out `clean`, converts without complaint, and leaves out the f
 about. Measuring how much of each page is raster image is the only way to tell it apart from
 a document that converted correctly.
 
-## Reading the converted markdown
+### Reading the converted markdown
 
 Every file opens with frontmatter recording where it came from, what converted it, and its
 text coverage, including `needs_ocr: true` where that applies. Whatever consumes the markdown
@@ -190,7 +197,7 @@ not, the markdown no longer proves which source bytes it came from.
 
 Five markers can appear in the body.
 
-### `> **INCOMPLETE — ...**`
+#### `> **INCOMPLETE — ...**`
 
 Content that is not in the file, named:
 
@@ -205,7 +212,7 @@ pages looks the same as one that never covered the topic.
 A page that is one-third diagram is not broken. The marker states the measurement, names the threshold
 (`IMAGE_PAGE_COVERAGE`), and leaves the decision to you.
 
-### `> **Annotation:**`
+#### `> **Annotation:**`
 
 A Markup callout or sticky note: the box someone types into when annotating a form in Preview
 or Acrobat. These are attached to the page rather than printed on it, so ordinary text
@@ -236,7 +243,7 @@ field 1 can have its arrow tip sitting inside a cell that names a different fiel
 tip landed is a fact. Which field the note is about is a reading of the form, and you have
 the form in front of you while the converter has coordinates.
 
-### `> **Boxed text:**`
+#### `> **Boxed text:**`
 
 Text the page draws inside a box: a note flattened into the document, or authored that way.
 It is ordinary page text and carries none of an annotation's provenance, so it gets its own
@@ -245,7 +252,7 @@ label. All the marker says is that the page sets this text apart in a box.
 Marking them also keeps them readable. Boxes standing side by side share a baseline, and
 without this their words interleave into one unreadable line.
 
-### `> **Image:**`
+#### `> **Image:**`
 
 ```markdown
 > **Image:** embedded picture, not extracted. No OCR was attempted.
@@ -256,7 +263,7 @@ embedded in the document, marked in place rather than silently dropped. When a D
 one or more of these, the body also opens with an INCOMPLETE note giving the count, and
 `corpus.yaml` records it under `conversion.images` so `pipeline report` can list it.
 
-### Tables
+#### Tables
 
 Ruled tables come from their ruling lines. Borderless ones are recovered from column
 alignment and flagged in [LAYOUT NOTES](#layout-notes) for a spot-check.
@@ -300,7 +307,7 @@ columns, or if another line stands beside it in the same band of the page. A hea
 neither condition, since it is one run of text with its content below it. If the rule does
 catch a genuine heading, only the `#` is lost; the text stays.
 
-## When something looks wrong
+### When something looks wrong
 
 Put the converted markdown next to the original and look. Then:
 
@@ -325,7 +332,7 @@ control how repeated margin text is found.
 Every setting is listed with its default and a one-line explanation in `.env.example`. They
 describe page geometry, not what the document means.
 
-### Checking the output can still answer questions
+#### Checking the output can still answer questions
 
 Comparing output byte for byte catches change. It cannot catch output that is stable and
 useless, like a budget grid flattened into prose, or a note stranded from the field it
@@ -354,7 +361,7 @@ anyone who thinks a case is wrong.
 
 Write `expect` as the shortest string that makes the answer findable.
 
-### Escalating a stubborn document
+#### Escalating a stubborn document
 
 `PDF_ENGINE=docling` switches to a layout model. It gives better borderless-table structure
 and costs a large ML runtime and a model download. Decide it per document, by looking at
@@ -362,7 +369,7 @@ converted output, rather than turning it on across the board.
 
 It is not wired up yet, and says so when you try, naming what it needs.
 
-## Things that stop and ask
+### Things that stop and ask
 
 Conversion stops on these rather than write something silently wrong. Each one names the file
 and the reason.
@@ -376,14 +383,14 @@ and the reason.
   run carries on. The entry is never deleted and the run never fails because of it. To
   remove such entries and the `kb/` files they produced, run `make inventory` so the marks
   are current, then `make prune` to see what would go and `make prune ARGS=--yes` to do
-  it. Stage 2's `kb index` drops the matching database rows on its next run.
+  it. `kb index` drops the matching database rows on its next run.
 
-## What this does not do
+### What this does not do
 
 No OCR, no LLM calls. Chunking, embeddings, a vector store, retrieval and serving are
-[Stage 2](#stage-2-search-and-serve), below. They are not part of conversion, and this command does not run them.
+[Search and serve](#search-and-serve), below. They are not part of conversion, and this command does not run them.
 
-## Stage 2: search and serve
+## Search and serve
 
 Once `kb/` exists, a second, separate command line, `kb`, makes it searchable and serves it
 to an AI assistant (Codex, ChatGPT desktop, Claude Code, Claude desktop) over MCP. It is in
@@ -463,14 +470,14 @@ For local development against a host venv instead of the container stack:
 
 ```bash
 uv sync --extra serve                      # installs kb's dependencies; plain `uv sync` does not
-cp .env.example .env                       # then fill in the Stage 2 keys
+cp .env.example .env                       # then fill in the `kb` keys
 docker compose -f compose/docker-compose.yml --profile dev up -d db ollama
 uv run kb index --init                     # applies the database schema
 uv run kb index                            # walks kb/, embeds it, loads it into Postgres
 uv run kb serve --transport stdio          # runs the MCP server over stdio
 ```
 
-The Stage 2 keys are described in [What the Stage 2 keys in `.env` mean](#what-the-stage-2-keys-in-env-mean).
+The `kb` keys are described in [What the `kb` keys in `.env` mean](#what-the-kb-keys-in-env-mean).
 
 `kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); `catalog`
 currently exits with "not implemented yet".
@@ -528,7 +535,7 @@ structure. Two cuts happen, in order:
    [`> **Boxed text:**`](#-boxed-text) always stay attached to whatever came right
    before them.
 
-### What the Stage 2 keys in `.env` mean
+### What the `kb` keys in `.env` mean
 
 `.env.example` documents every key `kb` reads, each with a one-line comment. The two to get
 right: `DATABASE_URL_INDEX` (the writer role `kb index` uses) and
@@ -842,7 +849,7 @@ sudo install -d -o 10001 -g 10001 -m 700 /srv/kb
 
 once, before the first `make token`. The server is not root, so a store owned by whoever
 ran the command and mode 0600 is one it cannot read at all. `kb serve` exits 2, the
-container restarts in a loop, and the only thing visible from outside is Caddy answering
+container restarts in a loop, and from outside all you see is Caddy answering
 502, with nothing anywhere naming the permission. `make compose-up` checks both the
 directory and the store before starting anything and prints the exact command.
 
@@ -884,12 +891,12 @@ does not route.
 ### The "flattened table" caveat
 
 Some source tables (merged cells, unusual borders, tables inside scanned images) don't
-survive conversion as a clean grid. Stage 1's converter says so, either with a
+survive conversion as a clean grid. The converter says so, either with a
 `Not converted` note or by falling back to a plainer rendering (see [Reading the converted
 markdown](#reading-the-converted-markdown) above, and the per-document
 [LAYOUT NOTES](#layout-notes) and [EVIDENCE NOTES](#evidence-notes) in `pipeline report`). If an assistant's answer depends on a specific cell, check the citation against
 the original before trusting it, using the
-[static `kb/` server](#checking-a-citation-against-the-original-the-static-kb-server) above. Retrieval does not repair a bad conversion; it only finds and returns what Stage 1
+[static `kb/` server](#checking-a-citation-against-the-original-the-static-kb-server) above. Retrieval does not repair a bad conversion; it only finds and returns what conversion
 already wrote down.
 
 ### TLS

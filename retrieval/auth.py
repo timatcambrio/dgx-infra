@@ -1,4 +1,4 @@
-"""Bearer-token authentication for `kb serve --transport http` — DECIDED:
+"""Bearer-token authentication for `kb serve --transport http`. DECIDED:
 a plain ASGI middleware, not FastMCP's `AuthSettings`/`TokenVerifier`. Those advertise
 OAuth protected-resource metadata for an authorization server we do not have; our tokens
 are pre-shared secrets, not something a client negotiates.
@@ -9,13 +9,13 @@ person's access is a file write that takes effect in seconds, without a restart 
 without dropping every other user. See `tokens.py` for why that mattered enough to change.
 
 Only paths starting with `/mcp` are protected, plus the internal `/auth/check` endpoint
-below. `/health` and everything else — crucially including ASGI `lifespan` scope messages,
-which are not `scope["type"] == "http"` and so always pass straight through — are exempt.
+below. `/health` and everything else are exempt, including ASGI `lifespan` scope messages,
+which are not `scope["type"] == "http"` and so always pass straight through.
 That lifespan pass-through is what enters `mcp.session_manager.run()` when this middleware
 wraps `mcp.streamable_http_app()`: that Starlette app declares
 `lifespan=lambda app: self.session_manager.run()` itself
 (`mcp/server/fastmcp/server.py:streamable_http_app`), and uvicorn drives the ASGI lifespan
-protocol on startup — so nothing here needs to enter the session manager explicitly, only
+protocol on startup, so nothing here needs to enter the session manager explicitly, only
 avoid swallowing the messages that let Starlette do it.
 """
 
@@ -44,13 +44,13 @@ if TYPE_CHECKING:  # pragma: no cover
 PROTECTED_PREFIX = "/mcp"
 
 #: Caddy asks this endpoint whether a request's `Authorization` header is good, for routes
-#: it proxies to a backend with no auth of its own — today `/kb/*` -> `kb-static`
+#: it proxies to a backend with no auth of its own: today `/kb/*` -> `kb-static`
 #: (`compose/Caddyfile`). 204 or 401, no body either way.
 #:
 #: Before this existed, Caddy matched `/kb/*` against a regex of every token, baked into
 #: its config at container start. That made the token list a second, independent copy:
 #: revoking in the store left the same credential reading the entire converted corpus over
-#: `/kb/*` until `caddy` was restarted — the outage this change exists to avoid. One store
+#: `/kb/*` until `caddy` was restarted, the outage this change exists to avoid. One store
 #: now governs both routes.
 #:
 #: Not reachable from the LAN: `compose/Caddyfile` routes only `/mcp*`, `/health` and
@@ -157,8 +157,8 @@ class BearerMiddleware:
 
         if identity is None and self.store.allow_anonymous:
             # `--allow-anonymous` (dev only) means exactly what `kb serve` warns it means:
-            # the request is served with no authentication. It used to mean the opposite —
-            # an empty token tuple rejected everything — which made the flag useless and
+            # the request is served with no authentication. It used to mean the opposite
+            # (an empty token tuple rejected everything), which made the flag useless and
             # its warning false.
             identity = ANONYMOUS_IDENTITY
 

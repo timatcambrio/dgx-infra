@@ -3,7 +3,7 @@
 An unexercised gate is decorative, so the central test here plants `import fitz` in a fake
 pipeline directory and requires the license gate to fail on it. That case also covers the
 blind spot in metadata-based checking: PyMuPDF is not installed, so nothing in the installed
-dependency graph could reveal it — only reading the source can.
+dependency graph could reveal it; only reading the source can.
 """
 
 from __future__ import annotations
@@ -124,7 +124,7 @@ def test_gpl_compatible_is_not_copyleft():
 
 
 def test_lgpl_is_not_misread_as_gpl():
-    """'LGPL' contains 'GPL', so ordering inside the classifier is load-bearing."""
+    """'LGPL' contains 'GPL', so the order of checks inside the classifier decides the result."""
     assert license_gate.classify_license("LGPL-3.0") == license_gate.WEAK_COPYLEFT
 
 
@@ -138,7 +138,7 @@ def test_repo_models_yaml_passes_the_gate():
 
 
 def test_allowlist_is_empty_in_this_phase():
-    """Stage 1 is model-free for text: nothing at all should be approved to download."""
+    """Conversion is model-free for text: nothing at all should be approved to download."""
     models, _, _ = model_gate.load_models(REPO_ROOT / "models.yaml")
     assert models == []
 
@@ -344,7 +344,7 @@ def test_egret_layout_variants_fail_on_backbone_provenance(model, base_model):
     """The 'more accurate' layout models are a provenance regression, not an upgrade.
 
     Docling's egret variants are D-FINE based (USTC) on HGNet-V2 backbones (Baidu
-    PaddleClas). Switching layout model for accuracy must not quietly bypass the rule.
+    PaddleClas). Switching layout model for accuracy must not silently bypass the rule.
     """
     entry = {
         "model": model,

@@ -1,4 +1,4 @@
-"""`kb index` — idempotent load of `kb/` into Postgres.
+"""`kb index`: idempotent load of `kb/` into Postgres.
 
 Kept free of `typer`/CLI concerns: `cli.py` calls `run_index` and prints the result.
 """

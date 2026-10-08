@@ -70,7 +70,7 @@ def _wait_for_health(base_url: str, proc: subprocess.Popen, timeout: float = 15.
             resp = httpx.get(f"{base_url}/health", timeout=1.0)
             if resp.status_code == 200:
                 return
-        except Exception as exc:  # noqa: BLE001 — still starting up
+        except Exception as exc:  # noqa: BLE001 (still starting up)
             last_exc = exc
         time.sleep(0.2)
     raise RuntimeError(f"server never became healthy at {base_url}") from last_exc
@@ -185,7 +185,7 @@ def test_serve_http_with_no_credential_and_no_allow_anonymous_exits_2(
 def test_serve_http_with_only_revoked_tokens_exits_2(
     indexed_dsn: str, fake_ollama_http: str, tmp_path: Path
 ) -> None:
-    """A store is present but everything in it has been withdrawn — still not a usable
+    """A store is present but everything in it has been withdrawn: still not a usable
     server, and the old `KB_TOKENS`-is-non-empty check could not have seen it."""
     kb_bin = _kb_bin()
     if not kb_bin.is_file():
@@ -215,7 +215,7 @@ def test_serve_http_with_a_broken_token_file_exits_2(
     indexed_dsn: str, fake_ollama_http: str, tmp_path: Path
 ) -> None:
     """A store that cannot be parsed must not start a server that authenticates nobody.
-    (Breaking it *after* startup is the opposite case — the last good copy keeps serving;
+    (Breaking it *after* startup is the opposite case: the last good copy keeps serving;
     see `test_tokens.py`.)"""
     kb_bin = _kb_bin()
     if not kb_bin.is_file():
@@ -248,7 +248,7 @@ def test_serve_http_with_a_broken_token_file_exits_2(
 @pytest.fixture()
 def http_server_with_token_file(indexed_dsn: str, fake_ollama_http: str, tmp_path: Path):
     """A real `kb serve --transport http` backed by a token file, plus the file's path and
-    two issued credentials. `KB_TOKEN_CACHE_SECONDS=0` so the test does not sleep — the
+    two issued credentials. `KB_TOKEN_CACHE_SECONDS=0` so the test does not sleep; the
     caching itself is covered in `test_tokens.py` with a fake clock."""
     kb_bin = _kb_bin()
     if not kb_bin.is_file():
@@ -302,7 +302,7 @@ def test_revoking_one_token_leaves_the_server_up_and_everyone_else_working(
 ) -> None:
     """The fix, stated as a test: withdrawing one person's access is a file write against
     a running server. Before this, it meant editing `.env` and restarting, which dropped
-    every user — so in practice it never happened."""
+    every user, so in practice it never happened."""
     base_url, token_file, alice, alice_secret, bob_secret = http_server_with_token_file
 
     assert _post_mcp(base_url, alice_secret) == 200
@@ -327,7 +327,7 @@ def test_a_newly_issued_token_works_against_the_running_server(
 
 def test_auth_check_answers_for_kb_files_over_http(http_server_with_token_file) -> None:
     """What Caddy asks on behalf of `/kb/*` (`compose/Caddyfile`), against the real
-    server: 204 while the token is good, 401 once it is revoked — so a revocation closes
+    server: 204 while the token is good, 401 once it is revoked, so a revocation closes
     the static file route at the same moment it closes `/mcp`."""
     base_url, token_file, alice, alice_secret, _ = http_server_with_token_file
 

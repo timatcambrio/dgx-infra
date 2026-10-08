@@ -1,6 +1,6 @@
 """`retrieval.auth`: the bearer middleware in front of the HTTP
 transport, tested against a minimal ASGI app so these tests need neither Postgres nor a
-running MCP session — `test_server_http.py` covers the real `/mcp` traffic end to end.
+running MCP session. `test_server_http.py` covers the real `/mcp` traffic end to end.
 
 `test_tokens.py` covers the store itself (file format, hashing, caching, revocation
 timing); here the store is a means to an end and mostly built from `static_tokens`.
@@ -115,7 +115,7 @@ def test_mcp_with_right_token_is_let_through() -> None:
 
 
 def test_mcp_with_second_configured_token_is_also_let_through() -> None:
-    """Two tokens are accepted independently — exercises the loop over `KB_TOKENS` rather
+    """Two tokens are accepted independently. Exercises the loop over `KB_TOKENS` rather
     than just the first configured token."""
     resp = _client().post("/mcp", json={}, headers={"Authorization": "Bearer other-token"})
     assert resp.status_code == 200
@@ -171,7 +171,7 @@ def test_revoking_takes_effect_without_rebuilding_the_app(tmp_path: Path) -> Non
 
 
 # --------------------------------------------------------------------------------------
-# `/auth/check` — what Caddy asks on behalf of `/kb/*`.
+# `/auth/check`: what Caddy asks on behalf of `/kb/*`.
 # --------------------------------------------------------------------------------------
 
 
@@ -188,7 +188,7 @@ def test_auth_check_without_a_token_is_401() -> None:
 
 
 def test_auth_check_never_reaches_the_wrapped_app() -> None:
-    """It is answered by the middleware itself, so no route has to exist for it — and a
+    """It is answered by the middleware itself, so no route has to exist for it, and a
     token good enough for `/auth/check` cannot be used to reach anything else through it."""
     resp = _client().get("/auth/check", headers={"Authorization": "Bearer right-token"})
     assert resp.status_code == 204  # not the inner app's 404
@@ -212,7 +212,7 @@ def test_revoking_closes_kb_files_too(tmp_path: Path) -> None:
 
 def test_allow_anonymous_actually_serves_requests_with_no_token() -> None:
     """`kb serve --allow-anonymous` warns that "every request to /mcp* will be accepted
-    with NO authentication". Before the store it did the opposite — an empty token tuple
+    with NO authentication". Before the store it did the opposite: an empty token tuple
     matched nothing, so it rejected everything and the flag was useless."""
     store = tokens_module.TokenStore(allow_anonymous=True)
     resp = _client(store).post("/mcp", json={})

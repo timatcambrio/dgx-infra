@@ -1,11 +1,11 @@
 #!/bin/sh
 # Entrypoint for the `caddy` service: fills in the one Caddyfile directive
-# that cannot be written with `{$VAR}` substitution -- the `tls` line, whose *shape*
+# that cannot be written with `{$VAR}` substitution -- the `tls` line, whose *form*
 # differs between the two TLS paths.
 #
 # It used to also build a bearer-token matcher for /kb/* out of $KB_TOKENS. That is gone:
 # /kb/* now asks kb-mcp's /auth/check per request (see compose/Caddyfile), so the token
-# list lives in exactly one place and revoking a token no longer needs this container
+# list is kept in exactly one place and revoking a token no longer needs this container
 # restarted. $KB_TOKENS is not read here at all any more.
 set -eu
 

@@ -1,12 +1,12 @@
 """Shared fixtures for `tests/retrieval/`.
 
 Async tests are plain `def` functions that call `asyncio.run(...)` themselves rather than
-using `pytest-asyncio` — that dependency is not on the approved list, and one
+using `pytest-asyncio`: that dependency is not on the approved list, and one
 `asyncio.run` per test is all these need.
 
 The test database defaults to `DATABASE_URL_TEST=postgresql://kb_index:kb@localhost:5432/
 kb_test` (the compose `dev` profile's `db` service publishes 5432 to localhost). Any test
-that needs it is skipped, with a clear message, if the database is unreachable — `kb`'s own
+that needs it is skipped, with a clear message, if the database is unreachable. `kb`'s own
 test suite must not require Docker to be running for the parts that do not touch Postgres.
 """
 
@@ -61,7 +61,7 @@ RETRIEVAL_ENV_VARS = (
 def _scrubbed_env(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
     for name in RETRIEVAL_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
-    # KB_TOKENS_FILE unset means `config.DEFAULT_TOKENS_FILE` — the repo root's
+    # KB_TOKENS_FILE unset means `config.DEFAULT_TOKENS_FILE`, the repo root's
     # gitignored `tokens.json`, which a developer who has run `kb token issue` locally
     # DOES have. Point it at a path that does not exist so no test can authenticate with
     # a real credential or depend on one being absent by luck. Tests that want a store
@@ -141,7 +141,7 @@ def db_dsn(_schema_ready: str) -> str:
 
 def make_server_config(kb_path: Path, db_dsn: str, **overrides):
     """A `retrieval.config.Config` for the server tests, defaulting to the fake embedder
-    and a fixed `KB_URL_BASE` — shared by `test_server.py` and `test_server_http.py`."""
+    and a fixed `KB_URL_BASE`, shared by `test_server.py` and `test_server_http.py`."""
     from retrieval.config import Config
 
     base = dict(
@@ -202,9 +202,8 @@ def indexed_dsn(_schema_ready: str, tmp_path_factory: pytest.TempPathFactory) ->
 
 
 class _EmbedHandler(BaseHTTPRequestHandler):
-    """A real (loopback) HTTP `/api/embed`, for subprocess tests — a subprocess cannot
-    share this process's `httpx.MockTransport`, so it needs an actual server to talk to
-   ."""
+    """A real (loopback) HTTP `/api/embed`, for subprocess tests: a subprocess cannot
+    share this process's `httpx.MockTransport`, so it needs an actual server to talk to."""
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         pass

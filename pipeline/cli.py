@@ -30,9 +30,9 @@ from .triage import triage_pdf, triage_text_native
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="Stage 1: documents -> markdown, with a text-layer coverage report.",
+    help="Document conversion: documents -> markdown, with a text-layer coverage report.",
     # A traceback should say what failed, not dump every local (paths, settings, and in
-    # Stage 2's case credentials) in a panel hundreds of lines long.
+    # `kb`'s case credentials) in a panel hundreds of lines long.
     pretty_exceptions_show_locals=False,
 )
 
@@ -175,7 +175,7 @@ def prune(
     SOURCE_DIR is marked MISSING and kept, so a mounted drive that is offline for one run
     cannot erase months of conversion records. Removing is a decision, so it is this
     separate command, and it is a dry run unless `--yes` is passed. Run `inventory` first
-    so the MISSING marks are current. Stage 2's `kb index` drops the database rows of any
+    so the MISSING marks are current. `kb index` drops the database rows of any
     kb/ file that no longer exists on its next run.
     """
     config = _load_config(source_dir)

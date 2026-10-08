@@ -140,7 +140,7 @@ def test_a_caption_with_no_body_keeps_the_section_it_introduces() -> None:
     A table's caption and the table itself arrived as two sections: the caption held a
     heading and nothing else, and the data was titled by its own header row. The words
     someone searches for were in one section and the answer in the next, and neither could
-    answer on its own. Measured over the proxy corpus, 443 of 1,577 sections — 28% — had
+    answer on its own. Measured over the proxy corpus, 443 of 1,577 sections (28%) had
     no body at all, so better than one search result in four was a dead end that cost a
     reader, or an assistant, a turn and told it nothing.
     """
@@ -160,7 +160,7 @@ def test_a_caption_with_no_body_keeps_the_section_it_introduces() -> None:
 def test_a_subsumed_heading_keeps_its_words_in_the_body() -> None:
     """Nothing is dropped: the swallowed heading is still indexed and still rendered.
 
-    On the NIH form the swallowed line IS the answer — `List items and dollar amount for
+    On the NIH form the swallowed line IS the answer: `List items and dollar amount for
     each item exceeding $5,000` was a heading with an empty body, and the question it
     answers asks for that threshold.
     """
@@ -197,8 +197,8 @@ def test_a_swallowed_child_heading_still_deepens_the_heading_path() -> None:
     """A genuine parent-and-child keeps its path; a sibling does not take over the name.
 
     `4` then `4.1` is a nesting, and the citation should still say which subsection was
-    meant. Two headings at the *same* level are not a nesting — a form's field labels are
-    all set the same size — and letting the second name the section would restore exactly
+    meant. Two headings at the *same* level are not a nesting (a form's field labels are
+    all set the same size), and letting the second name the section would restore exactly
     the useless heading this change removes.
     """
     nested = build_sections(

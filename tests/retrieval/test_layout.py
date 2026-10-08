@@ -1,6 +1,6 @@
 """Layout rule: `pipeline/` never imports `retrieval/`.
 
-Stage 2 must not fatten or complicate Stage 1. `retrieval/` may import `pipeline.frontmatter`
+`kb` must not fatten or complicate conversion. `retrieval/` may import `pipeline.frontmatter`
 (and nothing else from `pipeline/`); the reverse is never allowed. Grep-style, at the AST
 level so a string that merely mentions "retrieval" cannot trip it.
 """

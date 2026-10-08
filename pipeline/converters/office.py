@@ -3,7 +3,7 @@
 Legacy `.doc` / `.dot` go through `soffice` as a **subprocess**. That is the whole reason
 LibreOffice is usable here: invoking a separate program is not linking, so its copyleft
 obligations do not reach our code, whereas importing a copyleft library would. If `soffice`
-is missing the run fails with an actionable error — it never falls back to a copyleft Python
+is missing the run fails with an actionable error; it never falls back to a copyleft Python
 library such as PyMuPDF.
 
 The intermediate `.docx` is written into `WORK_DIR`, never back into `SOURCE_DIR`, which is

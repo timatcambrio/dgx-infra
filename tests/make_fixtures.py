@@ -3,7 +3,7 @@
 
 The real documents cannot be committed, so the test suite runs against small synthetic files
 that are generated here and then **committed**. Committing them means the suite needs neither
-`reportlab`, nor `python-docx`, nor a network at run time — only the runtime dependencies.
+`reportlab`, nor `python-docx`, nor a network at run time: only the runtime dependencies.
 
 Determinism is fought for in two places:
 
@@ -164,7 +164,7 @@ def mixed(path: Path) -> None:
 def mojibake(path: Path) -> None:
     """Plenty of extractable characters, none of them usable: `alpha_ratio` must fail.
 
-    This is the fixture that proves the alpha-ratio check is real — a character count alone
+    This is the fixture that shows the alpha-ratio check is needed: a character count alone
     scores this document as text-rich.
 
     It simulates the *result* of a broken font-to-Unicode map rather than building a broken
@@ -294,7 +294,7 @@ def ruled_form(path: Path) -> None:
     -- which on a real form is a table cell -- found nothing under its tip and fell through
     to an inference or to nothing at all.
 
-    Both cells that get pointed at here are the two shapes that matter: one carrying the
+    Both cells that get pointed at here are the two cases that matter: one carrying the
     field label, and one *empty*, which is what a blank form field actually is.
     """
     from reportlab.pdfbase import pdfdoc
@@ -304,7 +304,7 @@ def ruled_form(path: Path) -> None:
 
     y = _draw_heading(canvas, "Ruled Application Form", 760)
     # Enough prose to clear MIN_CHARS_PER_PAGE. Without it the page triages as `needs_ocr`
-    # and the golden quietly records the stub path instead of the geometry path this fixture
+    # and the golden silently records the stub path instead of the geometry path this fixture
     # exists to exercise -- green, and testing nothing.
     _draw_paragraph(canvas, BODY_TEXT, y - 6)
 
@@ -344,7 +344,7 @@ def ruled_form(path: Path) -> None:
 def screenshot_form(path: Path) -> None:
     """A form that is a *picture* of a form, with typed callouts around it.
 
-    The shape that defeats every coverage metric at once. The form itself is a raster
+    The layout that defeats every coverage metric at once. The form itself is a raster
     screenshot, so none of its rows, cells or values are in the text layer and no table
     extraction can reach them. What *is* in the text layer -- a heading and a handful of
     callouts someone typed alongside -- is real text, enough of it to clear
@@ -383,7 +383,7 @@ def screenshot_form(path: Path) -> None:
 
 
 #: `boxed_notes.pdf`. Three boxes side by side on one baseline, which is the arrangement that
-#: destroys a page: line grouping merges them into a single run-on line, interleaved word by
+#: breaks a page: line grouping merges them into a single run-on line, interleaved word by
 #: word, and the result is unreadable and unsearchable.
 BOXED_ROW = (
     (72, "Federal funds carry over"),
@@ -453,7 +453,7 @@ def boxed_notes(path: Path) -> None:
 def annotated_form(path: Path) -> None:
     """A form carrying FreeText annotations, as if someone marked it up in Preview.
 
-    This is the real shape of an institutional "how to fill this in" document: a blank form
+    This is how an institutional "how to fill this in" document is actually laid out: a blank form
     plus callouts drawn on top telling you what goes where. The callouts are annotation
     objects, NOT page content, so no text-layer extraction sees them -- which is exactly the
     regression this fixture exists to catch. Note the annotations are deliberately placed out
@@ -555,7 +555,7 @@ def _draw_segments(canvas, x: float, y: float, segments, size: float) -> None:
 def callout_notes(path: Path) -> None:
     """A page whose emphasis is all set larger than body text, with a bulleted callout.
 
-    This is the shape of a form tutorial, and it is the one geometry gets wrong by default:
+    This is the layout of a form tutorial, and it is the one geometry gets wrong by default:
     body text is the smallest type on the page, so a label, a callout and a bullet are all
     "bigger than body" and all read as headings. The fixture exists to pin down that being
     bigger than body text is not on its own enough to make a line a heading, that a bulleted
@@ -637,7 +637,7 @@ SLIDE_BODY_TEXT = (
 def slide_table(path: Path) -> None:
     """A presentation slide whose table is drawn with type and whitespace alone.
 
-    The shape that broke an HSA deck: a small table of contribution limits by year and plan
+    The layout that broke an HSA deck: a small table of contribution limits by year and plan
     type, with a rule above and below it and no vertical rules at all, so pdfplumber finds
     no table. Every cell is set larger than the slide's body prose and most of them in a
     bold face, so each one clears both of the heading tests on its own, and the table came
@@ -732,7 +732,7 @@ BANDED_TABLE_ROWS = [
 def banded_table(path: Path) -> None:
     """A three-column table whose shading, not its grid, carries the vertical rules.
 
-    The shape an almanac page produced. The two inner column rules run the full height of
+    The layout an almanac page produced. The two inner column rules run the full height of
     the table, but the outer left and right edges exist only as the sides of the box drawn
     around each *shaded* row. A cell exists for pdfplumber only where a rule bounds it on
     every side, so on the unshaded rows the first and last cells had nothing outboard of
@@ -752,7 +752,7 @@ def banded_table(path: Path) -> None:
     for index in range(len(BANDED_TABLE_ROWS)):
         row_top = top - index * row_height
         if index % 2:
-            # The shaded band, stroked as well as filled: this box is the only thing that
+            # The shaded band, stroked as well as filled: nothing but this box
             # puts a vertical rule at `left` and at `right`, and only across its own row.
             canvas.setFillGray(0.9)
             canvas.rect(left, row_top - row_height, right - left, row_height, stroke=1, fill=1)
@@ -793,7 +793,7 @@ CAPTIONED_TABLE_GUARD_ROWS = [
 def captioned_table(path: Path) -> None:
     """A table whose caption and whose header row are both drawn outside its grid.
 
-    The almanac shape. The page rules only the data: the three words naming the columns sit
+    The almanac layout. The page rules only the data: the three words naming the columns sit
     a few points above the grid's top edge, at the columns' own x positions, and the caption
     sits above them, set larger. Both clear every test a heading has, so the page came out as
     two empty `###` sections followed by a table whose markdown header was its first *data*
@@ -803,9 +803,9 @@ def captioned_table(path: Path) -> None:
     The caption is a heading. The header row is not: it is one row of the grid below it,
     drawn outside the grid's rules.
 
-    Page 2 is the guard rail, and it is the shape that makes this hard. `2.1  Travel Rates`
+    Page 2 is the guard rail, and it is the layout that makes this hard. `2.1  Travel Rates`
     also sits directly above a ruled grid and also splits into two cells -- a numbered
-    heading is the commonest shape in the documents this converter is pointed at -- but its
+    heading is the commonest layout in the documents this converter is pointed at -- but its
     second cell straddles the boundary between the grid's two columns instead of landing in
     one. It must still be a heading.
     """
@@ -1057,7 +1057,7 @@ def _normalise_zip(path: Path) -> None:
 
 
 def reference_table_csv(path: Path) -> None:
-    """8 data rows, 4 columns — comfortably inside the guardrails."""
+    """8 data rows, 4 columns, comfortably inside the guardrails."""
     rows = [["Code", "Expense category", "Limit", "Receipt required"]]
     data = [
         ("LDG", "Lodging", "$180 / night", "Yes"),

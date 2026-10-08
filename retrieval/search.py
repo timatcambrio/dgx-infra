@@ -6,7 +6,7 @@ of `{"lexical", "vector", "fused"}` in one round trip against the same SQL, so `
 --leg ...` and `kb eval` (which needs all three per case) never duplicate the queries.
 
 Callers own the connection (a single `asyncpg.Connection` with the pgvector codec
-registered — see `retrieval.db.create_pool`'s `init=` callback) and the embedder: this
+registered; see `retrieval.db.create_pool`'s `init=` callback) and the embedder: this
 module never opens a connection or talks to ollama itself, so it is trivial for the MCP
 server to reuse against its pool.
 """
@@ -75,7 +75,7 @@ def fuse_rrf(legs: Iterable[list[Hashable]], k: int = RRF_K) -> dict[Hashable, f
     """Reciprocal rank fusion: each item in a ranked list (1-based rank =
     position + 1) gets `1/(k+rank)`, summed across every list it appears in.
 
-    Pure function over already-ranked id lists — no database access — so RRF math is
+    Pure function over already-ranked id lists (no database access), so RRF math is
     unit-testable on a hand-built pair of lists without a connection.
     """
     scores: dict[Hashable, float] = defaultdict(float)
@@ -118,7 +118,7 @@ async def _lexical_chunks(
     conn: asyncpg.Connection, query: str, filters: Optional[dict]
 ) -> list[asyncpg.Record]:
     """Top-20 chunks by `ts_rank_cd`. Skips the leg (returns `[]`) when
-    `websearch_to_tsquery` parses to an empty query, e.g. an all-stop-words query — matching
+    `websearch_to_tsquery` parses to an empty query, e.g. an all-stop-words query. Matching
     nothing would look identical, but checking first means we never rely on that
     coincidence: an empty leg is skipped rather than fused as an empty list."""
     tsq_text = await conn.fetchval("SELECT websearch_to_tsquery('english', $1)::text", query)

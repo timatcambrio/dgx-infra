@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate `tests/retrieval/fixtures/kb/`: synthetic, seeded, nonsense-but-
-searchable `kb/` documents in Stage 1's exact contract. Content is never read from a real
-document — every word here comes from a fixed word list and a seeded RNG.
+searchable `kb/` documents in conversion's exact contract. Content is never read from a real
+document: every word here comes from a fixed word list and a seeded RNG.
 
 Deterministic: re-running this script must produce byte-identical output (`make
 fixtures-retrieval` is checked for a no-op diff). Frontmatter is written through
@@ -9,13 +9,13 @@ fixtures-retrieval` is checked for a no-op diff). Frontmatter is written through
 fixtures.
 
 Four documents:
-  - `handbook`       — 40 "pages", ~60k chars, headings at levels 1-4, two tables (one
+  - `handbook`:        40 "pages", ~60k chars, headings at levels 1-4, two tables (one
                         opening a section, one oversized), one oversized paragraph.
-  - `budget-form`     — 6 pages, ~12k chars, ten annotation blocks, six boxed_text blocks,
+  - `budget-form`:     6 pages, ~12k chars, ten annotation blocks, six boxed_text blocks,
                         an INCOMPLETE callout, and the planted tokens `FORM-7731` and
                         `carry over` used by the retrieval eval fixtures.
-  - `deck`            — 30 pages, ~15k chars, one `###` heading per page, 2-3 blocks each.
-  - `reference-table` — a CSV-style document with no sidecar and no block anchors (the
+  - `deck`:            30 pages, ~15k chars, one `###` heading per page, 2-3 blocks each.
+  - `reference-table`: a CSV-style document with no sidecar and no block anchors (the
                         fallback path), one markdown table.
 
 `expected.json` is derived from what this script actually generates (never hand-typed), so
@@ -42,7 +42,7 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "kb"
 SEED = "dgx-stage2-fixtures-20260917"
 
 #: A fixed, nonsense word list. Every generated sentence draws from this list and nothing
-#: else — no real document text ever enters these fixtures.
+#: else; no real document text ever enters these fixtures.
 WORDS = (
     "zynth quorval bexnit drommel fenwick glarous humbolt ivrixal jonquel klaxor "
     "lumbric morvane nixplat oswent parvix quexel rimstal svorna tulgren uxbane "

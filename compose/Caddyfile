@@ -1,4 +1,4 @@
-# Caddy: TLS termination + reverse proxy for the Stage 2 stack.
+# Caddy: TLS termination + reverse proxy for the search and serve stack.
 #
 # Routes:
 #   /mcp*, /health  -> kb-mcp:8765    the MCP server. kb-mcp's own bearer middleware
@@ -18,15 +18,15 @@
 # headers to kb-mcp's /auth/check, which consults the one live store (retrieval/tokens.py),
 # so a revocation takes effect on both routes at once and nothing here needs reloading.
 #
-# Cost of the change, stated honestly: one extra in-network request per /kb/* fetch. That
+# Cost of the change: one extra in-network request per /kb/* fetch. That
 # route serves whole converted markdown files to a human clicking a citation, not the MCP
-# hot path, so a sub-millisecond hop inside the compose network is not worth optimising
+# hot path, so a sub-millisecond hop inside the compose network should not be optimised
 # away by re-introducing a stale copy of the token list.
 #
 # TLS: `tls internal` (Caddy's own local CA) by default. If both TLS_CERT and TLS_KEY are
 # set (paths inside the container -- see docker-compose.yml's `kb_tls` bind mount), Caddy
 # uses that cert/key pair instead -- the __TLS_DIRECTIVE__ placeholder below is filled in
-# by caddy-entrypoint.sh, because a Caddyfile `tls` line's shape (bare `internal` vs. two
+# by caddy-entrypoint.sh, because a Caddyfile `tls` line's form (bare `internal` vs. two
 # file paths) can't be made conditional on whether two env vars are set using `{$VAR}`
 # substitution alone. See the README "TLS" section for what "each user's machine must
 # trust Caddy's root CA once" means in practice, and the client-cert alternative.

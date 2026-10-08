@@ -1,6 +1,6 @@
-"""`kb` — the Stage 2 CLI: `index`, `search`, `serve`, `eval`, `catalog`.
+"""`kb`, the search and serve CLI: `index`, `search`, `serve`, `eval`, `catalog`.
 
-`catalog` is not implemented yet: it exists so `kb --help` shows the full shape, and exits
+`catalog` is not implemented yet: it exists so `kb --help` lists every command, and exits
 2 saying so.
 """
 
@@ -21,7 +21,7 @@ from .tokens import TokenFileError
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="Stage 2: index kb/ into Postgres and serve it to AI assistants over MCP.",
+    help="Search and serve: index kb/ into Postgres and serve it to AI assistants over MCP.",
     # The rich traceback's locals panel prints connection parameters, password included.
     pretty_exceptions_show_locals=False,
 )
@@ -284,8 +284,8 @@ def serve(
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(EXIT_CONFIG_ERROR) from exc
 
-    # Imported lazily: see the note on `index`'s import above — asyncpg/mcp live behind
-    # the `serve` extra.
+    # Imported lazily: see the note on `index`'s import above: asyncpg/mcp are installed
+    # only with the `serve` extra.
     from . import server as server_module
 
     if transport == "stdio":
@@ -400,13 +400,13 @@ def catalog(
 
 
 # --------------------------------------------------------------------------------------
-# `kb token` — issuing and revoking the HTTP transport's bearer credentials.
+# `kb token`: issuing and revoking the HTTP transport's bearer credentials.
 #
-# The v1 issuance surface, for an operator on the DGX. The proposal's unified web app
+# The v1 token-issuing commands, for an operator on the DGX. The proposal's unified web app
 # replaces this for non-technical users; the file format underneath is the same either
 # way, so that later work is a new front end over this, not a migration.
 #
-# These commands run wherever the token file lives, NOT inside the kb-mcp container: the
+# These commands run wherever the token file is, NOT inside the kb-mcp container: the
 # container bind-mounts the file read-only and re-reads it as it changes (`tokens.py`), so
 # nothing here needs the server running and nothing restarts it.
 # --------------------------------------------------------------------------------------
@@ -518,7 +518,7 @@ def token_list(
             typer.echo(line)
 
     if cfg.kb_tokens:
-        # Not in the file and not listed above, but they do authenticate — say so, or the
+        # Not in the file and not listed above, but they do authenticate. Say so, or the
         # list reads as the complete set of who has access, which it would not be.
         typer.secho(
             f"\nAlso accepted: {len(cfg.kb_tokens)} token(s) from KB_TOKENS in .env, which "

@@ -3,12 +3,12 @@ once per session with the fake ollama (same pattern as `test_search.py`'s `index
 
 Two flavours of test:
 
-- In-memory, via `mcp.shared.memory.create_connected_server_and_client_session` — fast,
+- In-memory, via `mcp.shared.memory.create_connected_server_and_client_session`: fast,
   exercises the tool logic and the dual content/structuredContent encoding.
-- One real subprocess over stdio (stdout is the protocol channel) — the only
+- One real subprocess over stdio (stdout is the protocol channel), the only
   test that would actually fail if a stray `print` or a misconfigured logger wrote to
   stdout, since a polluted stdout breaks JSON-RPC framing and the SDK's stdio client raises
-  or hangs rather than quietly succeeding.
+  or hangs rather than silently succeeding.
 """
 
 from __future__ import annotations
@@ -185,7 +185,7 @@ def test_get_section_neighbours_spans_three_sections(indexed_dsn: str) -> None:
 
 def test_fetch_section_that_opens_with_table_has_heading_and_table(indexed_dsn: str) -> None:
     """`sec:handbook:1` ("Introduction") opens with a table that is glued to its heading
-    block — confirmed against `sections`/`blocks` for the fixture."""
+    block, confirmed against `sections`/`blocks` for the fixture."""
     cfg = _cfg(FIXTURES.parent, indexed_dsn)
 
     async def _go():

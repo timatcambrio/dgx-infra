@@ -2,7 +2,7 @@
 
 `retrieval/` may import `pipeline.frontmatter` and nothing else from `pipeline/`: this
 module is the one place that happens, to validate frontmatter with the exact
-contract Stage 1 writes.
+contract conversion writes.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pipeline import frontmatter as pipeline_frontmatter
 #: Anchors: `<!-- dgx:block=<slug>:pNNN:bNNN -->` at the start of a line.
 _ANCHOR_RE = re.compile(r"^<!-- dgx:block=([^ ]+) -->\n", re.M)
 
-#: `INCOMPLETE — pages 1, 2, 3 ...` — accept an em dash or a plain hyphen.
+#: `INCOMPLETE — pages 1, 2, 3 ...`: accept an em dash or a plain hyphen.
 _INCOMPLETE_RE = re.compile(r"INCOMPLETE\s+(?:—|-)\s+pages?\s+([\d, ]+)")
 
 #: Fallback split for documents with no sidecar: heading lines at level 1-3.
@@ -28,7 +28,7 @@ _FALLBACK_HEADING_RE = re.compile(r"(?m)^(#{1,3}[ \t]+.*)$")
 
 
 class KbFileError(ValueError):
-    """A `kb/` document does not satisfy the Stage 1 contract."""
+    """A `kb/` document does not satisfy the conversion contract."""
 
 
 @dataclass
@@ -64,8 +64,7 @@ class Document:
 
 
 def _heading_level(text: str) -> int:
-    """Leading '#' count of the first line, 1-6; 3 if the block does not start with '#'
-   ."""
+    """Leading '#' count of the first line, 1-6; 3 if the block does not start with '#'."""
     first_line = text.splitlines()[0] if text else ""
     m = re.match(r"^(#{1,6})(?:\s|$)", first_line)
     if m:
@@ -113,7 +112,7 @@ def _load_with_sidecar(
 
     sidecar_by_id = {b["block_id"]: b for b in sidecar.get("blocks", [])}
 
-    # (block_id, text, sidecar_entry|None) — entry is None only for the synthetic preamble.
+    # (block_id, text, sidecar_entry|None); entry is None only for the synthetic preamble.
     raw: list[tuple[str, str, Optional[dict]]] = []
     if preamble.strip():
         raw.append((f"{slug}:p000:b000", preamble, None))

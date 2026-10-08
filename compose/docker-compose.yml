@@ -1,4 +1,4 @@
-# Stage 2 compose:
+# Compose stack for search and serve (`kb`):
 #
 #   - `db` is real: pgvector/pgvector:pg16, a volume, a pg_isready healthcheck, and an init
 #     script that creates database `kb` and the two roles (`kb_index` owner, `kb_read`

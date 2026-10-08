@@ -42,7 +42,7 @@ async def fetch_block_ids(
     conn: asyncpg.Connection, slug: str, first_ordinal: int, last_ordinal: int
 ) -> tuple[str, str]:
     """The `block_id` strings for the ordinals `sections.block_first`/`block_last` (or a
-    chunk's) record — those columns are integer ordinals, not the `<slug>:pNNN:bNNN` ids a
+    chunk's) record: those columns are integer ordinals, not the `<slug>:pNNN:bNNN` ids a
     citation needs."""
     first = await conn.fetchval(
         "SELECT block_id FROM blocks WHERE slug = $1 AND ordinal = $2", slug, first_ordinal

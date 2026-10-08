@@ -1,8 +1,8 @@
-"""Configuration for Stage 2: one frozen dataclass, loaded from the
+"""Configuration for `kb`: one frozen dataclass, loaded from the
 environment / `.env`, failing loudly (exit 2, naming the key) rather than guessing.
 
 Deliberately separate from `pipeline.config`: the two packages share nothing but the `kb/`
-contract, and Stage 2 must not fatten or complicate Stage 1's configuration.
+contract, and `kb` must not fatten or complicate the conversion configuration.
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ def _env_path(name: str, default: Path) -> Path | None:
 
 @dataclass(frozen=True)
 class Config:
-    """Resolved Stage 2 settings for one run."""
+    """Resolved `kb` settings for one run."""
 
     kb_path: Path
     database_url: str | None

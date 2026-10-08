@@ -6,16 +6,16 @@
 #   2. Non-Chinese base-weight provenance, judged on the BASE WEIGHTS, not on the releasing
 #      organisation. A US lab fine-tuning a Chinese base does not clear the rule; conversely
 #      a Chinese-originated *architecture* trained from scratch on other weights does clear
-#      it, which is precisely the distinction that has to be evidenced rather than assumed.
+#      it, which is the distinction that has to be evidenced rather than assumed.
 #
-# `allowed_models` is deliberately EMPTY in this phase. Stage 1 is model-free for text:
+# `allowed_models` is deliberately EMPTY in this phase. Conversion is model-free for text:
 # OCR is off, no conversion is run, and nothing should ever be fetched. An empty allowlist
-# plus the gate's cache scan therefore asserts something true and useful right now -- that
+# plus the gate's cache scan therefore asserts something true and checkable right now -- that
 # no model has been downloaded -- and it will fail the moment one appears.
 #
 # `pending_review` records models Docling WOULD fetch once PDF conversion runs, together with
 # what is actually known about each. These are not approved. The gate reports them on every
-# run and fails if one is found in a cache, so PDF conversion cannot quietly begin by downloading a model
+# run and fails if one is found in a cache, so PDF conversion cannot silently begin by downloading a model
 # whose provenance is still an open question.
 
 version: 1
@@ -43,8 +43,8 @@ pending_review:
       ASSESSMENT: probably clears. RT-DETRv2 is a Baidu-originated *architecture*, and
       architecture alone does not fail the rule -- the same reasoning already cleared Surya
       (Qwen-style architecture, non-Qwen weights). The residual question is narrow: which
-      ResNet-50 weights seeded the backbone. Worth one question to the Docling maintainers
-      rather than a blocking investigation.
+      ResNet-50 weights seeded the backbone. It needs one question to the Docling maintainers,
+      not a blocking investigation.
       DO NOT "upgrade" to the egret variants to get better accuracy: they are D-FINE based
       (USTC) and use HGNet-V2 backbones (Baidu PaddleClas), so they are strictly worse on
       provenance than heron. The gate now rejects both markers by name.

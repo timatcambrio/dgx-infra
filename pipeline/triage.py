@@ -6,11 +6,11 @@ and nothing is inferred.
 
 Three metrics, because character count alone is not enough:
 
-* **median chars/page** — the median matters more than the mean, since a few dense pages
+* **median chars/page**: the median matters more than the mean, since a few dense pages
   should not mask a scanned majority.
-* **low-page fraction** — catches the mixed document, e.g. a handbook with scanned
+* **low-page fraction**: catches the mixed document, e.g. a handbook with scanned
   appendices, which is convertible but incompletely so.
-* **alpha ratio** — catches the failure mode a character count misses entirely. A PDF with
+* **alpha ratio**: catches the failure mode a character count misses entirely. A PDF with
   a broken font-to-Unicode map extracts plenty of characters and every one of them is
   mojibake. Such a file looks text-rich and is unusable.
 """
@@ -36,7 +36,7 @@ _PUNCTUATION = frozenset(string.punctuation)
 
 
 class EncryptedDocumentError(RuntimeError):
-    """The document is encrypted or password-protected — a STOP-AND-ASK, not a failure."""
+    """The document is encrypted or password-protected: a STOP-AND-ASK, not a failure."""
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,7 @@ class TriageResult:
     error: str | None = None
     #: Widest column count seen on any page. 2 means at least one page is two-column, which
     #: geometric extraction handles but is the likeliest place for it to get reading order
-    #: wrong, so it is worth knowing before trusting the output.
+    #: wrong, so it should be known before trusting the output.
     max_columns: int = 1
     #: Tables drawn with ruling lines, which pdfplumber recovers reliably.
     ruled_tables: int = 0
@@ -65,13 +65,13 @@ class TriageResult:
     #: Of those, how many carry a callout line, i.e. how many state their own target.
     annotations_with_callout: int = 0
     #: Named AcroForm fields. Their presence says the document is a form, which is what makes
-    #: a low `ruled_tables` count on the same document worth looking at.
+    #: a low `ruled_tables` count on the same document a reason to check it.
     form_fields: int = 0
     #: 1-based page numbers whose area is more than IMAGE_PAGE_COVERAGE raster image.
     #:
     #: Recorded, never used to reclassify. A page that is a third diagram is not broken, and
     #: telling a diagram from a screenshot of a form is exactly the inference this pipeline
-    #: declines to make. What makes it worth recording is that such a page defeats every text
+    #: declines to make. It is recorded because such a page defeats every text
     #: metric at once: a form supplied as a picture, with typed callouts beside it, has a
     #: healthy character count and a perfect alpha ratio and is entirely unreachable.
     image_pages: tuple[int, ...] = ()
@@ -97,8 +97,8 @@ class TriageResult:
 def alpha_ratio(text: str) -> float:
     """Fraction of characters that are alphanumeric, punctuation, or whitespace.
 
-    Everything else — replacement characters, private-use-area glyphs, stray symbol soup —
-    counts against the document. Note the honest limit of this measure: mojibake that
+    Everything else (replacement characters, private-use-area glyphs, stray symbol soup)
+    counts against the document. This measure has a limit: mojibake that
     happens to decode into plausible-looking letters still scores well. It catches broken
     encodings, not wrong-but-lettered text.
     """
