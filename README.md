@@ -1,4 +1,4 @@
-# dgx-infra — document conversion
+# dgx-infra: document conversion
 
 Point this at a folder of documents (PDF, DOCX, legacy DOC, CSV). It writes clean markdown
 with metadata, and a report saying which documents converted completely and which did not.
@@ -13,8 +13,6 @@ pipeline generates a report of potential failure points, and marks them in the c
 files as well. **Please check [Reading the report](#reading-the-report) to avoid these
 silent failures, and [Reading the converted markdown](#reading-the-converted-markdown)
 for the markers.**
-
----
 
 ## Setup
 
@@ -47,10 +45,8 @@ only)](#libreoffice-subprocess-only). Every other format works with `uv sync` al
 | The record of what came from where | `corpus.yaml`, also in `dgx-knowledge` |
 | Scratch files | `work/`. Disposable: deleting it costs time, never information. |
 
-Source documents live outside both repos on purpose. If `SOURCE_DIR` is unset, commands stop
+Source documents are kept outside both repos on purpose. If `SOURCE_DIR` is unset, commands stop
 with an error rather than guess.
-
----
 
 ## Running it
 
@@ -69,10 +65,8 @@ document, and `--source-dir PATH` to override `.env` for a single run.
 
 `make profile` prints one row per document straight from the PDFs, with no manifest and no
 conversion run. Use it to see what a folder holds before you commit to anything. It prints
-counts, never document text, so you can run it on a corpus that cannot leave the machine it
-sits on and paste the result into a ticket.
-
----
+counts, never document text, so you can run it on documents that cannot leave their machine
+and paste the result into a ticket.
 
 ## Reading the report
 
@@ -98,7 +92,7 @@ The three measurements behind the class:
 | `MIN_ALPHA_RATIO` | 0.60 | Measured over the whole document. A PDF with a broken font map extracts plenty of characters but they are garbled and unusable. The alpha ratio is the share of characters that are alphanumeric, whitespace, or punctuation. Everything else, such as replacement characters and private-use glyphs, counts against it, so a lower ratio means more garbled text. |
 | `MAX_LOW_PAGE_FRACTION` | 0.20 | Above this share of low pages, a document is no longer `clean`. |
 
-These measurements diagnose the corpus and inform decisions taken later in the pipeline.
+These measurements diagnose the document set and inform decisions taken later in the pipeline.
 They also decide how each document is handled: one classed `needs_ocr` gets a stub written
 instead of a conversion. Avoid changing them.
 
@@ -115,13 +109,13 @@ Where the geometry most likely struggled. Two kinds:
   the converted output.
 - Borderless tables, recovered by noticing that several consecutive lines split into aligned
   columns. Spot-check these. The bias is towards missing a table rather than inventing one,
-  because an invented table destroys the paragraph it swallows.
+  because an invented table garbles the paragraph it absorbs.
 
 ### EVIDENCE NOTES
 
-This is the section that catches a document failing quietly.
-
-It reports what a document carried on top of its text layer, against what came back out:
+This section lists content a document contains outside its text layer, compared with what
+the conversion extracted. It is where a document that converted without errors but lost
+content shows up:
 
 ```
 EVIDENCE NOTES (what the document carries beyond its text layer)
@@ -131,21 +125,19 @@ EVIDENCE NOTES (what the document carries beyond its text layer)
     page -- that content is not in the text layer and no table extraction reaches it
 ```
 
-The second line is the one to understand. A form supplied as a screenshot, with typed notes
-beside it, beats every coverage measurement at once, and none of them is wrong:
+The second entry needs explaining. A form supplied as a screenshot, with typed notes beside
+it, passes every coverage measurement, and each measurement is accurate:
 
 | Measurement | Says | Because |
 | --- | --- | --- |
-| chars/page | healthy | the typed notes are real text |
+| chars/page | healthy | the typed notes are extractable text |
 | alpha ratio | perfect | that text is clean |
 | low-text pages | none | every page clears the threshold |
 | ruled tables | none found | a picture has no vector lines to find |
 
-The document comes out `clean`, converts without complaint, and leaves out the entire form it
-is about. Measuring how much of each page is raster image is the only thing that separates it
-from a document that is genuinely fine.
-
----
+The document comes out `clean`, converts without complaint, and leaves out the form it is
+about. Measuring how much of each page is raster image is the only way to tell it apart from
+a document that converted correctly.
 
 ## Reading the converted markdown
 
@@ -153,7 +145,7 @@ Every file opens with frontmatter recording where it came from, what converted i
 text coverage, including `needs_ocr: true` where that applies. Whatever consumes the markdown
 can then tell a complete document from an incomplete one without working it out again.
 
-Every converted document -- PDF, DOCX, DOC and CSV alike -- has a sidecar next to it, and
+Every converted document (PDF, DOCX, DOC and CSV alike) has a sidecar next to it, and
 every content block has a stable HTML comment anchor immediately before it:
 
 ```markdown
@@ -161,7 +153,7 @@ every content block has a stable HTML comment anchor immediately before it:
 | Expense category | Limit | Receipt required |
 ```
 
-The sidecar lives next to the markdown as `<slug>.provenance.json`. It maps each block id to
+The sidecar is saved next to the markdown as `<slug>.provenance.json`. It maps each block id to
 the original source page and, when geometry has it, the page bounding box:
 
 ```json
@@ -184,7 +176,7 @@ the original source page and, when geometry has it, the page bounding box:
 ```
 
 Word and CSV documents have no fixed page geometry, so their blocks carry `page: null` and no
-`bbox` at all -- the block's position in the file is the only locator, and its id still names
+`bbox` at all. The block's position in the file is the only locator, and its id still names
 the document (`travel-handbook:p000:b004`; `p000` reads as "no page"). Their `kind` and
 `confidence` mean the same thing PDF's do: `confidence` is `"structural"` for a block docling
 mapped with confidence, or `"docling:<label>"` naming the item type when it met something the
@@ -210,9 +202,8 @@ content is not in the text layer.** No OCR was attempted.
 Without it a `partial` document drops its scanned pages silently, and a document missing its
 pages looks the same as one that never covered the topic.
 
-This is a report, not a verdict. A page that is one-third diagram is not broken. The marker
-states the measurement, names the threshold (`IMAGE_PAGE_COVERAGE`), and leaves the call to
-you.
+A page that is one-third diagram is not broken. The marker states the measurement, names the threshold
+(`IMAGE_PAGE_COVERAGE`), and leaves the decision to you.
 
 ### `> **Annotation:**`
 
@@ -221,9 +212,9 @@ or Acrobat. These are attached to the page rather than printed on it, so ordinar
 extraction does not see them. On an annotated form they are often the only instructions in
 the document, and losing them turns a tutorial back into a blank form.
 
-The prefix earns its place later on, when this text gets retrieved and cited by something
-that no longer has the PDF. What the form prints and what a colleague wrote onto it are not
-the same claim, and a citation has to keep them apart.
+The prefix is needed later, when this text is retrieved and cited by something that no
+longer has the PDF. What the form prints and what a colleague wrote onto it are different
+claims, and a citation has to keep them apart.
 
 Where a note can be tied to something, the marker says how it was found:
 
@@ -237,10 +228,10 @@ Where a note can be tied to something, the marker says how it was found:
 | --- | --- |
 | `[points to: X]` | The annotator's arrow lands on X. Strong evidence. |
 | `[beside: X]` | X only shares a row with the note. Weaker, so treat it with more care. |
-| no marker | Nothing could be tied to it. A plausible guess would be worse than none, because nothing further down the line can tell a plausible guess from a real one. |
+| no marker | Nothing could be tied to it. A plausible guess would be worse than none, because nothing later in the pipeline can tell a guess from a measured link. |
 
 Neither kind claims to know which form field a note is about. A PDF's ruling is a layout
-grid, not a map of the form's fields. On a real annotated form, a note about a checkbox in
+grid, not a map of the form's fields. On an annotated form, a note about a checkbox in
 field 1 can have its arrow tip sitting inside a cell that names a different field. Where the
 tip landed is a fact. Which field the note is about is a reading of the form, and you have
 the form in front of you while the converter has coordinates.
@@ -260,7 +251,7 @@ without this their words interleave into one unreadable line.
 > **Image:** embedded picture, not extracted. No OCR was attempted.
 ```
 
-A DOCX's own way of naming what a PDF's INCOMPLETE note names for a scanned page: a picture
+A DOCX's own way of naming what a PDF's [INCOMPLETE](#-incomplete--) note names for a scanned page: a picture
 embedded in the document, marked in place rather than silently dropped. When a DOCX embeds
 one or more of these, the body also opens with an INCOMPLETE note giving the count, and
 `corpus.yaml` records it under `conversion.images` so `pipeline report` can list it.
@@ -268,56 +259,52 @@ one or more of these, the body also opens with an INCOMPLETE note giving the cou
 ### Tables
 
 Ruled tables come from their ruling lines. Borderless ones are recovered from column
-alignment and flagged in LAYOUT NOTES for a spot-check.
+alignment and flagged in [LAYOUT NOTES](#layout-notes) for a spot-check.
 
 A cell counts as ruled only where a line bounds it on every side, which is less often than
 it looks. A table banded with shading typically draws a box around its shaded rows and
 nothing around the rest, so on every other row the first and last cells have no outer rule
-and their text is dropped — a table of numbers with no labels, which reads as plausible.
+and their text is dropped. The result is a table of numbers with no labels, which looks plausible.
 Those cells are recovered by measuring the column from the rows that are ruled and taking
 the words the page draws inside it. The recovery refuses three cases rather than guess:
 a column the ruled rows do not agree on (a merged cell), a grid where any column cannot be
 measured that way at all (which is what a bar chart's axis labels look like), and a cell
 overlapping another table or a taller row that already renders the same words. A cell that
-is ruled and empty is never filled — a blank box on a form is a fact about the form.
+is ruled and empty is never filled, because a blank box on a form is part of the form.
 
 A table's header row is often drawn *outside* its grid: the page rules the data and sets
 the column names a line above it. Those names reach the converter as ordinary page text,
-and being short and set larger than body text they become a heading — so the caption above
+and being short and set larger than body text they become a heading. The caption above
 them ends up with an empty body, and the figures end up filed under `age number percent`.
 The words someone would search for are then in one section and the answer in the next, and
-neither answers on its own; in the Marine Corps almanac four sections carried the heading
-`rank number percent`, which makes the citation useless too. A line directly above a ruled
+neither answers on its own. Several tables headed this way would all produce sections with
+the same heading, such as `rank number percent`, which also makes the citation meaningless. A line directly above a ruled
 table is taken as that table's header row when each of its cells falls wholly inside
 exactly one of the columns the rows were measured in, no two cells share a column, and
 they arrive in the grid's order. It is then absorbed into the table rather than dropped,
 so the table is headed by the column names the page draws instead of by its own first data
-row, and the caption above keeps the table it introduces. The rule refuses more than it
-takes: a grid with any unmeasurable column, a line more than one line's leading above the
+row, and the caption above keeps the table it introduces. The rule rejects four
+cases: a grid with any unmeasurable column, a line more than one line's leading above the
 grid, a line that fits two grids at once, and any line the document repeats in its
 margins. `2.1  Travel Rates` also sits over a grid and also splits into two cells, but its
 second cell straddles a column rule rather than sitting in a column, so it stays a
-heading — a numbered heading is the commonest shape in the documents this converter is
-pointed at.
+heading. Numbered headings are the most common heading style in the documents this converter
+is built for.
 
-A table that meets neither test — a slide's table, drawn with type, whitespace and a rule
-above and below — is left as text. What it must not become is headings. Its cells are set
-large and bold, so each one passes every test a heading has, and a run of them cuts the
-page into a section per cell: the figure lands in one section and the year it belongs to in
+A table that meets neither test (for example a slide's table, drawn with type, whitespace and
+a rule above and below) is left as text. The risk is that it
+becomes headings instead: its cells are set large and bold, so each one passes every test a heading has, and a run of them cuts the
+page into a section per cell: the figure ends up in one section and the year it belongs to in
 the next, and no section states the answer. So a line is not a heading if it splits into
-columns, or if another line stands beside it in the same band of the page. Both are
-measurements that a heading does not satisfy — a heading is one run of text with its
-content below it — and the cost of the rule falling on a real heading is its `#`, not its
-text.
-
-
----
+columns, or if another line stands beside it in the same band of the page. A heading meets
+neither condition, since it is one run of text with its content below it. If the rule does
+catch a genuine heading, only the `#` is lost; the text stays.
 
 ## When something looks wrong
 
 Put the converted markdown next to the original and look. Then:
 
-**Reading order scrambled on a two-column page.** Check LAYOUT NOTES to see whether columns
+**Reading order scrambled on a two-column page.** Check [LAYOUT NOTES](#layout-notes) to see whether columns
 were detected at all. `PDF_COLUMN_GAP_FRACTION` sets how wide a gutter has to be to count.
 Where a gutter is found, words are grouped into lines within each column and the columns are
 emitted left first: a line never crosses a gutter, so two columns whose lines happen to share
@@ -344,7 +331,7 @@ Comparing output byte for byte catches change. It cannot catch output that is st
 useless, like a budget grid flattened into prose, or a note stranded from the field it
 describes. Both would pass a file comparison forever.
 
-So you can write questions with known answers, and assert that the text needed to answer them
+You can write questions with known answers and check that the text needed to answer them
 survived conversion:
 
 ```yaml
@@ -375,11 +362,9 @@ converted output, rather than turning it on across the board.
 
 It is not wired up yet, and says so when you try, naming what it needs.
 
----
-
 ## Things that stop and ask
 
-Conversion stops on these rather than write something quietly wrong. Each one names the file
+Conversion stops on these rather than write something silently wrong. Each one names the file
 and the reason.
 
 - A CSV past `CSV_MAX_ROWS` (300) or `CSV_MAX_COLS` (15). How a large table should be shaped
@@ -393,27 +378,23 @@ and the reason.
   are current, then `make prune` to see what would go and `make prune ARGS=--yes` to do
   it. Stage 2's `kb index` drops the matching database rows on its next run.
 
----
-
 ## What this does not do
 
-No OCR, no LLM calls. Chunking, embeddings, a vector store, retrieval and serving are Stage
-2 (below) — not part of conversion, and not something this command runs.
-
----
+No OCR, no LLM calls. Chunking, embeddings, a vector store, retrieval and serving are
+[Stage 2](#stage-2-search-and-serve), below. They are not part of conversion, and this command does not run them.
 
 ## Stage 2: search and serve
 
-Once `kb/` exists, a second, separate command line — `kb` — makes it searchable and hands it
-to an AI assistant (Codex, ChatGPT desktop, Claude Code, Claude desktop) over MCP. It lives
-in the same repo, behind its own install step, and does not change anything above.
+Once `kb/` exists, a second, separate command line, `kb`, makes it searchable and serves it
+to an AI assistant (Codex, ChatGPT desktop, Claude Code, Claude desktop) over MCP. It is in
+the same repo, behind its own install step, and does not change anything above.
 
 **Status:** indexing, search, the eval harness, and the MCP server over both **stdio** (the
 developer path) and **streamable HTTP** (the shared server on the LAN, behind Caddy with a
 bearer token) work. Document summaries (`kb catalog --summarize`) are the one piece not yet
-built (S5, optional).
+built (optional).
 
-**Quickstart — clone to a working `search` in Codex, over the shared HTTPS server:**
+**Quickstart: from clone to a working `search` in Codex, over the shared HTTPS server:**
 
 ```bash
 cp .env.example .env               # then set KB_PATH (absolute), KB_PUBLIC_HOST, KB_URL_BASE
@@ -427,14 +408,14 @@ make compose-index                 # walks kb/, embeds it, loads it into Postgre
 Issue the first token **before** `make compose-up`, not after: `kb serve` refuses to start
 an unauthenticated HTTP server, so with an empty store `kb-mcp` exits 2 and Compose keeps
 restarting it (Caddy answering 502 meanwhile) until a credential exists. It recovers on its
-own once one does, but there is no reason to watch that. `make token` builds what it needs,
+own once one does, but issuing the token first avoids the restart loop. `make token` builds what it needs,
 so it works before anything is up.
 
 `KB_PATH` must be an absolute path here: the compose stack bind-mounts it, and a relative
 path would be resolved against the `compose/` directory rather than this one. `make
 compose-up` checks and refuses otherwise.
 
-`KB_URL_BASE` is the **site root**, not the `/kb` path — `https://kb.internal.example`,
+`KB_URL_BASE` is the **site root**, not the `/kb` path: `https://kb.internal.example`,
 with no `/kb` on the end. Both halves of a citation url already supply that segment (the
 indexer stores each document as `kb/<file>.md`, and Caddy routes `/kb/*`), so a value
 ending in `/kb` makes every citation url a 404. `make compose-up` refuses one.
@@ -442,14 +423,14 @@ ending in `/kb` makes every citation url a 404. `make compose-up` refuses one.
 `install -d` is the one host command this deployment needs, and it is needed once. It
 creates the token store's directory owned by the uid the containers run as (10001), so
 `make token` can write the store and `kb-mcp` can read it. Without it the store ends up
-owned by whoever ran the command, mode 0600, and the server — which is not root — cannot
+owned by whoever ran the command, mode 0600, and the server (which is not root) cannot
 read a single record: it exits 2, the container restarts in a loop, and the only symptom
-at the front door is Caddy answering 502. `make compose-up` checks for this before
+visible from outside is Caddy answering 502. `make compose-up` checks for this before
 starting anything and prints the command to run.
 
-**GPUs.** Docker never hands a GPU to a container unless asked, so `make compose-up` asks
-on your behalf. Before starting anything it checks whether this host has NVIDIA GPUs and
-whether Docker can pass them through, and if both hold it reserves all of them for
+**GPUs.** Docker gives a container a GPU only when asked, so `make compose-up` requests
+one for you. Before starting anything it checks whether this host has NVIDIA GPUs and
+whether Docker can pass them through, and if both are true it reserves all of them for
 `ollama`; otherwise it starts on the CPU. Either way it prints which it chose. Run the
 check on its own with:
 
@@ -459,32 +440,37 @@ make gpu-check
 
 Set `KB_GPU` in `.env` to override the choice. `off` keeps embedding on the CPU. `on`
 makes the GPUs a requirement, so a deployment that is meant to have them refuses to start
-instead of quietly running many times slower. The default, `auto`, is the detection just
+instead of silently running many times slower. The default, `auto`, is the detection just
 described. Passing GPUs through needs the NVIDIA Container Toolkit installed on the host;
 without it the check finds nothing to use and says so.
 
-Indexing is the part this speeds up, and only the first run over a corpus is slow. An
-embedding model is small enough to sit on a single GPU, so a second and third card do not
-divide that work further; they matter for a larger embedding model and for serving several
-requests at once.
+The GPU speeds up indexing, and only the first run over a document set is slow. An embedding model
+fits on a single GPU, so a second and third card do not divide that work further; they help
+with a larger embedding model and with serving several requests at once.
 
-Then add the server to your assistant (Codex/Claude Code snippets below) using
+Then add the server to your assistant ([Codex](#use-it-from-codex) and [Claude Code](#use-it-from-claude-code) snippets below) using
 `https://<KB_PUBLIC_HOST>/mcp` and the token `kb token issue` printed, and ask it a
-question. `make compose-index` needs the embedding model pulled into `ollama` first —
-`docker compose -f compose/docker-compose.yml exec ollama ollama pull nomic-embed-text`
-— which is a separate, manual, one-time step (nothing in `make compose-up` does it, since
-pulling a model is exactly the kind of thing that should not happen silently).
+question. `make compose-index` needs the embedding model pulled into `ollama` first:
+
+```bash
+docker compose -f compose/docker-compose.yml exec ollama ollama pull nomic-embed-text
+```
+
+This is a separate, manual, one-time step. `make compose-up` does not do it, because a model
+download should never happen without someone asking for it.
 
 For local development against a host venv instead of the container stack:
 
 ```bash
 uv sync --extra serve                      # installs kb's dependencies; plain `uv sync` does not
-cp .env.example .env                       # then fill in the Stage 2 keys (see below)
+cp .env.example .env                       # then fill in the Stage 2 keys
 docker compose -f compose/docker-compose.yml --profile dev up -d db ollama
 uv run kb index --init                     # applies the database schema
 uv run kb index                            # walks kb/, embeds it, loads it into Postgres
 uv run kb serve --transport stdio          # runs the MCP server over stdio
 ```
+
+The Stage 2 keys are described in [What the Stage 2 keys in `.env` mean](#what-the-stage-2-keys-in-env-mean).
 
 `kb --help` lists every subcommand (`index`, `search`, `serve`, `eval`, `catalog`); `catalog`
 currently exits with "not implemented until S5".
@@ -503,20 +489,20 @@ It prints one summary line:
 3 unchanged, 1 reindexed, 0 deleted, 0 errors
 ```
 
-`unchanged` — files whose bytes match the last indexed copy, skipped. `reindexed` — files
-that were new or had changed, parsed and reloaded. `deleted` — documents that were indexed
-before but whose file is now gone, removed from the database. `errors` — files that failed
+`unchanged`: files whose bytes match the last indexed copy, skipped. `reindexed`: files
+that were new or had changed, parsed and reloaded. `deleted`: documents that were indexed
+before but whose file is now gone, removed from the database. `errors`: files that failed
 to parse (bad frontmatter, a sidecar that does not match, a missing block); the file is
 reported and skipped, and whatever was indexed for it before is left in place rather than
 being silently dropped. A run with any errors exits non-zero.
 
 Two flags change what counts as "changed":
 
-- `--force` reindexes every document regardless of whether its file changed — useful after
+- `--force` reindexes every document regardless of whether its file changed. Use it after
   editing `retrieval/chunk.py`'s constants or anything else that changes how a document is
   cut, without touching the source files themselves.
-- `--reindex-all` additionally **empties** the index first (documents, blocks, sections,
-  chunks — not the roles or the schema) and updates the recorded embedding model. Use it
+- `--reindex-all` additionally **empties** the index first (documents, blocks, sections and
+  chunks, but not the roles or the schema) and updates the recorded embedding model. Use it
   after changing `EMBED_MODEL` or `EMBED_DIM` in `.env`: mixing vectors from two different
   models in the same table would make search meaningless, so `kb index` refuses to run
   and names both the old and new model until you pass this flag.
@@ -531,21 +517,21 @@ structure. Two cuts happen, in order:
    start a new section, it just stays inside the one it's in. A section is what an
    assistant reads: it is never split across a search result.
 2. **Chunks.** Inside a section, blocks (paragraphs, lists, tables, annotations) are
-   grouped into runs of about 1,200 characters — a chunk is what search actually matches
-   against, never shown as an answer on its own. A table shares a chunk with its section's
+   grouped into runs of about 1,200 characters. A chunk is what search matches against;
+   it is never shown as an answer on its own. A table shares a chunk with its section's
    heading when it is the first thing under it, otherwise it gets a chunk to itself, and
    is never split unless it is over 2,500 characters. A larger table is cut only between
    rows: each piece repeats the table's header row and the last row of the piece before
    it, so every piece reads as a table on its own, and a single row is never cut however
    long it is. A very long paragraph or list (over 2,500 characters) is split at its
-   blank lines rather than mid-sentence. Notes such
-   as `> **Annotation**` or `> **Boxed text:**` always stay attached to whatever came right
+   blank lines rather than mid-sentence. Notes such as [`> **Annotation**`](#-annotation) or
+   [`> **Boxed text:**`](#-boxed-text) always stay attached to whatever came right
    before them.
 
 ### What the Stage 2 keys in `.env` mean
 
-`.env.example` documents every key `kb` reads, each with a one-line comment. The two that
-matter to get right: `DATABASE_URL_INDEX` (the writer role `kb index` uses) and
+`.env.example` documents every key `kb` reads, each with a one-line comment. The two to get
+right: `DATABASE_URL_INDEX` (the writer role `kb index` uses) and
 `DATABASE_URL` (the read-only role `kb serve`/`kb search` use). `docker compose --profile
 dev up -d db` creates a local Postgres with both roles already set up, matching the defaults
 in `.env.example`.
@@ -556,7 +542,7 @@ in `.env.example`.
 uv run kb search "per diem rates" --k 8 [--slug handbook] [--text-class clean] [--leg fused]
 ```
 
-Runs the same retrieval the (future) MCP server uses and prints one line per hit, followed
+Runs the same retrieval the MCP server uses and prints one line per hit, followed
 by an indented citation line:
 
 ```
@@ -566,13 +552,13 @@ by an indented citation line:
 
 Every search runs two independent legs over the indexed chunks and merges them:
 
-- **Lexical** (Postgres full-text search) catches exact tokens -- form numbers, codes,
-  exact phrases -- that an embedding model tends to blur together with similar-looking
+- **Lexical** (Postgres full-text search) catches exact tokens (form numbers, codes,
+  exact phrases) that an embedding model tends to blur together with similar-looking
   text.
-- **Vector** (cosine similarity over `nomic-embed-text` embeddings) catches paraphrase --
+- **Vector** (cosine similarity over `nomic-embed-text` embeddings) catches paraphrase:
   the right passage even when the question uses none of the document's own words.
 
-Neither leg alone is reliable enough on its own, so results are merged with reciprocal
+Neither leg is reliable enough on its own, so results are merged with reciprocal
 rank fusion (RRF): each leg contributes independently, and a hit that both legs agree on
 outranks a hit either leg alone thought was best. `--leg lexical` or `--leg vector` runs
 one leg in isolation, for debugging. A query made only of stop words (`"the of and"`) has
@@ -583,7 +569,7 @@ Every hit is a **section**, never a chunk: chunks are what search matches agains
 internally, but what comes back is always a whole readable section with its page range,
 heading path, and a citation you can quote and go check against the original markdown.
 (Chunk ids exist and `fetch` accepts one, but only as a way *down* from a section too large
-to return whole — see `kb serve` below.)
+to return whole; see [`kb serve`](#kb-serve-the-mcp-server) below.)
 
 ### `kb eval`
 
@@ -610,115 +596,54 @@ three percentages at the bottom are hit@k across all cases, one per leg.
 
 The committed cases run only against the synthetic fixtures in
 `tests/retrieval/fixtures/kb/` and are checked in the test suite (fused hit@5 must be
-100% there). They say nothing about retrieval quality on a real corpus.
+100% there). They say nothing about retrieval quality on an actual document collection.
 
-**Recorded floor, proxy corpus (2026-09-24).** Twelve public documents of the shapes the
-client corpus is expected to contain (reports, slide decks, an annotated form set, two
-acquisition regulations as Word files, one CSV table), indexed with `nomic-embed-text`,
-36 questions worded the way a user would ask them, each answerable from one document and
-checked by an expected phrase and, where the source has pages, an expected page. Every
-case is verified satisfiable by `scripts/check_eval_cases.py`. The case file lives outside
-the repository because its questions describe the documents.
+To measure retrieval on your own documents, write a cases file in the same format against
+your index, check it with [`scripts/check_eval_cases.py`](#checking-a-cases-file-before-you-trust-it-scriptscheck_eval_casespy),
+and record the three percentages as your floor. Keep the cases file outside the repository
+if its questions describe the documents. A change to chunking, the embedding model or
+fusion is then measured against that floor and must not lower it. Do not tune settings
+toward the cases; fix whatever the evidence points to (conversion, sectioning or chunking)
+and re-record the floor afterwards.
 
-| leg | ollama 0.21.0 | ollama 0.35.1 or 0.40.0 |
-|---|---|---|
-| lexical | 33% | 33% |
-| vector | 58% | 86% |
-| fused | 72% | 89% |
+How to read the legs: the lexical leg ANDs every non-stop word of the question, so a natural
+question containing one word the right chunk lacks scores zero there. It is meant for exact
+tokens (a section number, a form number, a phone number, a zip code). Expect tables and CSVs
+to retrieve less well than prose: a short table of numbers under a good heading is still
+hard to reach, because rows of bare figures embed far from a natural-language question.
 
-**The embedding server's version decides this, so run a current one.** The 58% column was
-measured against ollama 0.21.0 and stood as the recorded floor from 2026-09-24. The 86%
-column was measured twice, on different hardware: on a GPU host running 0.35.1
-(2026-10-06), and on the same CPU machine that produced the 58%, after upgrading it to
-0.40.0 and reindexing (2026-10-07). Nothing else changed between those two runs on that
-machine, so the difference is the server, not the hardware, the corpus or the chunking.
+**Run a current embedding server.** With ollama 0.21.0, vector hit@5 was 28 points lower
+than with 0.35.1 or 0.40.0 on the same documents and cases, and nothing else showed it: the
+lexical leg was identical, single embeddings matched to five decimal places, and `kb index`
+reported no errors. The cause is **UNCONFIRMED**; the leading candidate is how old versions
+handle several texts in one request, which `embed.py` sends in batches.
 
-Treat **33% / 86% / 89%** as the floor, and 0.21.0 as a version that silently costs 28
-points of vector recall. What it costs is invisible by every other measure: the lexical leg
-is identical case for case, a single text embedded on 0.21.0 and on 0.35.1 agrees to five
-decimal places with both unit length, both versions discard the same tail of an over-length
-input, and `kb index` reports no errors. The index looks healthy and ranks worse.
-
-The mechanism is **UNCONFIRMED**. The leading candidate is batching: `embed.py` sends up to
-32 texts and 40,000 characters per request, while every comparison above used one text per
-request, so a defect in multi-input handling would corrupt stored vectors while leaving
-every single-input check clean. Not worth chasing unless an old server must be supported;
-the remedy is to run a current one.
-
-Supersedes the 2026-09-24 floor of 31% / 53% / 67% over the same 36 cases, which stood
-until sections stopped being cut between a caption and the thing it introduces
-(2026-09-28). That change moved two cases from a miss on every leg to a hit and moved none
-the other way: `forms-equipment-threshold`, where the threshold is stated in a heading
-whose body was empty and the figures were in the next section, and `cfap-egg-form-part`.
-Nothing was tuned to get it — no chunk size, no `k`, no fusion constant. What changed is
-that a heading with no body of its own no longer opens a section, so 443 of the corpus's
-1,577 sections stopped being dead ends: results that matched on a good-looking title and
-then had nothing under it. The floor before those 36 cases was 33% / 67% / 76%, measured
-over the first 21 of them. **The drop is the case set becoming more representative, not retrieval
-regressing:** the 15 cases added on 2026-09-24 deliberately target tables, CSVs and
-documents whose headings are table header rows, and nothing about the index changed when
-they were added. A floor that avoids the corpus's weakest content is not a floor.
-
-How to read it: the lexical leg ANDs every non-stop word of the question, so a natural
-question containing one word the right chunk lacks scores zero there; it exists for exact
-tokens (a section number, a form number, a phone number, a zip code), and it placed every
-such case first. Half of the twelve fused misses are tabular: four are the Marine Corps
-almanac and two are the CSV, which chunks into blocks of bare pipe rows that no
-natural-language question embeds close to. The rest are slide and form pages whose
-large-type fragments each convert to a one-line heading and therefore a one-line section.
-
-**The four almanac misses are no longer a conversion shape, and that is worth stating
-plainly.** Two conversion defects were blamed for them and both are fixed: the alternating
-rows that lost their labels (2026-09-24) and the tables headed by their own column names,
-so that four sections read `rank number percent` and the caption above each had an empty
-body (2026-09-25). `sec:ch-05-b:5` now reads `Active Duty Officer Grade Distribution` and
-holds `| Captain | 5,913 | 28.6% |` in the same 427-character section, and the floor did
-not move by a single case when it did. The remaining cause is retrieval, not conversion: the vector leg
-ranks the almanac's four 1,900-to-2,300-character occupational-field tables above a
-427-character grade table for every question about a rank, and the lexical leg needs every
-word of the question present. A short table of numbers under a good heading is still hard
-to reach. That is the same finding as the CSV's, and it is what the deferred catalog-summary
-milestone is for — generated prose or metadata retrieval, not a ranking constant.
-
-These numbers are a regression floor: a change to chunking, embedding
-model, or fusion is measured against them and must not lower them. They are not tuned
-toward. A fix belongs wherever the evidence puts it — conversion, sectioning or chunking —
-and the floor is re-measured and re-recorded after it. Both are worth saying, because the
-two changes measured against this floor came out opposite ways: the conversion fix on
-2026-09-25 corrected a real defect and moved nothing, and the sectioning change on
-2026-09-28 moved five points without touching a character of converted text. Where the
-words are cut can matter more than how well they were read.
-
-No number for the client's own corpus appears here; the client runs the same command
-against their index and records their own.
-
-#### Checking a cases file before you trust it — `scripts/check_eval_cases.py`
+#### Checking a cases file before you trust it: `scripts/check_eval_cases.py`
 
 ```bash
 uv run python scripts/check_eval_cases.py --cases /path/to/cases.yaml
 ```
 
 `kb eval` scores a case as a miss when *any* of `expected_slug`, `expected_page` and
-`expected_phrase` fails — and all three must hold for the **same** section. Two very
+`expected_phrase` fails, and all three must be true of the **same** section. Two very
 different things therefore look identical in the table: retrieval missed, or the case asked
 for something no single section can satisfy. This script separates them. It reports a case
 as unsatisfiable when the page or phrase is absent, and specifically flags the
-**over-constrained** case where each constraint holds alone but no one section holds both —
-which would otherwise make the file a regression floor for the sectioniser rather than the
-retriever. It also warns when a phrase appears in more than three sections (weak evidence)
+**over-constrained** case where each constraint is met alone but no one section meets both.
+Such a case would make the file test the sectioniser rather than the retriever. It also warns when a phrase appears in more than three sections (weak evidence)
 and when a page is split across more than six sections, which usually means a table was
 flattened. Read-only; exits 1 if any case is unsatisfiable.
 
-#### Probing the MCP contract — `scripts/mcp_probe.py`
+#### Probing the MCP contract: `scripts/mcp_probe.py`
 
 ```bash
 uv run python scripts/mcp_probe.py --cases /path/to/mcp-cases.yaml
 ```
 
-`kb eval` asks whether the right section *ranks*. This asks whether the evidence is
-**reachable through the MCP tools, with an honest citation** — it launches `kb serve
---transport stdio` as a subprocess, exactly as an assistant application does, and drives the
-real tools. Per case it checks that all five tools are advertised, that `search` returns the
+`kb eval` checks whether the right section *ranks*. This checks whether the evidence is
+**reachable through the MCP tools, with a correct citation**. It launches `kb serve
+--transport stdio` as a subprocess, the same way an assistant application does, and calls
+the tools. Per case it checks that all five tools are advertised, that `search` returns the
 expected document, that `fetch` resolves and returns more than the 300-character snippet,
 that the expected phrase is present in the *fetched* text (reachable, not merely indexed),
 that the citation names the source file and the url sits under `KB_URL_BASE`, and that
@@ -732,7 +657,7 @@ prints the fetched text so you can confirm the damage is visible to a reader at 
 server's own call log goes to `mcp-probe-server.log` (`--server-log` to change it) rather
 than interleaving with the report.
 
-### `kb serve` — the MCP server
+### `kb serve`: the MCP server
 
 ```bash
 uv run kb serve --transport stdio    # the default; developer path, nothing on the network
@@ -742,40 +667,40 @@ uv run kb serve --transport http     # the shared server; needs an issued token 
 Runs a read-only [MCP](https://modelcontextprotocol.io) server against the index, over
 either:
 
-- **stdio** — the assistant starts `kb serve` itself as a subprocess and talks to it over
+- **stdio**: the assistant starts `kb serve` itself as a subprocess and talks to it over
   stdin/stdout, so there is nothing to bind or expose on the network. This is what
   `uv run kb serve --transport stdio` and the compose `dev` profile are for.
-- **streamable HTTP** — one server, run once (by `kb-mcp` in the compose stack), that every
+- **streamable HTTP**: one server, run once (by `kb-mcp` in the compose stack), that every
   user's assistant talks to over `https://<KB_PUBLIC_HOST>/mcp`. `kb-mcp` itself binds
-  `0.0.0.0:8765` inside the compose network only; `caddy` is what actually terminates TLS
+  `0.0.0.0:8765` inside the compose network only; `caddy` terminates TLS
   and is reachable from the LAN, on 443. Every request under `/mcp*` needs `Authorization:
-  Bearer <token>` where `<token>` is one issued by `kb token issue` (see "Tokens" below); a
+  Bearer <token>` where `<token>` is one issued by `kb token issue` (see [Tokens](#tokens-issuing-revoking-rotating) below); a
   missing, wrong, revoked or expired token gets a 401 with no body. `/health` (`GET /health`,
   returning `{"ok": true, "documents": <count>, "embed_model": ...}`) needs no token, for
   monitoring. Starting `--transport http` with no usable token refuses to run (exit 2)
   unless you pass `--allow-anonymous`, which is for local experimentation only and logs a
-  loud warning — never pass it on a network anyone else can reach.
+  warning. Never pass it on a network anyone else can reach.
 
 It exposes five tools, each read-only (`readOnlyHint: true`) and documented to the
 assistant in its own instructions:
 
-- **`search(query, k=8, slug=None, text_class=None)`** — find candidate sections for a
+- `search(query, k=8, slug=None, text_class=None)`: find candidate sections for a
   question; returns ids, titles, snippets and citation urls, never full text.
-- **`fetch(id)`** — read the whole section, page, chunk, or document named by an id from
+- `fetch(id)`: read the whole section, page, chunk, or document named by an id from
   `search`, `list_documents`, or `get_outline`.
-- **`list_documents(text_class=None, title_contains=None)`** — every indexed document,
+- `list_documents(text_class=None, title_contains=None)`: every indexed document,
   sorted by title, with its size and section count.
-- **`get_outline(id)`** — the section-by-section table of contents for one document.
-- **`get_section(id, neighbours=0)`** — like `fetch` on a section or page, but also pulls
+- `get_outline(id)`: the section-by-section table of contents for one document.
+- `get_section(id, neighbours=0)`: like `fetch` on a section or page, but also pulls
   in `neighbours` sections before and after it, concatenated in reading order.
 
 No reply carries more than `FETCH_MAX_CHARS` (200,000 by default) of text. That ceiling is
-not only for a whole document: a **section is not a bounded unit** — in a DOCX-derived
-manual one heading can span thousands of blocks, and this corpus has sections of over half
-a million characters, more than the document path already declines to send. So `fetch` and
+not only for a whole document, because a **section is not a bounded unit**. In a DOCX-derived
+manual one heading can span thousands of blocks, and a section can exceed half a million
+characters, more than the document path already declines to send. So `fetch` and
 `get_section` answer an over-cap section, page or chunk the same way the document path
 answers an over-cap document: `metadata.truncated: true`, and in place of the text, the
-block range it declined plus the smaller ids that cover it — the chunk ids (and page ids
+block range it declined plus the smaller ids that cover it: the chunk ids (and page ids
 where the document has pages), with one line sampled from a dozen chunks as landmarks for
 choosing between them. Fetching one of those chunk ids returns that chunk and nothing else.
 An outline listing is bounded the same way: for a document with too many headings to list,
@@ -785,7 +710,7 @@ is silently cut: every one of these replies says what it left out and which id r
 #### Use it from Codex
 
 ```toml
-# ~/.codex/config.toml — developer, local stdio
+# ~/.codex/config.toml: developer, local stdio
 [mcp_servers.kb]
 command = "uv"
 args = ["run", "--directory", "/path/to/dgx-infra", "kb", "serve", "--transport", "stdio"]
@@ -801,7 +726,7 @@ tool_timeout_sec = 60
 
 Equivalent CLI: `codex mcp add kb -- uv run --directory /path/to/dgx-infra kb serve --transport stdio`.
 For the HTTP form, `export KB_TOKEN=<your token>` first and use `kb.internal.example`
-replaced with your real `KB_PUBLIC_HOST`.
+replaced with your own `KB_PUBLIC_HOST`.
 
 #### Use it from Claude Code
 
@@ -814,13 +739,13 @@ Both forms work today. Use `--transport stdio` for local development against a h
 use `--transport http` (with `KB_TOKEN` exported and `kb.internal.example` replaced with
 your `KB_PUBLIC_HOST`) once `make compose-up` is running.
 
-**Give `uv` its absolute path** in the stdio forms above — `$(command -v uv)`, e.g.
+**Give `uv` its absolute path** in the stdio forms above: `$(command -v uv)`, e.g.
 `/Users/you/.local/bin/uv` or `/opt/homebrew/bin/uv`. An MCP stdio server is a subprocess of
 the assistant application and inherits *its* environment, not the login shell's, so a `uv`
 under `~/.local/bin` (where the standalone installer puts it) or inside a conda environment
 is often absent from its PATH, and the server fails to start. Starting the assistant from a
 terminal hides the problem; starting it from Finder, the Dock or a desktop launcher does
-not. The HTTP forms are unaffected — nothing is launched as a subprocess there.
+not. The HTTP forms are unaffected, because nothing is launched as a subprocess there.
 
 The project venv does not need `conda activate`, even when its base interpreter is a conda
 environment: `.venv/bin/python` is a symlink straight to that interpreter. Only `uv` itself
@@ -828,59 +753,59 @@ has to be findable.
 
 #### What you should see
 
-Once added, ask the assistant something the fixtures or your real corpus can answer. It
+Once added, ask the assistant something the fixtures or your own documents can answer. It
 should call `search`, get back a short list of section ids with snippets, call `fetch` (or
-`get_section`) on the most promising one or two, and answer using that section's text —
+`get_section`) on the most promising one or two, and answer using that section's text,
 citing the `citation` string it got back, not the question itself. If you watch `kb serve`'s
 own stderr (redirected by your assistant's MCP client, not printed to your terminal
 directly) you will see one JSON line per tool call: the tool name, its arguments, the
 result ids, how long it took, and any error.
 
 **A snippet is not evidence.** `search` returns a 300-character preview of the single best
-match — enough to judge relevance, not enough to answer from, and never enough to tell
+match. That is enough to judge relevance, not enough to answer from, and never enough to tell
 whether a table came out flattened or a note got separated from what it is about. Treat it
 as a pointer, not an answer: the assistant should always `fetch` (or `get_section` with
 `neighbours=1` when a section looks cut off) before quoting anything back to you.
 
-### Checking a citation against the original — the static `kb/` server
+### Checking a citation against the original: the static `kb/` server
 
 Every result's `url` (and the `citation` string in `fetch`'s metadata) points at
-`https://<KB_PUBLIC_HOST>/kb/<file>.md#dgx:block=<id>` — the same converted markdown file
+`https://<KB_PUBLIC_HOST>/kb/<file>.md#dgx:block=<id>`, the same converted markdown file
 `kb search`/`kb serve` indexed, served read-only by `kb-static` behind Caddy. Opening it in
 a browser is the way to check what the assistant told you against the actual converted
-text (the `#dgx:block=...` fragment does nothing in a browser today — it exists so a future
-viewer can jump straight to the block, and so the URL is unique per citation).
+text. (The `#dgx:block=...` fragment does nothing in a browser today; it exists so a future
+viewer can jump straight to the block, and so the URL is unique per citation.)
 
 **`/kb/*` needs the same bearer token `/mcp*` does**, and a bare browser has no way to add
 an `Authorization` header to a request. Three practical options: a browser extension that
 adds a fixed header to requests for your `KB_PUBLIC_HOST` origin (e.g. "ModHeader" or
 similar); `curl -H "Authorization: Bearer $KB_TOKEN" https://<host>/kb/<file>.md -o
 file.md` and open the saved file locally; or, if your organisation's Caddy is set up with a
-client TLS certificate instead of `tls internal` (see "TLS" below), some browsers can be
+client TLS certificate instead of `tls internal` (see [TLS](#tls) below), some browsers can be
 configured to present it automatically and you drop the header requirement for that one
-origin — that is a Caddy/client-cert configuration choice, not something this repo sets up
+origin. That is a Caddy/client-cert configuration choice, not something this repo sets up
 for you.
 
 ### Tokens: issuing, revoking, rotating
 
 One token per user. `kb token` manages them; nothing here restarts the server.
 
-**On the compose stack, go through `make token`** — the deployment target has Docker and
+**On the compose stack, use `make token`.** The deployment target has Docker and
 nothing else, so `uv run` is not available there:
 
 ```bash
 make token ARGS="issue alice@example.com"        # prints the token ONCE
 make token ARGS='issue bob@example.com --note "bob laptop" --expires-in-days 90'
-make token ARGS=list                             # ids, owners, status -- never the secrets
+make token ARGS=list                             # ids, owners, status (never the secrets)
 make token ARGS="list --all"                     # include revoked and expired
 make token ARGS="revoke 1979317c8685"            # withdraw one person's access, now
 ```
 
 That runs the `kb-token` one-off container, built from the same image as the server and so
-running as the same uid, which is what keeps the store it writes readable by `kb-mcp`
+running as the same uid, which keeps the store it writes readable by `kb-mcp`
 without widening mode 0600 or chowning anything. It deliberately does not depend on
-Postgres: tokens live in a file so that authentication survives the database being down,
-and revoking one has to work during exactly that outage.
+Postgres: tokens are stored in a file so that authentication survives the database being down,
+and revoking one has to work during that outage.
 
 From a development host venv the same commands are:
 
@@ -894,19 +819,19 @@ Either way the store keeps whatever owner and mode it already had: `kb token` wr
 file and renames it over the old one, and it carries the previous file's ownership across,
 so a one-time `chown` is not undone by the next `issue` or `revoke`.
 
-**Revoking affects one person and nothing else.** The records live in `KB_TOKENS_FILE`
+**Revoking a token affects only that user.** The records are stored in `KB_TOKENS_FILE`
 (default: `tokens.json` beside `.env`, gitignored, mode 0600) and the server re-reads that
 file as it changes, so a revocation is in force within `KB_TOKEN_CACHE_SECONDS` (default 5)
-on both `/mcp*` and `/kb/*`, with no restart and nothing required of any other user. That
-is the whole reason this exists: with tokens in `.env`, withdrawing one credential meant
-restarting the server, which dropped everybody — so in practice it never happened.
+on both `/mcp*` and `/kb/*`, with no restart and nothing required of any other user. This
+is why the token store exists: with tokens in `.env`, withdrawing one credential meant
+restarting the server, which disconnected everybody, so in practice it was never done.
 
-**On the compose stack, set `KB_TOKENS_DIR` as well** — the directory holding that file.
+**On the compose stack, also set `KB_TOKENS_DIR`**, the directory holding that file.
 It is what gets bind-mounted into `kb-mcp`, and it has to be the directory rather than the
 file: a single-file bind mount binds the host file's inode, and `kb token` replaces the
 inode on every write, so the container would lose the file on the first issue or revoke.
 `make compose-up` checks that the two settings agree before starting anything, because the
-failure is otherwise silent — `kb token revoke` would report success and change nothing the
+failure is otherwise silent: `kb token revoke` would report success and change nothing the
 server could see.
 
 **That directory has to be writable by uid 10001**, the uid the containers run as:
@@ -916,7 +841,7 @@ sudo install -d -o 10001 -g 10001 -m 700 /srv/kb
 ```
 
 once, before the first `make token`. The server is not root, so a store owned by whoever
-ran the command and mode 0600 is one it cannot read at all — `kb serve` exits 2, the
+ran the command and mode 0600 is one it cannot read at all. `kb serve` exits 2, the
 container restarts in a loop, and the only thing visible from outside is Caddy answering
 502, with nothing anywhere naming the permission. `make compose-up` checks both the
 directory and the store before starting anything and prints the exact command.
@@ -928,51 +853,50 @@ another and revoke the old one; there is no recovery, by design.
 **Rotating**, if you want to rotate on a calendar rather than on an incident: issue the
 replacement, give it to its owner, then revoke the old one. Both work in between, so there
 is no flag day. `--expires-in-days` closes that window for you. Note that this rotates the
-*server's* record — the secret still sits in a config file on the user's machine, which the
-server cannot fix; see the proposal's §7.1 for the three answers to that (rotate on
-incident, push the credential as a managed setting, or OAuth).
+*server's* record. The secret still sits in a config file on the user's machine, which the
+server cannot fix. The options there are to rotate on incident, push the credential as a
+managed setting, or move to OAuth.
 
-**The audit log.** Every authentication decision is one JSON line on `kb-mcp`'s stderr,
+**Audit log.** Every authentication decision is one JSON line on `kb-mcp`'s stderr,
 beside the tool-call log: `{"event": "auth.ok", "path": "/mcp", "token": "...", "user":
-"alice@example.com", "source": "file"}`, or `auth.denied` with no user. This is what one
-token per user buys and a shared token could not: the log says *who*, not just that someone
-with a valid token called.
+"alice@example.com", "source": "file"}`, or `auth.denied` with no user. Because each user
+has their own token, the log records *who* made a call, which a shared token could not.
 
-**`KB_TOKENS` still works, and should not be used.** Tokens listed there are accepted for
+**`KB_TOKENS` still works, but do not use it.** Tokens listed there are accepted for
 compatibility with an existing deployment, but they are plaintext in `.env`, they name no
 owner (so the audit log says `(KB_TOKENS)`), and revoking one still means editing `.env`
-and restarting — dropping every user. `kb serve` warns on startup when it is set, and
+and restarting, which disconnects every user. `kb serve` warns on startup when it is set, and
 `kb token list` says how many are in play. To migrate: issue a token per user, hand them
 out, then remove `KB_TOKENS` from `.env` and restart once.
 
 #### How `/kb/*` is checked
 
 `kb-mcp` checks `/mcp*` itself. `/kb/*` is served by `kb-static`, which is a plain
-`file_server` with no auth, so Caddy enforces the token in front of it — by asking
+`file_server` with no auth, so Caddy enforces the token in front of it by asking
 `kb-mcp` (`forward_auth` to an internal `/auth/check`, which answers 204 or 401) rather
-than matching the token itself. That matters: Caddy used to hold a regex of every token,
-built from `KB_TOKENS` at container start, which made the token list a second copy that
-went stale. A revoked token kept reading the entire converted corpus over `/kb/*` until
-`caddy` was restarted. There is now one live store behind both routes. `/auth/check` is
-reachable only inside the compose network — the Caddyfile answers 404 for every path it
+than matching the token itself. Caddy used to keep a regex of every token, built from
+`KB_TOKENS` at container start, which made the token list a second copy that went stale:
+a revoked token could still read the converted documents over `/kb/*` until `caddy` was
+restarted. There is now one live store behind both routes. `/auth/check` is
+reachable only inside the compose network; the Caddyfile answers 404 for every path it
 does not route.
 
 ### The "flattened table" caveat
 
 Some source tables (merged cells, unusual borders, tables inside scanned images) don't
-survive conversion as a clean grid — Stage 1's converter says so explicitly, either with a
-`Not converted` note or by falling back to a plainer rendering (see "Reading the converted
-markdown" above, and the per-document `LAYOUT NOTES`/`EVIDENCE NOTES` in `pipeline
-report`). If an assistant's answer depends on a specific cell, check the citation against
-the original before trusting it — this is exactly what the static `kb/` server above is
-for. Retrieval does not repair a bad conversion; it only finds and returns what Stage 1
+survive conversion as a clean grid. Stage 1's converter says so, either with a
+`Not converted` note or by falling back to a plainer rendering (see [Reading the converted
+markdown](#reading-the-converted-markdown) above, and the per-document
+[LAYOUT NOTES](#layout-notes) and [EVIDENCE NOTES](#evidence-notes) in `pipeline report`). If an assistant's answer depends on a specific cell, check the citation against
+the original before trusting it, using the
+[static `kb/` server](#checking-a-citation-against-the-original-the-static-kb-server) above. Retrieval does not repair a bad conversion; it only finds and returns what Stage 1
 already wrote down.
 
 ### TLS
 
 `compose/Caddyfile` defaults to `tls internal`: Caddy generates its own local CA and a leaf
 certificate for `KB_PUBLIC_HOST` the first time it starts, and terminates HTTPS with it.
-Nothing else has to be configured for the stack to serve valid-looking HTTPS — but every
+Nothing else has to be configured for the stack to serve valid-looking HTTPS, but every
 user's machine has to be told to trust that CA once, or their assistant/browser will reject
 the connection as self-signed. Fetch the CA certificate from the running container and
 install it as a trusted root using your OS's normal process for that:
@@ -981,12 +905,11 @@ install it as a trusted root using your OS's normal process for that:
 docker compose -f compose/docker-compose.yml cp caddy:/data/caddy/pki/authorities/local/root.crt ./dgx-kb-ca.crt
 ```
 
-**Clients have to dial a NAME, or at least the name `KB_PUBLIC_HOST` holds.** TLS SNI
-carries host names only, so a client dialling the stack by bare IP sends none — and with
-nothing to go on Caddy used to fail the handshake outright (`tlsv1 alert internal error`,
+**Clients have to connect by the name in `KB_PUBLIC_HOST`.** TLS SNI
+carries host names only, so a client dialling the stack by bare IP sends none. With no
+name, Caddy used to fail the handshake outright (`tlsv1 alert internal error`,
 no certificate offered), before any HTTP and so before `KB_PUBLIC_HOST` or the token were
-in the picture. This is a step the earlier plain-HTTP testing could not surface, because
-plain HTTP has no SNI to be missing. The Caddyfile now sets `default_sni` to
+involved. Earlier plain-HTTP testing could not catch this, because plain HTTP has no SNI. The Caddyfile now sets `default_sni` to
 `KB_PUBLIC_HOST`, so an SNI-less client is served that certificate: dialling by IP works
 when `KB_PUBLIC_HOST` **is** that IP, and otherwise clients must use the name (DNS, or a
 `hosts` entry), since a certificate for `kb.internal.example` will not validate against
@@ -994,27 +917,25 @@ when `KB_PUBLIC_HOST` **is** that IP, and otherwise clients must use the name (D
 
 Alternatively, set `TLS_CERT` and `TLS_KEY` in `.env` to the paths of a certificate/key
 pair issued by a CA your users' machines already trust (an internal corporate CA, or a
-client-issued cert) — `compose/caddy-entrypoint.sh` uses that pair instead of `tls
+client-issued cert). `compose/caddy-entrypoint.sh` uses that pair instead of `tls
 internal` whenever both are set, and no user-side trust step is needed.
 
-**The names on a supplied certificate are yours to get right.** With `tls internal` Caddy
+**You must put the right names on a supplied certificate.** With `tls internal` Caddy
 issues a certificate per name on demand, so the set of names it answers for is open. With
 one supplied pair that set is fixed when the certificate is made, and a client dialling a
-name that is not on it fails verification — a different failure, at a different layer, from
-the SNI one above. The Caddyfile serves one site block for `KB_PUBLIC_HOST`, `localhost`
+name that is not on it fails verification. That is a different failure, at a different
+layer, from the SNI one above. The Caddyfile serves one site block for `KB_PUBLIC_HOST`, `localhost`
 and `127.0.0.1`, so all of those (plus the host's own IP, as an IP SAN, which a DNS SAN
-does not cover) belong on it. To exercise this path without an internal CA to hand,
+does not cover) belong on it. To test this path without an internal CA,
 `scripts/make_tls_cert.sh <public-host> [extra-name-or-ip ...]` writes a self-signed pair
 with exactly those names on it and prints the two `.env` lines. That certificate is for
-testing the path, not for production. Which of the two
-is right for a given deployment is `stage2-retrieval-brief.md` §11.1, open for Tim to
-decide; both are supported without any code change.
+testing the path, not for production. Both options work without any code change.
 
-### Standing the stack up on a fresh host
+### Setting up the stack on a fresh host
 
 The deployment is container-first: `docker compose` and nothing else. Getting a bare Linux
-host to that point needs three host packages, and `scripts/bootstrap_host.sh` installs
-them — Docker Engine, the compose plugin, and the NVIDIA Container Toolkit — then verifies
+host to that point needs three host packages (Docker Engine, the compose plugin, and the
+NVIDIA Container Toolkit). `scripts/bootstrap_host.sh` installs them, then verifies
 GPU passthrough from inside a throwaway container. It deliberately does **not** install
 the NVIDIA kernel driver (see the script's header for why): `nvidia-smi` must already
 work, which on a cloud host is the image's job.
@@ -1024,19 +945,19 @@ sh scripts/bootstrap_host.sh          # install what is missing, then verify
 sh scripts/bootstrap_host.sh --check  # verify only
 ```
 
-It is idempotent and safe to re-run. Set `KB_GPU=on` in `.env` on a host whose GPUs are
-the point, so that a missing one stops the stack instead of letting it index slowly and
+It is idempotent and safe to re-run. Set `KB_GPU=on` in `.env` on a host that must use its
+GPUs, so that a missing one stops the stack instead of letting it index slowly and
 silently on the CPU; `make gpu-check` reports which way the decision goes without starting
 anything.
 
-That is the host-preparation half. For the whole deployment in order — the two directories
+That covers host preparation. For the full deployment in order (the two directories
 whose ownership requirements are opposite, the certificate, the credentials, converting the
-documents in a container, indexing, and the end-to-end probe — follow
+documents in a container, indexing, and the end-to-end probe), follow
 [`docs/deployment-dgx.md`](docs/deployment-dgx.md).
 
 ### Checking a deployment end to end
 
-`make check` proves the code. It cannot prove the certificate, the reverse proxy, the
+`make check` tests the code. It cannot test the certificate, the reverse proxy, the
 `/kb/*` forward_auth hop or the live token store, because none of those exist in a test
 process. `scripts/http_probe.py` drives a *running* stack over TLS at its public address,
 the way a client on the LAN reaches it:
@@ -1051,8 +972,8 @@ uv run python scripts/http_probe.py \
 It checks what is open and what is closed (`/health` without a token, `/mcp` and `/kb/*`
 with and without one, `/auth/check` unreachable from outside), drives MCP over streamable
 HTTP through `initialize` → `search` → `fetch`, follows the citation url it gets back to
-confirm the cited document is actually fetchable, and — given `--tokens-file`, so it can
-reach the store — revokes a throwaway token and confirms that closes **both** `/mcp*` and
+confirm the cited document is fetchable, and, given `--tokens-file` so it can reach the
+store, revokes a throwaway token and confirms that closes **both** `/mcp*` and
 `/kb/*` within `KB_TOKEN_CACHE_SECONDS` while another user's token keeps working. It
 issues its own throwaway credentials, revokes them on the way out, and never prints a
 secret. Exit status is 0 only if every check passed.
@@ -1064,10 +985,8 @@ issued tokens as `KB_PROBE_TOKEN` and `KB_PROBE_TOKEN_2`, and skips the revocati
 
 A web UI (users bring their own assistant), email intake, answer generation or reranking,
 OAuth or any public/internet-facing endpoint, multi-tenancy or per-user document
-permissions, and document summaries (`kb catalog --summarize`, S5, optional and gated on
-`models.yaml`) — see `stage2-retrieval-brief.md` §10 for the full list and why.
-
----
+permissions, and document summaries (`kb catalog --summarize`, optional and gated on
+`models.yaml`).
 
 ## Development
 
@@ -1078,13 +997,13 @@ make help     # every target
 
 ### License policy
 
-The rule is about how a dependency is called, not what its licence string says. Copyleft
+The rule depends on how a dependency is called, whatever its licence string says. Copyleft
 invoked as a separate program is fine, and LibreOffice is the one case of it. Copyleft
 imported as a library is not. PyMuPDF and pymupdf4llm are AGPL and import-only, so they are
 banned outright, including for a quick check.
 
 `make license-gate` walks installed package metadata and fails if a GPL or AGPL package is
-imported anywhere under `pipeline/`. Real false positives go in
+imported anywhere under `pipeline/`. False positives go in
 `scripts/license_allowlist.yaml` with a written reason.
 
 ### Model policy
@@ -1093,13 +1012,13 @@ Models have to be permissively licensed and have non-Chinese base-weight provena
 on the base weights rather than on whoever released them.
 
 `make model-gate` checks two places, because they fail differently: model caches, and weights
-shipped inside an installed wheel. The second one is real. The `docling` meta-package
+shipped inside an installed wheel. The second case occurs in practice: the `docling` meta-package
 installs `rapidocr`, whose wheel carries about 30MB of Baidu PaddleOCR weights as ordinary
 files that never touch a cache. So this project depends on `docling-slim` with named extras,
 never on `docling`.
 
 `models.yaml` is the allowlist and it is empty on purpose. Nothing here should ever download
-a model, so an empty allowlist plus a cache scan asserts exactly that and fails the moment it
+a model, so an empty allowlist plus a cache scan asserts that and fails the moment it
 stops being true. Models a future conversion path would fetch are recorded under
 `pending_review` with what is known about each.
 
@@ -1123,7 +1042,7 @@ copyleft Python library.
 `pyproject.toml` requires every locked dependency to have an installable wheel on both
 linux-x86_64 and darwin-x86_64.
 
-This is not decorative. PyTorch ships no macOS x86_64 wheel after 2.2.2, and without the
+PyTorch ships no macOS x86_64 wheel after 2.2.2, and without the
 constraint `uv lock` produces a lockfile that resolves cleanly and then will not install. If
 `uv lock` starts failing, a dependency has dropped one of those platforms. Decide that
 deliberately instead of dropping support by accident.
