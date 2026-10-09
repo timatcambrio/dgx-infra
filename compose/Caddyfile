@@ -28,7 +28,7 @@
 # uses that cert/key pair instead -- the __TLS_DIRECTIVE__ placeholder below is filled in
 # by caddy-entrypoint.sh, because a Caddyfile `tls` line's form (bare `internal` vs. two
 # file paths) can't be made conditional on whether two env vars are set using `{$VAR}`
-# substitution alone. See the README "TLS" section for what "each user's machine must
+# substitution alone. See docs/administration.md, "TLS", for what "each user's machine must
 # trust Caddy's root CA once" means in practice, and the client-cert alternative.
 
 {

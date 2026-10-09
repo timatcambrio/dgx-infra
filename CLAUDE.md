@@ -32,8 +32,9 @@ it after every code change and report the number of tests, not just that it pass
 
 ## Writing
 
-- The README is written for someone using the pipeline, not maintaining it: what to run
-  and what the output means, not how the code is arranged.
+- The README is a short description of the repo that links to `docs/`. The docs are
+  written for someone using or running the service, not maintaining it: what to run and
+  what the output means, not how the code is arranged.
 - No milestone vocabulary (`S4`, `M2`) or brief section numbers in anything a user reads.
   Those belong in comments and briefings.
 - Public docs never name corpus files or describe the test documents. The client's
