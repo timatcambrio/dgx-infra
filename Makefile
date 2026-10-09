@@ -1,7 +1,7 @@
 # Document conversion.
 #
 # Needs `uv` on PATH and nothing else: it provisions Python 3.12 and every package itself.
-# Run `uv sync` once first. See README "Setup".
+# Run `uv sync` once first. See docs/conversion.md, "Setup".
 
 UV ?= uv
 PYTHON := $(UV) run python

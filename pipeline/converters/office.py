@@ -66,8 +66,8 @@ def find_soffice() -> str:
     raise SofficeMissingError(
         f"{SOFFICE_BINARY!r} not found on PATH. Legacy .doc/.dot conversion needs "
         "LibreOffice, invoked as a subprocess. Install it and pin its major version -- see "
-        "README section 'LibreOffice (subprocess only)'. There is no fallback: a copyleft "
-        "Python library is not an option."
+        "docs/development.md, 'LibreOffice (subprocess only)'. There is no fallback: a "
+        "copyleft Python library is not an option."
     )
 
 

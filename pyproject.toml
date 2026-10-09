@@ -5,7 +5,7 @@ description = "Document conversion: institutional documents -> markdown, with a 
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 
-# Dependency policy (see README "License policy"): permissive licences only for anything
+# Dependency policy (see docs/development.md, "License policy"): permissive licences only for anything
 # IMPORTED. Copyleft tools are allowed only when invoked as a subprocess (LibreOffice).
 # PyMuPDF / pymupdf4llm (AGPL) are import-only and therefore permanently banned.
 dependencies = [
@@ -42,8 +42,8 @@ dependencies = [
 # Install with:  uv sync --extra pdf
 pdf = [
     "docling-slim[format-pdf-docling]>=2.126.0,<3",  # MIT - layout + TableFormer
-    # torch 2.2.2 is the last release with a macOS x86_64 wheel (README "Platform
-    # constraint") and was built against NumPy 1.x; with NumPy 2 its array bridge fails to
+    # torch 2.2.2 is the last release with a macOS x86_64 wheel (docs/development.md,
+    # "Platform constraint") and was built against NumPy 1.x; with NumPy 2 its array bridge fails to
     # initialise. transformers 5.x separately disables its torch backend below torch 2.4,
     # which would leave Docling with no usable models. Both scoped to the dev platform, and
     # both only relevant once torch is present -- which is why they live in this extra.
@@ -80,7 +80,7 @@ dev = [
 # This is needed because torch ships no macOS x86_64 wheel after 2.2.2, so without this
 # constraint `uv lock` happily produces a lock that cannot be installed on the dev Mac.
 # A resolution failure here is the intended loud signal that a dependency has dropped a
-# platform we still support -- see README "Platform constraint".
+# platform we still support -- see docs/development.md, "Platform constraint".
 required-environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
     "sys_platform == 'darwin' and platform_machine == 'x86_64'",
