@@ -599,6 +599,7 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   still say M1/M2.
 
 ## [PROGRESS]
+- 2026-10-09 [USER+TOOL] README split into an overview that links `docs/`; reference material moved to `docs/conversion.md`, `search-and-mcp.md`, `administration.md`, `evaluation.md`, `development.md`. Code and config comments that named README sections now name the docs. `make check`: 663 passed, 2 skipped. Branch `docs/split-readme`, not merged.
 - 2026-10-08 [USER] Shipped code no longer cites the internal briefs (section numbers, hard
   rules), the sidecar addendum, milestone labels S0-S5/M1/M2, or Tim by name; this repo now
   publishes to the client org via `../publish/` with those strings forbidden. Keep new
