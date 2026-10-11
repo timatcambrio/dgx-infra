@@ -102,7 +102,11 @@ eval-retrieval:  ## Run the retrieval regression eval
 # Recursive `=`, not `:=`: the probe then runs only inside a compose recipe, not on every
 # `make help`. `--quiet` because `gpu-check` prints the verdict once, on its own.
 GPU_COMPOSE_ARGS = $(shell compose/gpu-detect.sh --quiet)
-COMPOSE = docker compose -f compose/docker-compose.yml $(GPU_COMPOSE_ARGS) --env-file .env
+# The port Caddy publishes follows KB_TLS (443, or 80 with KB_TLS=off). Derived rather than
+# set, so the published port and the one Caddy listens on cannot disagree. Passed in the
+# environment, which Compose prefers to --env-file.
+KB_LISTEN_PORT = $(shell $(PREFLIGHT_PYTHON) scripts/check_tls_mode.py --port)
+COMPOSE = KB_LISTEN_PORT=$(KB_LISTEN_PORT) docker compose -f compose/docker-compose.yml $(GPU_COMPOSE_ARGS) --env-file .env
 
 # The prod stack bind-mounts $KB_PATH. Compose resolves a relative source against compose/,
 # not the repo root, so a relative KB_PATH would silently mount the wrong (nonexistent)
@@ -120,11 +124,12 @@ compose-env-check:
 		exit 2; \
 	} || true
 	@$(PREFLIGHT_PYTHON) scripts/check_token_paths.py
+	@$(PREFLIGHT_PYTHON) scripts/check_tls_mode.py
 
 gpu-check:  ## Say whether the compose stack will use this host's GPUs (KB_GPU=auto|on|off)
 	@compose/gpu-detect.sh >/dev/null
 
-compose-up: compose-env-check gpu-check  ## Bring up the full stack (db, ollama, kb-mcp, kb-static, caddy) behind TLS on :443
+compose-up: compose-env-check gpu-check  ## Bring up the full stack (db, ollama, kb-mcp, kb-static, caddy) behind TLS on :443 (or plain HTTP on :80 with KB_TLS=off)
 	$(COMPOSE) --profile prod up -d --build
 
 compose-down:  ## Tear down the prod compose stack (keeps volumes -- add ARGS=-v to also remove them)

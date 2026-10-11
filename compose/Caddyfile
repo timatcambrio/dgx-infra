@@ -30,6 +30,10 @@
 # file paths) can't be made conditional on whether two env vars are set using `{$VAR}`
 # substitution alone. See docs/administration.md, "TLS", for what "each user's machine must
 # trust Caddy's root CA once" means in practice, and the client-cert alternative.
+#
+# Plain HTTP: with KB_TLS=off the entrypoint fills each __SCHEME__ with `http://`, so Caddy
+# serves the site on port 80 with no certificate, and deletes the `tls` line. Otherwise
+# __SCHEME__ is filled with nothing. Same site, same routes, same bearer token either way.
 
 {
 	auto_https disable_redirects
@@ -45,7 +49,7 @@
 	default_sni {$KB_PUBLIC_HOST:localhost}
 }
 
-{$KB_PUBLIC_HOST:localhost}, localhost, 127.0.0.1 {
+__SCHEME__{$KB_PUBLIC_HOST:localhost}, __SCHEME__localhost, __SCHEME__127.0.0.1 {
 	tls __TLS_DIRECTIVE__
 
 	@mcp path /mcp* /health

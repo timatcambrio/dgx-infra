@@ -13,7 +13,8 @@
 #   - `kb-static` is a plain `caddy file-server` over a read-only bind mount of
 #     `${KB_PATH}/kb`, also with no published port -- reachable only via `caddy`'s `/kb/*`
 #     route, which itself requires the same bearer token (see `compose/Caddyfile`).
-#   - `caddy` is the only service that publishes a port to the world: 443, TLS-terminated,
+#   - `caddy` is the only service that publishes a port to the world: 443, TLS-terminated
+#     (or 80, plain HTTP, with KB_TLS=off),
 #     reverse-proxying `/mcp*`+`/health` to `kb-mcp` and `/kb/*` (token-gated) to
 #     `kb-static`. `compose/caddy-entrypoint.sh` fills in the Caddyfile's TLS directive
 #     from `$TLS_CERT`/`$TLS_KEY` before starting Caddy. The `/kb/*` token check is
@@ -185,14 +186,18 @@ services:
       KB_PUBLIC_HOST: ${KB_PUBLIC_HOST:-localhost}
       TLS_CERT: ${TLS_CERT:-}
       TLS_KEY: ${TLS_KEY:-}
+      KB_TLS: ${KB_TLS:-on}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy-entrypoint.sh:/etc/caddy/caddy-entrypoint.sh:ro
       - caddy-data:/data
       - ${TLS_CERT:-/dev/null}:/etc/caddy/tls/cert.pem:ro
       - ${TLS_KEY:-/dev/null}:/etc/caddy/tls/key.pem:ro
+    # 443 for HTTPS, 80 for plain HTTP (KB_TLS=off). The Makefile derives KB_LISTEN_PORT
+    # from KB_TLS (scripts/check_tls_mode.py --port) so the port Compose publishes and the
+    # one Caddy listens on cannot disagree; it is not a setting for .env.
     ports:
-      - "443:443"
+      - "${KB_LISTEN_PORT:-443}:${KB_LISTEN_PORT:-443}"
     depends_on:
       - kb-mcp
       - kb-static

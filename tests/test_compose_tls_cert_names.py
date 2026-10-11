@@ -33,8 +33,10 @@ PUBLIC_HOST_PLACEHOLDER = "{$KB_PUBLIC_HOST:localhost}"
 
 def _site_names() -> list[str]:
     """The names the Caddyfile's one site block answers for."""
+    # __SCHEME__ is `http://` or nothing, filled in by caddy-entrypoint.sh; the names
+    # are the same either way (tests/test_compose_http_mode.py).
     line = next(
-        l for l in CADDYFILE.read_text(encoding="utf-8").splitlines()
+        l for l in CADDYFILE.read_text(encoding="utf-8").replace("__SCHEME__", "").splitlines()
         if l.startswith(PUBLIC_HOST_PLACEHOLDER)
     )
     return [n.strip() for n in line.rstrip("{").strip().split(",")]

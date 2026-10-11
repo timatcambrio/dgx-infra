@@ -1,11 +1,12 @@
-"""Probe a running HTTPS compose stack end to end, the way a client on the LAN reaches it.
+"""Probe a running compose stack end to end, the way a client on the LAN reaches it.
 
 `scripts/mcp_probe.py` drives the server over **stdio** and asks whether the evidence an
 assistant needs is reachable. This asks the question one layer out, against the deployed
 thing: **does the stack behind Caddy serve the right answers to the right people, and stop
-serving them the moment a token is revoked?** Everything here goes over TLS to the public
-address, so it exercises what no unit test can — the certificate, the reverse proxy, the
-`/kb/*` forward_auth hop, and the live token store shared by both routes.
+serving them the moment a token is revoked?** Everything here goes to the public address,
+over TLS unless the stack runs with `KB_TLS=off` and `--base-url` is `http://`, so it
+exercises what no unit test can — the certificate, the reverse proxy, the `/kb/*`
+forward_auth hop, and the live token store shared by both routes.
 
     uv run python scripts/http_probe.py --base-url https://kb.internal --ca ./dgx-kb-ca.crt
 
@@ -165,7 +166,9 @@ def _discover_kb_file(base: str, ca: str | None, token: str) -> str | None:
 
 
 def probe_routes(report: Report, base: str, ca: str | None, token: str, kb_file: str) -> None:
-    report.section("Routes (TLS, Caddy, and who is let in)")
+    plain = base.startswith("http://")
+    report.section("Routes (Caddy, and who is let in)" if plain
+                   else "Routes (TLS, Caddy, and who is let in)")
 
     with _client(ca) as anon:
         try:
@@ -176,7 +179,11 @@ def probe_routes(report: Report, base: str, ca: str | None, token: str, kb_file:
         except httpx.HTTPError as exc:
             report.check("the stack answers at all", False, str(exc))
             return
-        report.check("TLS handshake completes", True, "certificate trusted by --ca")
+        if plain:
+            # Said, not skipped: a reader of the report should see there was no TLS to check.
+            report.check("plain HTTP connection completes", True, "no TLS (KB_TLS=off)")
+        else:
+            report.check("TLS handshake completes", True, "certificate trusted by --ca")
         report.check("/health is open without a token", health.status_code == 200,
                      f"HTTP {health.status_code}")
 
@@ -263,10 +270,10 @@ def probe_mcp(report: Report, base: str, ca: str | None, token: str, query: str,
     try:
         got = asyncio.run(_with_session(base, ca, token, body))
     except Exception as exc:  # a transport or protocol failure is one failed check, not a crash
-        report.check("MCP initialize succeeds over HTTPS", False, f"{type(exc).__name__}: {exc}")
+        report.check("MCP initialize succeeds", False, f"{type(exc).__name__}: {exc}")
         return
 
-    report.check("MCP initialize succeeds over HTTPS", True, "session established")
+    report.check("MCP initialize succeeds", True, "session established")
     missing = EXPECTED_TOOLS - got["tools"]
     report.check("every expected tool is advertised", not missing,
                  f"missing {sorted(missing)}" if missing else ", ".join(sorted(got["tools"])))
@@ -360,7 +367,8 @@ def probe_revocation(report: Report, base: str, ca: str | None, store: Path,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--base-url", required=True,
-                        help="https://<KB_PUBLIC_HOST>, as a client on the LAN dials it")
+                        help="https://<KB_PUBLIC_HOST> (http:// with KB_TLS=off), "
+                             "as a client on the LAN dials it")
     parser.add_argument("--ca", default=None,
                         help="CA bundle to trust (Caddy's root.crt for `tls internal`)")
     parser.add_argument("--tokens-file", default=None, type=Path,
