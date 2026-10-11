@@ -120,8 +120,11 @@ compose-env-check:
 gpu-check:  ## Say whether the compose stack will use this host's GPUs (KB_GPU=auto|on|off)
 	@compose/gpu-detect.sh >/dev/null
 
+# --remove-orphans: a deployment is updated in place (`git pull`, `make compose-up`), and a
+# service deleted from the compose file would otherwise keep running unnoticed, as
+# kb-static did when the /kb/* route was removed (tests/test_compose_upgrade.py).
 compose-up: compose-env-check gpu-check  ## Bring up the full stack (db, ollama, kb-mcp, caddy) behind TLS on :443 (or plain HTTP on :80 with KB_TLS=off)
-	$(COMPOSE) --profile prod up -d --build
+	$(COMPOSE) --profile prod up -d --build --remove-orphans
 
 compose-down:  ## Tear down the prod compose stack (keeps volumes -- add ARGS=-v to also remove them)
 	$(COMPOSE) --profile prod down $(ARGS)
