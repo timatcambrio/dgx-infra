@@ -16,7 +16,7 @@ You need:
 | Internet access from the DGX | to download software and the embedding model |
 | Access to the `dgx-infra` and `dgx-knowledge` repositories on GitHub, over SSH, from the `kbadmin` account on the DGX | used in [step 2](#2-get-the-code) to download the code, and later to update it |
 | The DGX's host name and IP address on the user network | see [Finding the host name and address](#finding-the-host-name-and-address) |
-| Inbound TCP port 443 to the DGX from the user network | the only port the service uses |
+| Inbound TCP port 443 to the DGX from the user network (port 80 with plain HTTP, [step 6](#6-choose-how-people-connect)) | the only port the service uses |
 | A second computer on the user network (Mac or Windows) with the ChatGPT desktop app (Codex), able to connect to the DGX over SSH | used in [step 14](#14-check-from-a-second-computer) to connect the way a user does |
 | A handful of the documents to be searched (PDF, Word `.docx`, or CSV) | for the first test run |
 
@@ -144,7 +144,6 @@ placeholders; keep the rest exactly as shown.
 SOURCE_DIR=/home/kbadmin/kb-sources
 KB_PATH=/home/kbadmin/dgx-knowledge
 KB_PUBLIC_HOST=<KB_HOST>
-KB_URL_BASE=https://<KB_HOST>
 KB_TOKENS_FILE=/srv/kb/tokens.json
 KB_TOKENS_DIR=/srv/kb
 KB_GPU=on
@@ -162,18 +161,13 @@ goes. The service never changes anything in `SOURCE_DIR`.
 `0a109f422b47`, 274 MB), which is the build the tested deployment used. Pinning the version
 keeps a later download from changing the model under the same name.
 
-Four of these have each broken a deployment, so read them rather than copying:
+Three of these have each broken a deployment, so read them rather than copying:
 
 - `KB_PATH` must be absolute. Compose resolves a relative bind-mount source against
   `compose/`, not the repository root, so a relative value silently mounts nothing. It is
   the content repository's root, with `kb/` inside it.
 - `KB_PUBLIC_HOST` is the address clients actually dial. The server checks the `Host`
   header, and a mismatch is refused with an error that reads like a fault in the client.
-- `KB_URL_BASE` is the site root, with no `/kb`. It starts with `https://`, or with
-  `http://` if you choose plain HTTP in [step 6](#6-choose-https-or-plain-http). Each document is stored as
-  `kb/<file>.md` and the proxy routes `/kb/*`, so both halves already supply that segment;
-  a value ending in `/kb` makes every citation a dead link. `make compose-up` refuses such
-  a value outright.
 - `KB_TOKENS_DIR` must be `KB_TOKENS_FILE`'s parent. The stack mounts the directory,
   because issuing or revoking a credential replaces the file and a single-file mount would
   bind the old copy. `make compose-up` checks this.
@@ -195,24 +189,48 @@ service runs as inside its containers; it does not need to exist on the DGX itse
 Create the first two before starting anything else in this guide. If a container starts
 first, Docker creates them owned by `root`, and you would then need `sudo` to fix them.
 
-## 6. Choose HTTPS or plain HTTP
+## 6. Choose how people connect
+
+Two separate choices. The defaults are the most protective; each alternative asks less of
+users and protects less. Both can be changed later by editing `.env` and running
+`make compose-up` again.
+
+### Encryption: HTTPS or plain HTTP
 
 HTTPS is the default. Each user's computer trusts the DGX's certificate once, and
-credentials and documents are encrypted on the network.
+everything sent between it and the DGX is encrypted.
 
-Plain HTTP needs no certificate, so users trust nothing and install nothing. Credentials
-are still required. They, and every document the service returns, cross the network
+Plain HTTP needs no certificate, so users trust nothing and install nothing. Everything
+the service sends and receives, including any credential, crosses the network
 unencrypted, so choose it only if your organisation accepts that inside its own network
-and VPN. To choose it, add this line to `.env`, change `KB_URL_BASE` to start with
-`http://`, and go on to [step 7](#7-confirm-the-gpu-setting):
+and VPN. To choose it, add this line to `.env`:
 
 ```bash
 KB_TLS=off
 ```
 
 The service then answers on port 80 instead of 443. `make compose-up` refuses a
-certificate or an `https://` address alongside `KB_TLS=off`, so a half-made switch stops
-before anything starts.
+certificate alongside `KB_TLS=off`, so a half-made switch stops before anything starts.
+
+### Credentials: required or not
+
+By default every person needs their own credential ([step 15](#15-give-each-person-a-credential)).
+That is what lets you withdraw one person's access, and what puts their name against
+each request in the service's log.
+
+Without credentials, nobody configures one, and anyone who can reach the DGX on the
+network can search and read every converted document. The log records each request as
+`anonymous`. To choose it, add this line to `.env`:
+
+```bash
+KB_AUTH=off
+```
+
+Then skip [step 8](#8-issue-your-credential) and [step 15](#15-give-each-person-a-credential).
+
+### The certificate
+
+For plain HTTP, skip this and go on to [step 7](#7-confirm-the-gpu-setting).
 
 For HTTPS, create the certificate and key for the DGX. Users' computers are told to trust
 this certificate in [step 14](#14-check-from-a-second-computer).
@@ -255,14 +273,14 @@ in [step 14](#14-check-from-a-second-computer).
 
 ## 9. Start the service and download the model
 
-Builds and starts the five containers: the database, the model server, the search server,
-the document server and the proxy.
+Builds and starts the four containers: the database, the model server, the search server
+and the proxy.
 
 ```bash
 make compose-up
 ```
 
-**Expect** the GPU message from step 7 again, then all five containers started.
+**Expect** the GPU message from step 7 again, then all four containers started.
 
 Downloads the embedding model (about 270 MB, once):
 
@@ -364,7 +382,7 @@ check.
 ## 13. Test the service from the DGX
 
 Runs the full automated check against the live service: the certificate, access with and
-without a credential, a search, opening a document, and withdrawing a credential. It
+without a credential, a search, reading a result, and withdrawing a credential. It
 creates two temporary credentials for the test and deletes them when it finishes.
 
 ```bash
@@ -376,10 +394,14 @@ docker compose -f compose/docker-compose.yml --env-file .env --profile tools run
   --ca /tls/cert.pem --tokens-file /etc/kb/tokens.json
 ```
 
-**Expect** `23/23 checks passed` as the last line.
+**Expect** `19/19 checks passed` as the last line.
 
 With plain HTTP, use `--base-url http://<KB_HOST>` and leave out both the `-v "$PWD/tls:/tls:ro"`
 line and `--ca /tls/cert.pem`.
+
+Without credentials, replace `--tokens-file /etc/kb/tokens.json` with `--no-auth`, and
+**expect** `13/13 checks passed`: there is no credential to withdraw, so those checks do
+not run.
 
 ## 14. Check from a second computer
 
@@ -389,6 +411,12 @@ or the [Windows](#on-windows) version.
 With plain HTTP, skip every step that copies or trusts the certificate, use `http://`
 wherever a command or the settings file says `https://`, and leave out `--cacert ~/dgx-kb.crt`
 and `--ssl-no-revoke`.
+
+Without credentials, skip the step that stores your credential, leave the
+`Authorization` header out of the third check (**expect** `with-token=200` all the same),
+and leave the last two lines out of the settings file. The second check then answers
+something other than `no-token=401` (typically `400`): the request reaches the service,
+which rejects it only for being empty.
 
 ### On a Mac
 
@@ -534,8 +562,9 @@ anyone else.
 make token ARGS="issue <their email>"
 ```
 
-The secret prints once. Each person trusts the certificate and adds their credential to their
-own Codex settings file, as in [step 14](#14-check-from-a-second-computer).
+The secret prints once. Each person trusts the certificate (HTTPS only) and adds their
+credential to their own Codex settings file, as in [step 14](#14-check-from-a-second-computer).
+Without credentials ([step 6](#6-choose-how-people-connect)), skip this step.
 
 List who has access (this shows ids, never secrets):
 
@@ -595,7 +624,7 @@ Repeat this step whenever documents are added or removed.
 | Task | Command |
 |---|---|
 | Add or remove documents | change `~/kb-sources`, then [step 16](#16-load-the-full-document-collection) |
-| Add or remove a person | [step 15](#15-give-each-person-a-credential) |
+| Add or remove a person | [step 15](#15-give-each-person-a-credential) (not needed without credentials) |
 | Restart the service | `make compose-down`, then `make compose-up` |
 | Check it is running | `curl -sS --cacert tls/cert.pem https://<KB_HOST>/health` (plain HTTP: `curl -sS http://<KB_HOST>/health`) |
 | Back up | `/srv/kb`, `.env`, the `tls/` directory (HTTPS only), and `~/dgx-knowledge` |
@@ -605,10 +634,9 @@ Repeat this step whenever documents are added or removed.
 
 | Symptom | Likely cause |
 |---|---|
-| The service answers 502 | the search server cannot read the credential store; check `/srv/kb` was created as in [step 5](#5-create-the-directories), and that a credential exists ([step 8](#8-issue-your-credential)) |
-| Every document link returns 404 | `KB_URL_BASE` ends in `/kb` ([step 4](#4-create-the-settings-file)), or the converted files are not readable |
-| A connection fails before any reply, with a certificate error | the computer does not trust the certificate, or it dialled a name not on it ([step 6](#6-choose-https-or-plain-http), [step 14](#14-check-from-a-second-computer)) |
-| The connection is refused | the computer used `https://` against a plain-HTTP service, or `http://` against an HTTPS one; it must match `KB_URL_BASE` ([step 6](#6-choose-https-or-plain-http)) |
+| The service answers 502 | the search server cannot read the credential store; check `/srv/kb` was created as in [step 5](#5-create-the-directories), and that a credential exists ([step 8](#8-issue-your-credential)) or `KB_AUTH=off` is set ([step 6](#6-choose-how-people-connect)) |
+| A connection fails before any reply, with a certificate error | the computer does not trust the certificate, or it dialled a name not on it ([step 6](#6-choose-how-people-connect), [step 14](#14-check-from-a-second-computer)) |
+| The connection is refused | the computer used `https://` against a plain-HTTP service, or `http://` against an HTTPS one ([step 6](#6-choose-how-people-connect)) |
 | An error about the host name | `KB_PUBLIC_HOST` is not the name the computer dialled ([step 4](#4-create-the-settings-file)) |
 | `Cannot write to the output directory` during conversion | the `convert` command was changed; paste the one in [step 11](#11-convert-the-test-documents) again |
 | A credential stops working | it was withdrawn; check `make token ARGS=list` |

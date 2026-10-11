@@ -63,7 +63,7 @@ vector-only results rather than erroring.
 
 Every hit is a **section**, never a chunk: chunks are what search matches against
 internally, but what comes back is always a whole readable section with its page range,
-heading path, and a citation you can quote and go check against the original markdown.
+heading path, and a citation you can quote and check against the original document.
 (Chunk ids exist and `fetch` accepts one, but only as a way *down* from a section too large
 to return whole; see [`kb serve`](#kb-serve-the-mcp-server) below.)
 
@@ -71,7 +71,7 @@ to return whole; see [`kb serve`](#kb-serve-the-mcp-server) below.)
 
 ```bash
 uv run kb serve --transport stdio    # the default; developer path, nothing on the network
-uv run kb serve --transport http     # the shared server; needs an issued token (or --allow-anonymous, dev only)
+uv run kb serve --transport http     # the shared server; needs an issued token (or KB_AUTH=off)
 ```
 
 Runs a read-only [MCP](https://modelcontextprotocol.io) server against the index, over
@@ -81,22 +81,25 @@ either:
   stdin/stdout, so there is nothing to bind or expose on the network. This is what
   `uv run kb serve --transport stdio` and the compose `dev` profile are for.
 - **streamable HTTP**: one server, run once (by `kb-mcp` in the compose stack), that every
-  user's assistant talks to over `https://<KB_PUBLIC_HOST>/mcp`. `kb-mcp` itself binds
-  `0.0.0.0:8765` inside the compose network only; `caddy` terminates TLS and is reachable
-  from the LAN, on 443. Every request under `/mcp*` needs `Authorization: Bearer <token>`
+  user's assistant talks to over `https://<KB_PUBLIC_HOST>/mcp` (`http://` with
+  `KB_TLS=off`). `kb-mcp` itself binds `0.0.0.0:8765` inside the compose network only;
+  `caddy` terminates TLS and is reachable from the LAN, on 443 (80 with `KB_TLS=off`). Every request under `/mcp*` needs `Authorization: Bearer <token>`
   where `<token>` is one issued by `kb token issue` (see
   [Tokens](administration.md#tokens-issuing-revoking-rotating)); a missing, wrong, revoked
   or expired token gets a 401 with no body. `/health` (`GET /health`, returning `{"ok":
   true, "documents": <count>, "embed_model": ...}`) needs no token, for monitoring. Starting
-  `--transport http` with no usable token refuses to run (exit 2) unless you pass
-  `--allow-anonymous`, which is for local experimentation only and logs a warning. Never
-  pass it on a network anyone else can reach.
+  `--transport http` with no usable token refuses to run (exit 2) unless `KB_AUTH=off` is
+  set or `--allow-anonymous` is passed; either one accepts every request with no token and
+  logs a warning at startup. That opens every document to anyone who can reach the server,
+  so it is a deliberate choice for a network that is itself the boundary (see
+  [No credentials](administration.md#no-credentials)).
 
 It exposes five tools, each read-only (`readOnlyHint: true`) and documented to the
 assistant in its own instructions:
 
 - `search(query, k=8, slug=None, text_class=None)`: find candidate sections for a
-  question; returns ids, titles, snippets and citation urls, never full text.
+  question; returns ids, titles and snippets, never full text. Each result's `url` is
+  null unless `KB_URL_BASE` is set; the compose stack never sets it.
 - `fetch(id)`: read the whole section, page, chunk, or document named by an id from
   `search`, `list_documents`, or `get_outline`.
 - `list_documents(text_class=None, title_contains=None)`: every indexed document,
@@ -178,24 +181,18 @@ whether a table came out flattened or a note got separated from what it is about
 as a pointer, not an answer: the assistant should always `fetch` (or `get_section` with
 `neighbours=1` when a section looks cut off) before quoting anything back to you.
 
-## Checking a citation against the original: the static `kb/` server
+## Checking a citation against the original
 
-Every result's `url` (and the `citation` string in `fetch`'s metadata) points at
-`https://<KB_PUBLIC_HOST>/kb/<file>.md#dgx:block=<id>`, the same converted markdown file
-`kb search`/`kb serve` indexed, served read-only by `kb-static` behind Caddy. Opening it in
-a browser is the way to check what the assistant told you against the actual converted
-text. (The `#dgx:block=...` fragment does nothing in a browser today; it exists so a future
-viewer can jump straight to the block, and so the URL is unique per citation.)
+The `citation` string in `fetch`'s metadata names the document title, the section, the
+original source file, the pages and the document's date. That is how to check what the
+assistant told you: open the original document (the PDF, Word file or spreadsheet) at
+those pages. The converted markdown the service searches is not served over HTTP; it is
+written for retrieval, not for reading, and a link to it raised more questions than it
+answered.
 
-**`/kb/*` needs the same bearer token `/mcp*` does**, and a bare browser has no way to add
-an `Authorization` header to a request. Three practical options: a browser extension that
-adds a fixed header to requests for your `KB_PUBLIC_HOST` origin (e.g. "ModHeader" or
-similar); `curl -H "Authorization: Bearer $KB_TOKEN" https://<host>/kb/<file>.md -o file.md`
-and open the saved file locally; or, if your organisation's Caddy is set up with a client
-TLS certificate instead of `tls internal` (see [TLS](administration.md#tls)), some browsers
-can be configured to present it automatically and you drop the header requirement for that
-one origin. That is a Caddy/client-cert configuration choice, not something this repo sets
-up for you.
+With `KB_URL_BASE` set, each result also carries a `url` of the form
+`<KB_URL_BASE>/kb/<file>.md#dgx:block=<id>`. Nothing in this repository serves that path,
+so set it only if you run your own file server behind it.
 
 ## The "flattened table" caveat
 
@@ -205,8 +202,8 @@ marker or by leaving the table as plain text (see [Reading the converted
 markdown](conversion.md#reading-the-converted-markdown), and the per-document [LAYOUT
 NOTES](conversion.md#layout-notes) and [EVIDENCE NOTES](conversion.md#evidence-notes) in
 `pipeline report`). If an assistant's answer depends on a specific cell, check the citation
-against the original before trusting it, using the [static `kb/`
-server](#checking-a-citation-against-the-original-the-static-kb-server). Retrieval does not
+against the original document before trusting it (see [Checking a citation against the
+original](#checking-a-citation-against-the-original)). Retrieval does not
 repair a bad conversion; it only finds and returns what conversion already wrote down.
 
 ## What is deliberately not built

@@ -31,12 +31,11 @@ runs in containers.
 |---|---|---|---|
 | Reverse proxy | `caddy:2` | image default | 443/tcp (80/tcp with plain HTTP) |
 | Search server | built on the host from `python:3.12-slim` | uid 10001, non-root | nothing |
-| Static file server | `caddy:2` | image default | nothing |
 | Database | `pgvector/pgvector:pg16` | image default | nothing |
 | Model server | `ollama/ollama` | image default | nothing |
 | Credential tool | same image as the search server | uid 10001, non-root | nothing |
 
-The first five are long-running services. The credential tool runs only when a credential is
+The first four are long-running services. The credential tool runs only when a credential is
 issued or withdrawn, then exits. Write access to the credential store is limited to this
 container.
 
@@ -49,8 +48,9 @@ Inbound 443/tcp from the networks the users are on (80/tcp with plain HTTP). Use
 by a host name that must resolve on those networks and, with HTTPS, match the certificate
 ([TLS](#tls)).
 
-The reverse proxy answers three paths: a health check, the search interface, and the
-converted documents. Everything else returns 404.
+The reverse proxy answers two paths: a health check and the search interface. Everything
+else returns 404. Converted documents are not served as files; their text reaches users only
+through the search interface.
 
 ## Egress
 
@@ -82,12 +82,17 @@ Each person gets their own bearer credential: 32 random bytes, shown once when i
 stores only a SHA-256 hash of each, in one file in a directory readable only by the search
 server's unprivileged user (mode `700`).
 
-Both the search interface and the converted-documents route check every request against that
-store. Withdrawing a credential takes effect within five seconds on both routes, with no
-restart and no effect on other users. The health check needs no credential and returns only
-service status.
+The search interface checks every request against that store. Withdrawing a credential takes
+effect within five seconds, with no restart and no effect on other users. The health check
+needs no credential and returns only service status.
 
 Anyone with a credential can search and read every indexed document.
+
+Credentials can instead be turned off, chosen by the installing administrator with one
+setting. Then no one configures a credential, anyone who can reach the DGX on the network can
+search and read every indexed document, the log records each request as anonymous, and access
+cannot be withdrawn from one person. Choose it only if your organisation treats its own
+network as the boundary for these documents. It can be turned back on later.
 
 ## Data
 
@@ -98,6 +103,7 @@ the database's Docker volume. All three are on the host's own storage.
 **To the user's assistant.** A search returns document text to the user's assistant, Codex in
 the ChatGPT desktop app. Codex sends that text to OpenAI for processing, under OpenAI's terms.
 
-**Logs.** One log records each authentication decision and the person it identifies. The other
+**Logs.** One log records each authentication decision and the person it identifies (or
+"anonymous" when credentials are turned off). The other
 records each search tool call: the tool, its arguments including the search text, the document
 identifiers returned, and timing. Neither records document text.
