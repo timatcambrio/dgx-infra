@@ -260,6 +260,15 @@ pair issued by a CA your users' machines already trust (an internal corporate CA
 client-issued cert). `compose/caddy-entrypoint.sh` uses that pair instead of `tls
 internal` whenever both are set, and no user-side trust step is needed.
 
+**Plain HTTP.** `KB_TLS=off` in `.env` serves the same site and routes on port 80 with no
+certificate, so no user-side trust step exists at all. Bearer tokens are still required on
+`/mcp*` and `/kb/*`, but they, and every document returned, cross the network in clear
+text: anyone able to observe traffic between a client and the host can read both and
+reuse the token. Use it only where the organisation accepts that inside its network and
+VPN. `KB_URL_BASE` must then start with `http://` and `TLS_CERT`/`TLS_KEY` must be unset;
+`make compose-up` checks both (`scripts/check_tls_mode.py`) and publishes port 80 instead
+of 443. `scripts/http_probe.py --base-url http://...` runs the same checks without `--ca`.
+
 **You must put the right names on a supplied certificate.** With `tls internal` Caddy issues
 a certificate per name on demand, so the set of names it answers for is open. With one
 supplied pair that set is fixed when the certificate is made, and a client dialling a name

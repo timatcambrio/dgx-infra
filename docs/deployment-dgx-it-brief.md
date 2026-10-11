@@ -2,7 +2,8 @@
 
 One Linux host, the DGX, runs a small set of containers under Docker Compose. They convert and
 index the organisation's documents and answer searches over them. Indexing and the embedding
-model both run on the host, on its own GPUs. Users connect to the service on 443/tcp only.
+model both run on the host, on its own GPUs. Users connect to the service on 443/tcp only
+(80/tcp if plain HTTP is chosen; see [TLS](#tls)).
 
 ## Installed on the host
 
@@ -28,7 +29,7 @@ runs in containers.
 
 | Container | Image | Runs as | Publishes |
 |---|---|---|---|
-| Reverse proxy | `caddy:2` | image default | 443/tcp |
+| Reverse proxy | `caddy:2` | image default | 443/tcp (80/tcp with plain HTTP) |
 | Search server | built on the host from `python:3.12-slim` | uid 10001, non-root | nothing |
 | Static file server | `caddy:2` | image default | nothing |
 | Database | `pgvector/pgvector:pg16` | image default | nothing |
@@ -44,8 +45,9 @@ network. The documents directory is mounted read-only into the containers that r
 
 ## Ingress
 
-Inbound 443/tcp from the networks the users are on. Users connect by a host name
-that must resolve on those networks and match the certificate ([TLS](#tls)).
+Inbound 443/tcp from the networks the users are on (80/tcp with plain HTTP). Users connect
+by a host name that must resolve on those networks and, with HTTPS, match the certificate
+([TLS](#tls)).
 
 The reverse proxy answers three paths: a health check, the search interface, and the
 converted documents. Everything else returns 404.
@@ -66,6 +68,13 @@ Outbound fetches happen at install and update time:
 TLS terminates at the reverse proxy, using a certificate issued by a private CA we generate for
 this deployment. Each user's machine is set to trust that CA once. The certificate is issued for
 the host name users dial.
+
+Plain HTTP is available as an alternative, chosen by the installing administrator with one
+setting. It removes the certificate and the trust step entirely, and the service answers on
+80/tcp instead. Access control below is unchanged, but each user's credential and every
+document the service returns then cross the network unencrypted, so anyone able to observe
+traffic between a user and the DGX could read both and reuse the credential. Choose it only
+if your organisation accepts that within its own network and VPN.
 
 ## Access control
 

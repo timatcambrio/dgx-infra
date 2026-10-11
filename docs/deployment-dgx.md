@@ -25,7 +25,7 @@ checkout of this repository; that machine is not the host.
 | `nvidia-smi` works and lists at least one GPU | step 1 refuses otherwise; the driver is not ours to install |
 | ~150 GB free on the filesystem holding `/var/lib/docker` | images, the database volume and the model volume all land there |
 | A host name clients will dial, resolvable by them | the certificate is issued for a name, and a client dialling a bare address fails verification unless the certificate carries that address |
-| Inbound 443/tcp from the user networks | the only port anything in the stack publishes |
+| Inbound 443/tcp from the user networks (80/tcp with plain HTTP, step 7) | the only port anything in the stack publishes |
 | The login user can `sudo` | two commands need it, the bootstrap script and one `install -d`; step 5's repair `chown` is a conditional third |
 
 Two things you will want before step 7 and cannot produce yourself: a certificate and key
@@ -212,6 +212,15 @@ tends to become permanent. Fetch it with:
 docker compose -f compose/docker-compose.yml cp \
   caddy:/data/caddy/pki/authorities/local/root.crt ./dgx-kb-ca.crt
 ```
+
+**No certificate: plain HTTP.** For an organisation that treats its own network and VPN
+as the boundary and does not want users to trust any certificate. Set `KB_TLS=off` in
+`.env`, and start `KB_URL_BASE` with `http://`; leave `TLS_CERT` and `TLS_KEY` unset. The
+proxy then serves the same routes on port 80 with no certificate. Credentials are still
+checked on every request, but they and every returned document cross the network
+unencrypted, so this is the organisation's decision to record, not a default.
+`make compose-up` refuses a certificate or an `https://` address alongside `KB_TLS=off`.
+In step 13, use `http://` and leave out `--ca`.
 
 ## 8. Issue the first credentials, before the stack is up
 

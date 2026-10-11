@@ -169,7 +169,8 @@ Four of these have each broken a deployment, so read them rather than copying:
   the content repository's root, with `kb/` inside it.
 - `KB_PUBLIC_HOST` is the address clients actually dial. The server checks the `Host`
   header, and a mismatch is refused with an error that reads like a fault in the client.
-- `KB_URL_BASE` is the site root, with no `/kb`. Each document is stored as
+- `KB_URL_BASE` is the site root, with no `/kb`. It starts with `https://`, or with
+  `http://` if you choose plain HTTP in [step 6](#6-choose-https-or-plain-http). Each document is stored as
   `kb/<file>.md` and the proxy routes `/kb/*`, so both halves already supply that segment;
   a value ending in `/kb` makes every citation a dead link. `make compose-up` refuses such
   a value outright.
@@ -194,10 +195,27 @@ service runs as inside its containers; it does not need to exist on the DGX itse
 Create the first two before starting anything else in this guide. If a container starts
 first, Docker creates them owned by `root`, and you would then need `sudo` to fix them.
 
-## 6. Create the certificate
+## 6. Choose HTTPS or plain HTTP
 
-Creates the HTTPS certificate and key for the DGX. Users' computers are told to trust this
-certificate in [step 14](#14-check-from-a-second-computer).
+HTTPS is the default. Each user's computer trusts the DGX's certificate once, and
+credentials and documents are encrypted on the network.
+
+Plain HTTP needs no certificate, so users trust nothing and install nothing. Credentials
+are still required. They, and every document the service returns, cross the network
+unencrypted, so choose it only if your organisation accepts that inside its own network
+and VPN. To choose it, add this line to `.env`, change `KB_URL_BASE` to start with
+`http://`, and go on to [step 7](#7-confirm-the-gpu-setting):
+
+```bash
+KB_TLS=off
+```
+
+The service then answers on port 80 instead of 443. `make compose-up` refuses a
+certificate or an `https://` address alongside `KB_TLS=off`, so a half-made switch stops
+before anything starts.
+
+For HTTPS, create the certificate and key for the DGX. Users' computers are told to trust
+this certificate in [step 14](#14-check-from-a-second-computer).
 
 ```bash
 sh scripts/make_tls_cert.sh <KB_HOST> <DGX_IP>
@@ -238,7 +256,7 @@ in [step 14](#14-check-from-a-second-computer).
 ## 9. Start the service and download the model
 
 Builds and starts the five containers: the database, the model server, the search server,
-the document server and the HTTPS proxy.
+the document server and the proxy.
 
 ```bash
 make compose-up
@@ -360,10 +378,17 @@ docker compose -f compose/docker-compose.yml --env-file .env --profile tools run
 
 **Expect** `23/23 checks passed` as the last line.
 
+With plain HTTP, use `--base-url http://<KB_HOST>` and leave out both the `-v "$PWD/tls:/tls:ro"`
+line and `--ca /tls/cert.pem`.
+
 ## 14. Check from a second computer
 
 These commands run on the second computer, not on the DGX. Follow the [Mac](#on-a-mac)
 or the [Windows](#on-windows) version.
+
+With plain HTTP, skip every step that copies or trusts the certificate, use `http://`
+wherever a command or the settings file says `https://`, and leave out `--cacert ~/dgx-kb.crt`
+and `--ssl-no-revoke`.
 
 ### On a Mac
 
@@ -572,8 +597,8 @@ Repeat this step whenever documents are added or removed.
 | Add or remove documents | change `~/kb-sources`, then [step 16](#16-load-the-full-document-collection) |
 | Add or remove a person | [step 15](#15-give-each-person-a-credential) |
 | Restart the service | `make compose-down`, then `make compose-up` |
-| Check it is running | `curl -sS --cacert tls/cert.pem https://<KB_HOST>/health` |
-| Back up | `/srv/kb`, `.env`, the `tls/` directory, and `~/dgx-knowledge` |
+| Check it is running | `curl -sS --cacert tls/cert.pem https://<KB_HOST>/health` (plain HTTP: `curl -sS http://<KB_HOST>/health`) |
+| Back up | `/srv/kb`, `.env`, the `tls/` directory (HTTPS only), and `~/dgx-knowledge` |
 | Update the code | `git pull`, `make compose-up`, then `make compose-index` |
 
 ## When something does not work
@@ -582,7 +607,8 @@ Repeat this step whenever documents are added or removed.
 |---|---|
 | The service answers 502 | the search server cannot read the credential store; check `/srv/kb` was created as in [step 5](#5-create-the-directories), and that a credential exists ([step 8](#8-issue-your-credential)) |
 | Every document link returns 404 | `KB_URL_BASE` ends in `/kb` ([step 4](#4-create-the-settings-file)), or the converted files are not readable |
-| A connection fails before any reply, with a certificate error | the computer does not trust the certificate, or it dialled a name not on it ([step 6](#6-create-the-certificate), [step 14](#14-check-from-a-second-computer)) |
+| A connection fails before any reply, with a certificate error | the computer does not trust the certificate, or it dialled a name not on it ([step 6](#6-choose-https-or-plain-http), [step 14](#14-check-from-a-second-computer)) |
+| The connection is refused | the computer used `https://` against a plain-HTTP service, or `http://` against an HTTPS one; it must match `KB_URL_BASE` ([step 6](#6-choose-https-or-plain-http)) |
 | An error about the host name | `KB_PUBLIC_HOST` is not the name the computer dialled ([step 4](#4-create-the-settings-file)) |
 | `Cannot write to the output directory` during conversion | the `convert` command was changed; paste the one in [step 11](#11-convert-the-test-documents) again |
 | A credential stops working | it was withdrawn; check `make token ARGS=list` |
