@@ -5,26 +5,27 @@ assistant needs is reachable. This asks the question one layer out, against the 
 thing: **does the stack behind Caddy serve the right answers to the right people, and stop
 serving them the moment a token is revoked?** Everything here goes to the public address,
 over TLS unless the stack runs with `KB_TLS=off` and `--base-url` is `http://`, so it
-exercises what no unit test can — the certificate, the reverse proxy, the `/kb/*`
-forward_auth hop, and the live token store shared by both routes.
+exercises what no unit test can: the certificate, the reverse proxy, which paths it
+routes, and the live token store.
 
     uv run python scripts/http_probe.py --base-url https://kb.internal --ca ./dgx-kb-ca.crt
 
 Tokens. The read-only checks need two issued tokens, passed as `KB_PROBE_TOKEN` and
 `KB_PROBE_TOKEN_2`, so the probe can run from any client machine and never has to see the
-store.
-
-Nothing about the deployment is taken from the local checkout. That was a real defect: the
-document to request came from globbing this machine's own `kb/`, and a citation url was
-judged against this machine's `KB_URL_BASE`. Run from a client both describe a DIFFERENT
-deployment -- measured 2026-10-06 from the dev Mac against a correct AWS stack, which
-reported three failures, all of them wrong. The document now comes from the server's own
-`list_documents`, and a citation url must point into `--base-url`. Given `--tokens-file` instead (run on the host that owns the store, or in the
+store. Given `--tokens-file` instead (run on the host that owns the store, or in the
 `kb-token` container), it issues its own throwaway pair, runs the revocation checks too,
-and revokes both on the way out. Secrets are never printed, logged, or echoed.
+and revokes both on the way out. Secrets are never printed, logged, or echoed. With
+`--no-auth`, for a stack running `KB_AUTH=off`, it uses no token at all and expects `/mcp`
+to answer without one.
 
-What the revocation checks pin down is the claim the token store exists to make: revoking
-one person closes `/mcp*` AND `/kb/*` for them, within `KB_TOKEN_CACHE_SECONDS`, with no
+Nothing about the deployment is taken from the local checkout: run from a client, this
+machine's `.env` describes a different deployment (measured 2026-10-06, three false
+failures from the dev Mac against a correct AWS stack).
+
+The stack serves no converted documents (tests/test_compose_no_document_route.py), so the
+probe checks that `/kb/` is NOT routed, with or without a token, and that results carry no
+link. What the revocation checks pin down is the claim the token store exists to make:
+revoking one person closes `/mcp*` for them within `KB_TOKEN_CACHE_SECONDS`, with no
 restart and without touching anybody else.
 
 Read-only against the corpus and the database. Exits 0 only if every check passed.
@@ -49,7 +50,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from retrieval import config as config_module  # noqa: E402
-from retrieval import ids as ids_module  # noqa: E402
 from retrieval import tokens as tokens_module  # noqa: E402
 
 EXPECTED_TOOLS = {"search", "fetch", "list_documents", "get_outline", "get_section"}
@@ -86,10 +86,16 @@ class Report:
         return 1 if self.failures else 0
 
 
+def _auth_headers(token: str | None) -> dict[str, str]:
+    """No token means no header at all, which is what a client with no credential
+    configured sends; `Bearer ` with nothing after it is a different request."""
+    return {"Authorization": f"Bearer {token}"} if token else {}
+
+
 def _client(ca: str | None, token: str | None = None) -> httpx.Client:
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
     verify: Any = ca if ca else True
-    return httpx.Client(verify=verify, headers=headers, timeout=15.0, trust_env=False)
+    return httpx.Client(verify=verify, headers=_auth_headers(token), timeout=15.0,
+                        trust_env=False)
 
 
 # --------------------------------------------------------------------------------------
@@ -97,75 +103,8 @@ def _client(ca: str | None, token: str | None = None) -> httpx.Client:
 # --------------------------------------------------------------------------------------
 
 
-def _resolve_url_base(explicit: str | None, base: str) -> str:
-    """What a citation url must point into.
-
-    NOT the local `.env`'s KB_URL_BASE, which this used to read. On a client machine that
-    file describes a DIFFERENT deployment -- measured 2026-10-06 from the dev Mac, where it
-    still said `http://localhost/kb`, so a correct citation url of
-    `https://<host>/kb/budget-form.md` was judged against localhost and failed. The server's
-    own KB_URL_BASE is not knowable from here, and the useful client-side assertion is that
-    the url points back into the address being probed. `--url-base` covers the deployment
-    that publishes citations under a different name from the one being dialled.
-    """
-    return (explicit or base).rstrip("/")
-
-
-def _kb_file_for_slug(slug: str) -> str:
-    """The `/kb/*` path for an indexed document.
-
-    `kb index` stores `rel_path` as `kb/<name>.md` and the slug is derived from that same
-    filename, so the converted file is the slug plus `.md`. If that ever stops holding,
-    the `/kb/*` checks 404 and say so, which is a finding rather than a silent pass.
-    """
-    return f"{slug}.md"
-
-
-def _kb_file_from_listing(listed: Any) -> str | None:
-    """The `/kb/*` path for the first document in a `list_documents` reply.
-
-    An entry carries **`id`**, not `slug` -- `retrieval/server.py` builds it as
-    `ids.doc_id(slug)`, i.e. `doc:<slug>`. Reading a `slug` key that does not exist is
-    what made discovery return nothing on 2026-10-06, and because the local-corpus
-    fallback cannot work inside the `kb-token` container either (no `KB_PATH` there, so
-    `cfg.kb_path` resolves to a `/dgx-knowledge` that does not exist), the probe stopped
-    before any check ran. Parsed with the repo's own `ids.parse_id` rather than a string
-    split, so the two cannot drift apart silently.
-    """
-    documents = listed.get("documents") if isinstance(listed, dict) else None
-    if not documents or not isinstance(documents[0], dict):
-        return None
-    ident = documents[0].get("id")
-    if not ident:
-        return None
-    try:
-        _kind, slug, _index = ids_module.parse_id(ident)
-    except Exception:
-        return None
-    return _kb_file_for_slug(slug) if slug else None
-
-
-def _discover_kb_file(base: str, ca: str | None, token: str) -> str | None:
-    """Ask the SERVER which documents it has, rather than reading a local directory.
-
-    The glob this replaces (`cfg.kb_path / "kb"`) is the corpus of whatever checkout the
-    probe runs from. From a client machine that is a different corpus, or none at all --
-    on the dev Mac it picked the first of twelve proxy documents and asked a server holding
-    four fixtures for it, producing a 404 that was entirely correct and said nothing about
-    the deployment. The documented client mode is the one this broke.
-    """
-
-    async def body(session: ClientSession) -> dict:
-        return _payload(await session.call_tool("list_documents", {})) or {}
-
-    try:
-        listed = asyncio.run(_with_session(base, ca, token, body))
-    except Exception:
-        return None  # the route checks report the failure themselves, in their own terms
-    return _kb_file_from_listing(listed)
-
-
-def probe_routes(report: Report, base: str, ca: str | None, token: str, kb_file: str) -> None:
+def probe_routes(report: Report, base: str, ca: str | None, token: str | None,
+                 no_auth: bool) -> None:
     plain = base.startswith("http://")
     report.section("Routes (Caddy, and who is let in)" if plain
                    else "Routes (TLS, Caddy, and who is let in)")
@@ -188,29 +127,34 @@ def probe_routes(report: Report, base: str, ca: str | None, token: str, kb_file:
                      f"HTTP {health.status_code}")
 
         mcp_anon = anon.post(f"{base}/mcp")
-        report.check("/mcp refuses an anonymous request", mcp_anon.status_code == 401,
-                     f"HTTP {mcp_anon.status_code}")
-        report.check("/mcp's 401 names the scheme",
-                     mcp_anon.headers.get("www-authenticate", "").startswith("Bearer"),
-                     repr(mcp_anon.headers.get("www-authenticate")))
+        if no_auth:
+            # Any answer but 401 means the request reached the MCP server. An empty POST
+            # is not a valid MCP message, so 200 is not expected here; the session checks
+            # below are what prove it works.
+            report.check("/mcp lets a request with no token through (KB_AUTH=off)",
+                         mcp_anon.status_code != 401, f"HTTP {mcp_anon.status_code}")
+        else:
+            report.check("/mcp refuses an anonymous request", mcp_anon.status_code == 401,
+                         f"HTTP {mcp_anon.status_code}")
+            report.check("/mcp's 401 names the scheme",
+                         mcp_anon.headers.get("www-authenticate", "").startswith("Bearer"),
+                         repr(mcp_anon.headers.get("www-authenticate")))
 
-        kb_anon = anon.get(f"{base}/kb/{kb_file}")
-        report.check("/kb/* refuses an anonymous request", kb_anon.status_code == 401,
+        # Caddy routes /mcp* and /health and nothing else: no converted document is served
+        # (tests/test_compose_no_document_route.py), and the internal /auth/check stays
+        # off the LAN.
+        kb_anon = anon.get(f"{base}/kb/")
+        report.check("no document route is served (/kb/)", kb_anon.status_code == 404,
                      f"HTTP {kb_anon.status_code}")
-
-        # Caddy routes /mcp*, /health and /kb/* and nothing else, which is what keeps the
-        # internal /auth/check off the LAN.
         internal = anon.get(f"{base}/auth/check")
         report.check("/auth/check is not reachable from outside", internal.status_code == 404,
                      f"HTTP {internal.status_code}")
 
-    with _client(ca, token) as authed:
-        kb_authed = authed.get(f"{base}/kb/{kb_file}")
-        report.check("/kb/* serves a converted document to a valid token",
-                     kb_authed.status_code == 200, f"HTTP {kb_authed.status_code}")
-        report.check("/kb/* returns the document, not a redirect or an index",
-                     kb_authed.status_code == 200 and kb_authed.text.strip() != "",
-                     f"{len(kb_authed.text)} chars")
+    if token:
+        with _client(ca, token) as authed:
+            kb_authed = authed.get(f"{base}/kb/")
+        report.check("a valid token does not open a document route either",
+                     kb_authed.status_code == 404, f"HTTP {kb_authed.status_code}")
 
 
 # --------------------------------------------------------------------------------------
@@ -218,7 +162,7 @@ def probe_routes(report: Report, base: str, ca: str | None, token: str, kb_file:
 # --------------------------------------------------------------------------------------
 
 
-async def _with_session(base: str, ca: str | None, token: str, body: Callable) -> Any:
+async def _with_session(base: str, ca: str | None, token: str | None, body: Callable) -> Any:
     def factory(headers=None, timeout=None, auth=None) -> httpx.AsyncClient:
         verify: Any = ca if ca else True
         return httpx.AsyncClient(
@@ -227,7 +171,7 @@ async def _with_session(base: str, ca: str | None, token: str, body: Callable) -
 
     async with streamablehttp_client(
         f"{base}/mcp",
-        headers={"Authorization": f"Bearer {token}"},
+        headers=_auth_headers(token),
         httpx_client_factory=factory,
     ) as (read, write, _):
         async with ClientSession(read, write) as session:
@@ -250,8 +194,8 @@ def _payload(result: Any) -> Any:
     return None
 
 
-def probe_mcp(report: Report, base: str, ca: str | None, token: str, query: str,
-              url_base: str | None) -> None:
+def probe_mcp(report: Report, base: str, ca: str | None, token: str | None,
+              query: str) -> None:
     report.section("MCP over streamable HTTP (what an assistant does)")
 
     async def body(session: ClientSession) -> dict:
@@ -293,8 +237,8 @@ def probe_mcp(report: Report, base: str, ca: str | None, token: str, query: str,
         report.check("fetch returns more than the search snippet", len(text) > len(snippet),
                      f"{len(text)} chars vs a {len(snippet)}-char snippet")
 
-    # `FetchResponse` carries the human-readable citation string under `metadata`, and the
-    # link a reader follows as the top-level `url` (retrieval/server.py).
+    # `FetchResponse` carries the human-readable citation string under `metadata`. Its
+    # top-level `url` is null in the deployment, which serves no documents.
     meta = fetched.get("metadata") if isinstance(fetched, dict) else None
     citation = (meta or {}).get("citation")
     report.check("the result carries a citation", bool(citation), str(citation)[:70])
@@ -305,14 +249,8 @@ def probe_mcp(report: Report, base: str, ca: str | None, token: str, query: str,
                      source_file in citation, f"{source_file!r}")
 
     url = fetched.get("url") if isinstance(fetched, dict) else None
-    if url_base:
-        report.check("the citation url points into KB_URL_BASE",
-                     bool(url) and url.startswith(url_base), f"{url}")
-        if url and url.startswith(url_base):
-            with _client(ca, token) as authed:
-                got_doc = authed.get(url)
-            report.check("the cited url is actually fetchable with the same token",
-                         got_doc.status_code == 200, f"HTTP {got_doc.status_code}")
+    report.check("the result carries no link to a document (none is served)",
+                 url is None, repr(url))
 
 
 # --------------------------------------------------------------------------------------
@@ -321,23 +259,18 @@ def probe_mcp(report: Report, base: str, ca: str | None, token: str, query: str,
 
 
 def probe_revocation(report: Report, base: str, ca: str | None, store: Path,
-                     victim: tuple[str, str], bystander: str, kb_file: str,
+                     victim: tuple[str, str], bystander: str,
                      cache_seconds: float) -> None:
-    report.section("Revocation (one person, both routes, no restart)")
+    report.section("Revocation (one person, no restart)")
     secret, token_id = victim
 
-    def status(secret: str) -> tuple[int, int]:
+    def status(secret: str) -> int:
         with _client(ca, secret) as c:
-            return (
-                c.post(f"{base}/mcp").status_code,
-                c.get(f"{base}/kb/{kb_file}").status_code,
-            )
+            return c.post(f"{base}/mcp").status_code
 
-    mcp_before, kb_before = status(secret)
+    before = status(secret)
     report.check("the victim's token works on /mcp before revocation",
-                 mcp_before != 401, f"HTTP {mcp_before}")
-    report.check("the victim's token works on /kb/* before revocation",
-                 kb_before == 200, f"HTTP {kb_before}")
+                 before != 401, f"HTTP {before}")
 
     tokens_module.revoke(store, token_id)
 
@@ -345,23 +278,19 @@ def probe_revocation(report: Report, base: str, ca: str | None, store: Path,
     # contract: wait it out plus a margin rather than racing it.
     deadline = time.monotonic() + cache_seconds + 5.0
     while time.monotonic() < deadline:
-        mcp_after, kb_after = status(secret)
-        if mcp_after == 401 and kb_after == 401:
+        after = status(secret)
+        if after == 401:
             break
         time.sleep(0.5)
     took = cache_seconds + 5.0 - (deadline - time.monotonic())
 
-    report.check("revocation closes /mcp", mcp_after == 401,
-                 f"HTTP {mcp_after} after {took:.1f}s")
-    report.check("revocation closes /kb/* too", kb_after == 401,
-                 f"HTTP {kb_after} after {took:.1f}s — one store behind both routes")
+    report.check("revocation closes /mcp", after == 401, f"HTTP {after} after {took:.1f}s")
     report.check("it took no longer than KB_TOKEN_CACHE_SECONDS allows",
                  took <= cache_seconds + 5.0, f"{took:.1f}s, bound {cache_seconds:g}s")
 
-    mcp_other, kb_other = status(bystander)
+    other = status(bystander)
     report.check("another user's token is untouched by that revocation",
-                 mcp_other != 401 and kb_other == 200,
-                 f"/mcp HTTP {mcp_other}, /kb/* HTTP {kb_other}")
+                 other != 401, f"/mcp HTTP {other}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -373,12 +302,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="CA bundle to trust (Caddy's root.crt for `tls internal`)")
     parser.add_argument("--tokens-file", default=None, type=Path,
                         help="the store, to issue throwaway tokens and test revocation")
-    parser.add_argument("--url-base", default=None,
-                        help="What a citation url must point into. Defaults to --base-url; "
-                             "set it only where the deployment publishes citations under a "
-                             "different name from the one being dialled.")
-    parser.add_argument("--kb-file", default=None,
-                        help="a path under /kb/ to request (default: a converted file found in KB_PATH)")
+    parser.add_argument("--no-auth", action="store_true",
+                        help="the stack runs with KB_AUTH=off: expect /mcp to answer with "
+                             "no token, and use none")
     parser.add_argument("--query", default="budget",
                         help="the search query the MCP checks use")
     args = parser.parse_args(argv)
@@ -388,8 +314,14 @@ def main(argv: list[str] | None = None) -> int:
     report = Report()
 
     issued: list[str] = []
-    store = args.tokens_file
-    if store is not None:
+    store = None if args.no_auth else args.tokens_file
+    victim_secret: str | None = None
+    bystander_secret = ""
+    if args.no_auth:
+        # No credential exists to test, and revocation means nothing when a request with
+        # no token is let through anyway.
+        pass
+    elif store is not None:
         victim_secret, victim = tokens_module.issue(store, PROBE_USER, note="http_probe")
         bystander_secret, bystander = tokens_module.issue(store, PROBE_USER, note="http_probe")
         issued = [victim.id, bystander.id]
@@ -397,32 +329,16 @@ def main(argv: list[str] | None = None) -> int:
         victim_secret = os.environ.get("KB_PROBE_TOKEN", "")
         bystander_secret = os.environ.get("KB_PROBE_TOKEN_2", "")
         if not victim_secret:
-            print("set KB_PROBE_TOKEN (and KB_PROBE_TOKEN_2), or pass --tokens-file",
-                  file=sys.stderr)
+            print("set KB_PROBE_TOKEN (and KB_PROBE_TOKEN_2), pass --tokens-file, or pass\n"
+                  "--no-auth if the stack runs with KB_AUTH=off", file=sys.stderr)
             return 2
 
-    # Which document to ask /kb/* for. Resolved here, after a token exists, because the
-    # SERVER is asked first and that needs one.
-    kb_file = args.kb_file
-    if kb_file is None:
-        kb_file = _discover_kb_file(base, args.ca, victim_secret)
-    if kb_file is None:
-        local = cfg.kb_path / "kb"
-        found = sorted(local.glob("*.md")) if local.is_dir() else []
-        kb_file = found[0].name if found else None
-    if kb_file is None:
-        print("could not work out which document to request: the server listed none and\n"
-              f"there is no local corpus at {cfg.kb_path / 'kb'}. Pass --kb-file <name>.md.",
-              file=sys.stderr)
-        return 2
-
     try:
-        probe_routes(report, base, args.ca, victim_secret, kb_file)
-        probe_mcp(report, base, args.ca, victim_secret, args.query,
-                  _resolve_url_base(args.url_base, base))
-        if store is not None:
+        probe_routes(report, base, args.ca, victim_secret, args.no_auth)
+        probe_mcp(report, base, args.ca, victim_secret, args.query)
+        if store is not None and victim_secret:
             probe_revocation(report, base, args.ca, store,
-                             (victim_secret, issued[0]), bystander_secret, kb_file,
+                             (victim_secret, issued[0]), bystander_secret,
                              cfg.kb_token_cache_seconds)
         elif bystander_secret:
             report.section("Revocation")

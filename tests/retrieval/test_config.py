@@ -104,12 +104,6 @@ def test_require_database_url_missing(monkeypatch: pytest.MonkeyPatch, tmp_path:
         cfg.require_database_url()
 
 
-def test_require_kb_url_base_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    cfg = config_module.load(env_file=tmp_path / "nonexistent.env")
-    with pytest.raises(ConfigError, match="KB_URL_BASE"):
-        cfg.require_kb_url_base()
-
-
 def test_database_url_index_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("DATABASE_URL_INDEX", "postgresql://kb_index:kb@localhost:5432/kb")
     cfg = config_module.load(env_file=tmp_path / "nonexistent.env")

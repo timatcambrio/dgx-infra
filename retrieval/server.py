@@ -165,7 +165,7 @@ def _make_lifespan(cfg: Config):
 class SearchResult(TypedDict):
     id: str
     title: str
-    url: str
+    url: Optional[str]  # null unless KB_URL_BASE is set; the deployment serves no documents
     snippet: str
     pages: Optional[list[int]]
     doc_date: str
@@ -196,7 +196,7 @@ class FetchResponse(TypedDict):
     id: str
     title: str
     text: str
-    url: str
+    url: Optional[str]  # as SearchResult.url
     metadata: FetchMeta
 
 
@@ -254,7 +254,12 @@ def _section_title(title: str, heading_path: str) -> str:
     return f"{title} › {tail}" if tail else title
 
 
-def _url(cfg: Config, rel_path: str, block_id: Optional[str]) -> str:
+def _url(cfg: Config, rel_path: str, block_id: Optional[str]) -> Optional[str]:
+    """A link to the converted file, or None. The compose stack serves no documents and
+    sets no KB_URL_BASE (tests/test_compose_no_document_route.py), so there it is always
+    None; the `citation` string is what a reader is given instead."""
+    if not cfg.kb_url_base:
+        return None
     return f"{cfg.kb_url_base}/{rel_path}#dgx:block={block_id}"
 
 
@@ -403,8 +408,9 @@ async def _oversize_response(
     lines.extend(f"- {note}" for note in extra_notes)
     if not chunks and not any(line.startswith("- **Pages**") for line in lines):
         lines.append(
-            "- Nothing smaller is indexed for this id. Read the markdown at the `url` in "
-            "this response instead, and do not treat this reply as the text."
+            "- Nothing smaller is indexed for this id, so this server cannot return its "
+            "text. Say so rather than answering from this reply, and do not treat this "
+            "reply as the text."
         )
 
     if chunks:

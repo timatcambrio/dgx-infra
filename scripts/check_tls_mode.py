@@ -4,10 +4,9 @@
 and VPN are its boundary and whose users should not have to trust a certificate. Unset or
 `on` keeps HTTPS on 443, the default.
 
-Three other settings must agree with it, and each mismatch fails somewhere that does not
-name the cause (see tests/test_compose_http_mode.py): a certificate on an HTTP site stops
-Caddy starting at all, and a `KB_URL_BASE` with the wrong scheme leaves the service
-working while every citation link points at a port nothing listens on.
+A certificate must not be set alongside it: Caddy refuses one on a site it serves over
+HTTP and would not start, and the front door would simply stop answering without naming
+the cause (see tests/test_compose_http_mode.py).
 
     python3 scripts/check_tls_mode.py [.env]          exit 2 naming the mismatch, else 0
     python3 scripts/check_tls_mode.py --port [.env]   print the port Caddy listens on
@@ -58,33 +57,11 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
 
-    url_base = env.get("KB_URL_BASE", "")
-
-    if mode == "off":
-        if env.get("TLS_CERT") or env.get("TLS_KEY"):
-            print(
-                "KB_TLS=off serves plain HTTP, but TLS_CERT/TLS_KEY are set. Caddy refuses a\n"
-                "certificate on a site it serves over HTTP and would not start. Remove both\n"
-                "lines from .env, or remove KB_TLS=off to serve HTTPS with that certificate.",
-                file=sys.stderr,
-            )
-            return 2
-        if url_base and not url_base.startswith("http://"):
-            print(
-                f"KB_TLS=off serves plain HTTP on port 80, but KB_URL_BASE={url_base}.\n"
-                "Every citation link would point at a port nothing listens on. Set:\n\n"
-                "    KB_URL_BASE=http://<KB_PUBLIC_HOST>\n",
-                file=sys.stderr,
-            )
-            return 2
-        return 0
-
-    if url_base and not url_base.startswith("https://"):
+    if mode == "off" and (env.get("TLS_CERT") or env.get("TLS_KEY")):
         print(
-            f"The stack serves HTTPS on port 443, but KB_URL_BASE={url_base}.\n"
-            "Every citation link would point at a port nothing listens on. Either set\n\n"
-            "    KB_URL_BASE=https://<KB_PUBLIC_HOST>\n\n"
-            "or, to serve plain HTTP instead, add KB_TLS=off.",
+            "KB_TLS=off serves plain HTTP, but TLS_CERT/TLS_KEY are set. Caddy refuses a\n"
+            "certificate on a site it serves over HTTP and would not start. Remove both\n"
+            "lines from .env, or remove KB_TLS=off to serve HTTPS with that certificate.",
             file=sys.stderr,
         )
         return 2

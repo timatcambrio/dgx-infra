@@ -43,9 +43,10 @@ if TYPE_CHECKING:  # pragma: no cover
 #: to authenticate. Exempt `.well-known` here when that work starts.
 PROTECTED_PREFIX = "/mcp"
 
-#: Caddy asks this endpoint whether a request's `Authorization` header is good, for routes
-#: it proxies to a backend with no auth of its own: today `/kb/*` -> `kb-static`
-#: (`compose/Caddyfile`). 204 or 401, no body either way.
+#: For a reverse proxy to ask whether a request's `Authorization` header is good, for a
+#: route it proxies to a backend with no auth of its own. 204 or 401, no body either way.
+#: UNUSED since 2026-10-11, when the only such route (`/kb/*` -> `kb-static`) was removed
+#: from `compose/Caddyfile`; kept, tested, for whichever route needs it next.
 #:
 #: Before this existed, Caddy matched `/kb/*` against a regex of every token, baked into
 #: its config at container start. That made the token list a second, independent copy:
@@ -53,8 +54,8 @@ PROTECTED_PREFIX = "/mcp"
 #: `/kb/*` until `caddy` was restarted, the outage this change exists to avoid. One store
 #: now governs both routes.
 #:
-#: Not reachable from the LAN: `compose/Caddyfile` routes only `/mcp*`, `/health` and
-#: `/kb/*`, and answers everything else 404, so this stays inside the compose network. It
+#: Not reachable from the LAN: `compose/Caddyfile` routes only `/mcp*` and `/health`,
+#: and answers everything else 404, so this stays inside the compose network. It
 #: would be a mild oracle if exposed (it confirms whether a guessed token is valid), which
 #: is no more than `/mcp` itself reveals, but there is no reason to publish it.
 AUTH_CHECK_PATH = "/auth/check"

@@ -16,9 +16,9 @@ from . import tokens as tokens_module
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Keys required unconditionally. `DATABASE_URL_INDEX` is required only for `kb index`,
-#: and `KB_URL_BASE` only for `kb serve`; both are checked lazily via the properties below
-#: rather than at load time, so `kb --help` and other commands that need neither still work
-#: without a fully-populated `.env`.
+#: and is checked lazily via the property below rather than at load time, so `kb --help`
+#: and other commands that do not need it still work without a fully-populated `.env`.
+#: `KB_URL_BASE` is optional: without it, results carry no link (server.py `_url`).
 _ALWAYS_REQUIRED = ("KB_PATH",)
 
 #: Where `kb token` writes and `kb serve` reads the credential store when
@@ -161,14 +161,6 @@ class Config:
                 "search`). Set it in .env (copy .env.example)."
             )
         return self.database_url
-
-    def require_kb_url_base(self) -> str:
-        if not self.kb_url_base:
-            raise ConfigError(
-                "Missing required setting: KB_URL_BASE (needed for `kb serve`: citation "
-                "urls have to point somewhere). Set it in .env (copy .env.example)."
-            )
-        return self.kb_url_base
 
 
 def load(*, env_file: Path | str | None = None) -> Config:

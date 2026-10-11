@@ -10,15 +10,13 @@
 #     binding `0.0.0.0:8765` inside the compose network only -- no `ports:` entry, so it is
 #     unreachable except through `caddy`. Also used as a one-off: `docker compose run --rm
 #     kb-mcp kb index` (and `kb index --init`).
-#   - `kb-static` is a plain `caddy file-server` over a read-only bind mount of
-#     `${KB_PATH}/kb`, also with no published port -- reachable only via `caddy`'s `/kb/*`
-#     route, which itself requires the same bearer token (see `compose/Caddyfile`).
 #   - `caddy` is the only service that publishes a port to the world: 443, TLS-terminated
-#     (or 80, plain HTTP, with KB_TLS=off),
-#     reverse-proxying `/mcp*`+`/health` to `kb-mcp` and `/kb/*` (token-gated) to
-#     `kb-static`. `compose/caddy-entrypoint.sh` fills in the Caddyfile's TLS directive
-#     from `$TLS_CERT`/`$TLS_KEY` before starting Caddy. The `/kb/*` token check is
-#     `forward_auth` to `kb-mcp`, so there is one live token store, not two copies.
+#     (or 80, plain HTTP, with KB_TLS=off), reverse-proxying `/mcp*` and `/health` to
+#     `kb-mcp` and nothing else. `compose/caddy-entrypoint.sh` fills in the Caddyfile's
+#     TLS directive from `$TLS_CERT`/`$TLS_KEY` before starting Caddy.
+#   - No converted document is served over HTTP. A `kb-static` file server behind a token-
+#     gated `/kb/*` route did that until 2026-10-11, so that results carried a clickable
+#     link; it was removed (tests/test_compose_no_document_route.py).
 #   - the `dev` profile additionally publishes `db` and `ollama` to `127.0.0.1` for a host
 #     venv (`uv run kb ...` from the repo directly, without any of the above). `db` and
 #     `ollama` also belong to the `prod` profile (see the note on their `profiles:` below)
@@ -85,10 +83,10 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
       EMBED_DIM: ${EMBED_DIM:-768}
-      # No `:?` required-variable syntax anywhere in this file: Compose interpolates the
-      # whole file even when starting only `db`, so a required prod-only value would break
-      # the dev path. `kb serve` itself refuses to start without KB_URL_BASE, loudly.
-      KB_URL_BASE: ${KB_URL_BASE:-}
+      # No KB_URL_BASE: the stack serves no documents, so every result's `url` is null
+      # rather than a link to a route that does not exist. No `:?` required-variable
+      # syntax anywhere in this file either: Compose interpolates the whole file even when
+      # starting only `db`, so a required prod-only value would break the dev path.
       KB_BIND: 0.0.0.0:8765
       KB_PUBLIC_HOST: ${KB_PUBLIC_HOST:-localhost}
       # Legacy: plaintext, no owner, not revocable without a restart that drops every
@@ -170,23 +168,12 @@ services:
     # Not in `prod`: a one-off command must not become a service `make compose-up` starts.
     profiles: ["tools"]
 
-  kb-static:
-    image: caddy:2
-    restart: unless-stopped
-    command: ["caddy", "file-server", "--root", "/kb", "--listen", ":8080", "--browse=false"]
-    volumes:
-      - ${KB_PATH:-/dev/null}/kb:/kb:ro   # absolute KB_PATH; see kb-mcp above
-    profiles: ["prod"]
-    # No `ports:` entry -- reachable solely via `caddy`'s /kb/* route, which itself
-    # requires the same bearer token (compose/Caddyfile).
-
   caddy:
     image: caddy:2
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/etc/caddy/caddy-entrypoint.sh"]
     environment:
-      # No KB_TOKENS here any more: /kb/* asks kb-mcp's /auth/check per request instead
-      # of matching a token regex baked in at container start (compose/Caddyfile).
+      # No KB_TOKENS here: Caddy checks no token itself. kb-mcp does, on /mcp*.
       KB_PUBLIC_HOST: ${KB_PUBLIC_HOST:-localhost}
       TLS_CERT: ${TLS_CERT:-}
       TLS_KEY: ${TLS_KEY:-}
@@ -204,7 +191,6 @@ services:
       - "${KB_LISTEN_PORT:-443}:${KB_LISTEN_PORT:-443}"
     depends_on:
       - kb-mcp
-      - kb-static
     profiles: ["prod"]
 
 volumes:

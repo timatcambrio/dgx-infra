@@ -13,7 +13,8 @@ What it checks mechanically, per case:
   search     returns at least one result, and the expected slug is among them
   fetch      resolves the expected id and returns MORE than the search snippet
   evidence   expected_phrase is present in the FETCHED text -- reachable, not just indexed
-  citation   non-empty, names the source file, and the url starts with KB_URL_BASE
+  citation   non-empty, names the source file, and the url starts with KB_URL_BASE (or
+             is null when KB_URL_BASE is unset, as in the deployment)
   neighbours get_section(id, neighbours=1) is a superset of fetch(id), for a `sec:` id
 
 What it deliberately does NOT check: whether an assistant's prose answer is correct, or
@@ -24,7 +25,7 @@ marked `expect_damage: true` it prints the fetched text so you can confirm the d
 visible to a reader at all.
 
 Read-only. Needs the same environment `kb serve` needs: DATABASE_URL, OLLAMA_BASE_URL,
-KB_URL_BASE, and a populated index.
+and a populated index; KB_URL_BASE only if results should carry links.
 """
 
 from __future__ import annotations
@@ -147,8 +148,13 @@ async def run(cases_path: Path, server_log: Optional[Path] = None) -> int:
                 src = meta.get("source_file")
                 if citation and src:
                     p.check(src in citation, cid, "citation names the source file", f"{src!r}")
-                url = fr.get("url") or ""
-                p.check(url.startswith(cfg.kb_url_base), cid, "url is under KB_URL_BASE", url[:80])
+                url = fr.get("url")
+                if cfg.kb_url_base:
+                    p.check(bool(url) and url.startswith(cfg.kb_url_base), cid,
+                            "url is under KB_URL_BASE", str(url)[:80])
+                else:
+                    # The deployment serves no documents and sets no KB_URL_BASE.
+                    p.check(url is None, cid, "no url without KB_URL_BASE", repr(url))
 
                 if phrase:
                     p.check(phrase.lower() in text.lower(), cid,
