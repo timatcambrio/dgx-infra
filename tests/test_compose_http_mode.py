@@ -10,8 +10,6 @@ does not name the cause:
 
 - `KB_TLS=off` with `TLS_CERT` still set: Caddy is told to use a certificate on a site it
   serves over HTTP, and refuses to start. The front door just stops answering.
-- `KB_TLS=off` with `KB_URL_BASE=https://...`, or HTTPS with `KB_URL_BASE=http://...`:
-  the stack works and every citation link points at a port nothing listens on.
 - Caddy serving on 80 while Compose publishes 443 (or the reverse): the TCP connection is
   refused and nothing in any log says why.
 
@@ -51,10 +49,10 @@ def _check(tmp_path: Path, env_text: str, *args: str) -> subprocess.CompletedPro
 
 @pytest.mark.parametrize("env_text", [
     "",
-    "KB_URL_BASE=https://kb.example\n",
-    "KB_TLS=on\nKB_URL_BASE=https://kb.example\n",
-    "KB_TLS=off\nKB_URL_BASE=http://kb.example\n",
-    'KB_TLS="off"\nKB_URL_BASE="http://kb.example"\n',
+    "KB_TLS=on\n",
+    "KB_TLS=on\nTLS_CERT=/c.pem\nTLS_KEY=/k.pem\n",
+    "KB_TLS=off\n",
+    'KB_TLS="off"\n',
 ])
 def test_consistent_settings_pass(tmp_path: Path, env_text: str) -> None:
     got = _check(tmp_path, env_text)
@@ -63,8 +61,6 @@ def test_consistent_settings_pass(tmp_path: Path, env_text: str) -> None:
 
 @pytest.mark.parametrize("env_text, names", [
     ("KB_TLS=off\nTLS_CERT=/c.pem\nTLS_KEY=/k.pem\n", "TLS_CERT"),
-    ("KB_TLS=off\nKB_URL_BASE=https://kb.example\n", "KB_URL_BASE"),
-    ("KB_URL_BASE=http://kb.example\n", "KB_URL_BASE"),
     ("KB_TLS=no\n", "KB_TLS"),
 ])
 def test_each_mismatch_is_refused_by_name(tmp_path: Path, env_text: str, names: str) -> None:

@@ -229,6 +229,42 @@ def test_kb_auth_off_starts_with_no_credential_and_serves_without_a_token(
             proc.wait(timeout=5)
 
 
+def test_serve_http_starts_without_kb_url_base(
+    indexed_dsn: str, fake_ollama_http: str
+) -> None:
+    """KB_URL_BASE used to be required, because every result carried a link built from
+    it. The deployment now serves no documents and sets none, so requiring it would stop
+    the server starting."""
+    kb_bin = _kb_bin()
+    if not kb_bin.is_file():
+        pytest.skip(f"console script not found at {kb_bin} (needs `uv sync --extra serve`)")
+
+    port = _free_port()
+    env = _base_env(indexed_dsn, fake_ollama_http)
+    # Empty, not deleted: `kb serve` also reads the repo's .env, which would fill a
+    # missing variable back in, while an empty one is kept and means unset (config.py).
+    env["KB_URL_BASE"] = ""
+    env["KB_TOKENS"] = TOKEN
+    env["KB_BIND"] = f"127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [str(kb_bin), "serve", "--transport", "http"],
+        cwd=str(REPO_ROOT),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+        _wait_for_health(f"http://127.0.0.1:{port}", proc)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
 def test_serve_http_with_only_revoked_tokens_exits_2(
     indexed_dsn: str, fake_ollama_http: str, tmp_path: Path
 ) -> None:

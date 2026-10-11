@@ -82,6 +82,35 @@ def test_search_then_fetch_round_trip(indexed_dsn: str, fake_ollama_http: str) -
     assert fetch_json["url"].startswith(KB_URL_BASE)
 
 
+def test_without_kb_url_base_results_carry_no_url_but_keep_the_citation(
+    indexed_dsn: str, fake_ollama_http: str
+) -> None:
+    """The deployment serves no documents (tests/test_compose_no_document_route.py), so it
+    sets no KB_URL_BASE. A `url` must then be null, not `None/kb/<file>.md`, and the
+    citation string is what remains for a reader."""
+    cfg = _cfg(FIXTURES.parent, indexed_dsn, ollama_base_url=fake_ollama_http, kb_url_base=None)
+
+    async def _go():
+        srv = server_module.build_server(cfg)
+        async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
+            search_res = await s.call_tool("search", {"query": "FORM-7731"})
+            search_json = json.loads(search_res.content[0].text)
+            fetch_res = await s.call_tool("fetch", {"id": search_json["results"][0]["id"]})
+            return search_json, json.loads(fetch_res.content[0].text)
+
+    search_json, fetch_json = _run(_go)
+    assert all(r["url"] is None for r in search_json["results"])
+    assert fetch_json["url"] is None
+    assert "budget-form" in fetch_json["metadata"]["citation"]
+
+
+def test_no_reply_tells_the_assistant_to_follow_a_url() -> None:
+    """The oversize reply used to say "Read the markdown at the `url`", which is advice
+    to follow a link that the deployment no longer serves."""
+    text = (REPO_ROOT / "retrieval" / "server.py").read_text(encoding="utf-8")
+    assert "markdown at the `url`" not in text
+
+
 def test_dual_encoding_search_and_fetch(indexed_dsn: str, fake_ollama_http: str) -> None:
     cfg = _cfg(FIXTURES.parent, indexed_dsn, ollama_base_url=fake_ollama_http)
 
