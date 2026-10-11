@@ -101,6 +101,10 @@ services:
       # directory holding it is $KB_TOKENS_DIR, mounted below.
       KB_TOKENS_FILE: /etc/kb/tokens.json
       KB_TOKEN_CACHE_SECONDS: ${KB_TOKEN_CACHE_SECONDS:-5}
+      # KB_AUTH=off: no credential required, so anyone who can reach the host can search
+      # and read every document. Requests that do carry a valid token are still logged
+      # under its owner. Unset or `on` (the default) requires one.
+      KB_AUTH: ${KB_AUTH:-on}
       # The host's KB_PATH is bind-mounted at a fixed container path below, and KB_PATH
       # is overridden to match -- `retrieval/config.py` resolves `${KB_PATH}/kb` the same
       # way whether it is running in the host venv or in this container.

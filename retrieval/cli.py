@@ -262,8 +262,8 @@ def serve(
         False,
         "--allow-anonymous",
         help=(
-            "Start `--transport http` even with KB_TOKENS empty (dev only). Every "
-            "request to /mcp* is then accepted with no authentication."
+            "Start `--transport http` even with KB_TOKENS empty. Every request to "
+            "/mcp* is then accepted with no authentication. KB_AUTH=off does the same."
         ),
     ),
     env_file: Optional[Path] = ENV_FILE_OPTION,
@@ -292,6 +292,9 @@ def serve(
         mcp_server = server_module.build_server(cfg)
         mcp_server.run(transport="stdio")
         return
+
+    # KB_AUTH=off asks for exactly what the flag does; see Config.kb_auth_required.
+    allow_anonymous = allow_anonymous or not cfg.kb_auth_required
 
     # --transport http|streamable-http: refuse an
     # unauthenticated HTTP server unless the operator explicitly opts in. The question is

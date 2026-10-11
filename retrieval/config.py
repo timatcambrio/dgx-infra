@@ -119,6 +119,11 @@ class Config:
     fetch_max_chars: int
     chunk_target: int
     chunk_max: int
+    #: False only with KB_AUTH=off: `kb serve --transport http` then behaves as if given
+    #: `--allow-anonymous`. A setting as well as the flag because the compose stack
+    #: starts the server with a fixed command line. Defaulted so the tests that build a
+    #: Config by hand keep the safe answer.
+    kb_auth_required: bool = True
 
     @property
     def kb_dir(self) -> Path:
@@ -174,6 +179,11 @@ def load(*, env_file: Path | str | None = None) -> Config:
         os.environ.get("KB_PATH", str(REPO_ROOT.parent / "dgx-knowledge"))
     ).expanduser().resolve()
 
+    kb_auth = (os.environ.get("KB_AUTH") or "on").strip().lower()
+    if kb_auth not in ("on", "off"):
+        # Neither answer is safe to guess: one of them opens every document to the network.
+        raise ConfigError(f"KB_AUTH must be `on` or `off` (or unset, meaning on), got {kb_auth!r}")
+
     kb_url_base = os.environ.get("KB_URL_BASE") or None
     if kb_url_base is not None:
         kb_url_base = kb_url_base.rstrip("/")
@@ -195,6 +205,7 @@ def load(*, env_file: Path | str | None = None) -> Config:
         kb_token_cache_seconds=_env_float(
             "KB_TOKEN_CACHE_SECONDS", tokens_module.DEFAULT_CACHE_SECONDS
         ),
+        kb_auth_required=kb_auth == "on",
         fetch_max_chars=_env_int("FETCH_MAX_CHARS", 200_000),
         chunk_target=_env_int("CHUNK_TARGET", 1200),
         chunk_max=_env_int("CHUNK_MAX", 2500),
