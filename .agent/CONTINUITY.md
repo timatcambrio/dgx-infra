@@ -6,6 +6,16 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-11 [USER+CODE] **Plain-HTTP option, `KB_TLS=off`, on branch
+  `feat/plain-http-option` (3 commits, not merged, not pushed).** Client admins regard their
+  network/VPN as the boundary and want no per-user certificate trust. Entrypoint prefixes
+  site names with `http://` (`__SCHEME__` placeholder) and deletes the `tls` line; Makefile
+  derives `KB_LISTEN_PORT` (80/443) via `scripts/check_tls_mode.py --port`; compose-env-check
+  refuses a cert or a `KB_URL_BASE` scheme that contradicts the mode. Bearer auth unchanged.
+  [TOOL] make check 681 passed / 2 skipped; real `caddy:2` validates both renders (:443 /
+  :80); live scratch stack: HTTP mode probe 10/11 (the miss is search on an unindexed
+  stack), HTTPS default still 200 on 443 with nothing on 80. Not run: a full probe on an
+  indexed stack in HTTP mode.
 - 2026-10-07 [USER] Rewrote the DGX runbook for operators as `docs/deployment-dgx-guide.md`
   (old `docs/deployment-dgx.md` kept, not yet removed). Decisions: own self-signed cert via
   `scripts/make_tls_cert.sh` only, no client-CA path; DGX assumed online; `EMBED_MODEL` pinned
