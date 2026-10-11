@@ -144,3 +144,31 @@ def test_real_environment_wins_over_env_file(
     monkeypatch.setenv("EMBED_MODEL", "from-real-env")
     cfg = config_module.load(env_file=env_file)
     assert cfg.embed_model == "from-real-env"
+
+
+# `KB_AUTH`: whether `kb serve --transport http` requires a credential. Requested
+# 2026-10-11 for a pilot where every user's settings are pushed centrally and nobody is
+# to handle a credential. A typo here must not quietly mean either answer, because one of
+# them opens every document to the whole network.
+
+
+def test_kb_auth_defaults_to_on(tmp_path: Path) -> None:
+    cfg = config_module.load(env_file=tmp_path / "nonexistent.env")
+    assert cfg.kb_auth_required is True
+
+
+def test_kb_auth_off_turns_the_requirement_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("KB_AUTH", "off")
+    cfg = config_module.load(env_file=tmp_path / "nonexistent.env")
+    assert cfg.kb_auth_required is False
+
+
+@pytest.mark.parametrize("value", ["no", "false", "0", "disabled"])
+def test_kb_auth_refuses_anything_but_on_or_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, value: str
+) -> None:
+    monkeypatch.setenv("KB_AUTH", value)
+    with pytest.raises(ConfigError, match="KB_AUTH"):
+        config_module.load(env_file=tmp_path / "nonexistent.env")
