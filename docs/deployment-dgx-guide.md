@@ -192,8 +192,8 @@ first, Docker creates them owned by `root`, and you would then need `sudo` to fi
 ## 6. Choose how people connect
 
 Two separate choices. The defaults are the most protective; each alternative asks less of
-users and protects less. Both can be changed later by editing `.env` and running
-`make compose-up` again.
+users and protects less. Either can be changed later without reinstalling; see
+[Change how people connect](#change-how-people-connect).
 
 ### Encryption: HTTPS or plain HTTP
 
@@ -628,7 +628,52 @@ Repeat this step whenever documents are added or removed.
 | Restart the service | `make compose-down`, then `make compose-up` |
 | Check it is running | `curl -sS --cacert tls/cert.pem https://<KB_HOST>/health` (plain HTTP: `curl -sS http://<KB_HOST>/health`) |
 | Back up | `/srv/kb`, `.env`, the `tls/` directory (HTTPS only), and `~/dgx-knowledge` |
-| Update the code | `git pull`, `make compose-up`, then `make compose-index` |
+| Update the code | `git pull`, `make compose-up`, then `make compose-index`. `make compose-up` also removes any container the new version no longer uses |
+| Switch between HTTPS and plain HTTP, or turn credentials on or off | [Change how people connect](#change-how-people-connect) |
+
+## Change how people connect
+
+Switches an installed service between HTTPS and plain HTTP, or turns credentials on or off
+([step 6](#6-choose-how-people-connect) explains each choice). Nothing is reinstalled: the
+documents, the index and the credentials are kept, and nothing is converted or indexed
+again.
+
+Open `.env` (`nano .env`) and make the change for each switch you want:
+
+| Switch | Change in `.env` |
+|---|---|
+| HTTPS to plain HTTP | add `KB_TLS=off`, and delete the `TLS_CERT` and `TLS_KEY` lines |
+| Plain HTTP to HTTPS | delete `KB_TLS=off`, then create the certificate and add its two lines as in [step 6](#the-certificate) |
+| Credentials to none | add `KB_AUTH=off` |
+| None to credentials | delete `KB_AUTH=off`, and issue at least one credential first ([step 8](#8-issue-your-credential)); without one the service will not start |
+
+A `KB_URL_BASE` line left from an earlier version does nothing; you can delete it.
+
+Restart the service:
+
+```bash
+make compose-up
+```
+
+**Expect** only the proxy and the search server to restart. If `.env` contradicts itself,
+for example `KB_TLS=off` with the certificate lines still in it, this stops before
+anything restarts and names the line to fix.
+
+Then run the check in [step 13](#13-test-the-service-from-the-dgx), with the options for
+the new settings.
+
+Last, users' settings have to match the new ones:
+
+- **Between HTTPS and plain HTTP**, the address changes from `https://` to `http://` (or
+  back), and the port from 443 to 80 (or back). The old address stops working at once,
+  so change everyone's settings at the same time. The network has to allow the new port
+  from the user network; port 80 is often closed where only HTTPS was expected. Going
+  back to HTTPS makes a new certificate, so each computer trusts it again
+  ([step 14](#14-check-from-a-second-computer)).
+- **To no credentials**, existing settings that still carry a credential keep working,
+  and those requests are still logged under that person's name. The line can be removed.
+- **To credentials**, everyone needs one ([step 15](#15-give-each-person-a-credential))
+  before they can connect again.
 
 ## When something does not work
 
