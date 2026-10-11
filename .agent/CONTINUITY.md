@@ -6,6 +6,17 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-11 [USER+CODE] **`KB_AUTH=off` and no document route, same branch
+  `feat/plain-http-option` (now 9 commits, not merged, not pushed).** `KB_AUTH=off` (config
+  `kb_auth_required`) does what `--allow-anonymous` does; compose passes it to kb-mcp; log
+  user is `anonymous`. `/kb/*` route, `kb-static` and `forward_auth` removed; kb-mcp gets no
+  `KB_URL_BASE`, so `url` is null, `citation` stays; `kb serve` no longer requires
+  `KB_URL_BASE`; `require_kb_url_base` deleted. `/auth/check` kept in kb-mcp, UNUSED.
+  `http_probe.py`: `--no-auth`, checks `/kb/` is 404, `--kb-file`/`--url-base` gone. Deleted
+  `test_compose_citation_url.py`, `test_http_probe_client_mode.py`. [TOOL] make check 684
+  passed / 2 skipped. Live scratch stack, nomic-embed-text:v1.5, fixtures indexed: HTTPS +
+  tokens 19/19, HTTP + tokens 19/19, HTTP + `KB_AUTH=off` 13/13. Guide step 13 counts
+  updated to match (was 23/23).
 - 2026-10-11 [USER+CODE] **Plain-HTTP option, `KB_TLS=off`, on branch
   `feat/plain-http-option` (3 commits, not merged, not pushed).** Client admins regard their
   network/VPN as the boundary and want no per-user certificate trust. Entrypoint prefixes
