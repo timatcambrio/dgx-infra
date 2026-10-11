@@ -6,6 +6,16 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-11 [USER+CODE] **In-place switching, same branch (13 commits, not merged, not
+  pushed).** `make compose-up` now passes `--remove-orphans` (test
+  `tests/test_compose_upgrade.py`); guide gains "Change how people connect" (per-switch
+  `.env` edits, restart, check, users' settings). Port stays 80 for plain HTTP [USER].
+  [TOOL] Live upgrade rehearsal: HTTPS + tokens + make_tls_cert install from `main` probed
+  23/23; branch without `.env` change: Compose only WARNS about orphan `kb-static`, with
+  the flag removes it, probe 19/19; `KB_TLS=off` with TLS lines left is refused by name;
+  after removing them only caddy and kb-mcp recreate, port 80, probe `--no-auth` 13/13, no
+  reindex. Old `https://` client URL fails; `http://` with old token works and logs the
+  owner. make check 685 passed / 2 skipped.
 - 2026-10-11 [USER+CODE] **`KB_AUTH=off` and no document route, same branch
   `feat/plain-http-option` (now 9 commits, not merged, not pushed).** `KB_AUTH=off` (config
   `kb_auth_required`) does what `--allow-anonymous` does; compose passes it to kb-mcp; log
