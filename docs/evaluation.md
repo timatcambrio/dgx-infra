@@ -118,7 +118,8 @@ uv run python scripts/mcp_probe.py --cases /path/to/mcp-cases.yaml
 the tools. Per case it checks that all five tools are advertised, that `search` returns the
 expected document, that `fetch` resolves and returns more than the 300-character snippet,
 that the expected phrase is present in the *fetched* text (reachable, not merely indexed),
-that the citation names the source file and the url sits under `KB_URL_BASE`, and that
+that the citation names the source file and the url sits under `KB_URL_BASE` (or is null
+when it is unset), and that
 `get_section(neighbours=1)` is a superset of `fetch`.
 
 It deliberately does **not** judge whether an assistant's prose answer is correct or whether

@@ -16,9 +16,9 @@ from . import tokens as tokens_module
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 #: Keys required unconditionally. `DATABASE_URL_INDEX` is required only for `kb index`,
-#: and `KB_URL_BASE` only for `kb serve`; both are checked lazily via the properties below
-#: rather than at load time, so `kb --help` and other commands that need neither still work
-#: without a fully-populated `.env`.
+#: and is checked lazily via the property below rather than at load time, so `kb --help`
+#: and other commands that do not need it still work without a fully-populated `.env`.
+#: `KB_URL_BASE` is optional: without it, results carry no link (server.py `_url`).
 _ALWAYS_REQUIRED = ("KB_PATH",)
 
 #: Where `kb token` writes and `kb serve` reads the credential store when
@@ -119,6 +119,11 @@ class Config:
     fetch_max_chars: int
     chunk_target: int
     chunk_max: int
+    #: False only with KB_AUTH=off: `kb serve --transport http` then behaves as if given
+    #: `--allow-anonymous`. A setting as well as the flag because the compose stack
+    #: starts the server with a fixed command line. Defaulted so the tests that build a
+    #: Config by hand keep the safe answer.
+    kb_auth_required: bool = True
 
     @property
     def kb_dir(self) -> Path:
@@ -157,14 +162,6 @@ class Config:
             )
         return self.database_url
 
-    def require_kb_url_base(self) -> str:
-        if not self.kb_url_base:
-            raise ConfigError(
-                "Missing required setting: KB_URL_BASE (needed for `kb serve`: citation "
-                "urls have to point somewhere). Set it in .env (copy .env.example)."
-            )
-        return self.kb_url_base
-
 
 def load(*, env_file: Path | str | None = None) -> Config:
     """Build a `Config` from the environment."""
@@ -173,6 +170,11 @@ def load(*, env_file: Path | str | None = None) -> Config:
     kb_path = Path(
         os.environ.get("KB_PATH", str(REPO_ROOT.parent / "dgx-knowledge"))
     ).expanduser().resolve()
+
+    kb_auth = (os.environ.get("KB_AUTH") or "on").strip().lower()
+    if kb_auth not in ("on", "off"):
+        # Neither answer is safe to guess: one of them opens every document to the network.
+        raise ConfigError(f"KB_AUTH must be `on` or `off` (or unset, meaning on), got {kb_auth!r}")
 
     kb_url_base = os.environ.get("KB_URL_BASE") or None
     if kb_url_base is not None:
@@ -195,6 +197,7 @@ def load(*, env_file: Path | str | None = None) -> Config:
         kb_token_cache_seconds=_env_float(
             "KB_TOKEN_CACHE_SECONDS", tokens_module.DEFAULT_CACHE_SECONDS
         ),
+        kb_auth_required=kb_auth == "on",
         fetch_max_chars=_env_int("FETCH_MAX_CHARS", 200_000),
         chunk_target=_env_int("CHUNK_TARGET", 1200),
         chunk_max=_env_int("CHUNK_MAX", 2500),

@@ -6,6 +6,44 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-13 [USER+CODE] Tim ran `aws-http-upgrade-test-guide.md` on the AWS instance
+  (stage 1 run on the branch's probe: 17/19, the two failures being the old `/kb/` route
+  and link, as expected); stages 4 to 6 matched, stage 6 19/19. Client guide
+  `docs/switch-to-plain-http.md` added (HTTPS + tokens to HTTP + none, users' side,
+  switching back via `.env.before-http`). Pre-flight now refuses a mistyped `KB_AUTH`
+  (was a crash loop behind 502). make check 689 passed / 2 skipped. 3 commits not pushed.
+  To ship: add `docs:switch-to-plain-http.md` to `publish/config.sh` allowlist after merge.
+- 2026-10-11 [USER+CODE] **In-place switching, same branch (13 commits, not merged, not
+  pushed).** `make compose-up` now passes `--remove-orphans` (test
+  `tests/test_compose_upgrade.py`); guide gains "Change how people connect" (per-switch
+  `.env` edits, restart, check, users' settings). Port stays 80 for plain HTTP [USER].
+  [TOOL] Live upgrade rehearsal: HTTPS + tokens + make_tls_cert install from `main` probed
+  23/23; branch without `.env` change: Compose only WARNS about orphan `kb-static`, with
+  the flag removes it, probe 19/19; `KB_TLS=off` with TLS lines left is refused by name;
+  after removing them only caddy and kb-mcp recreate, port 80, probe `--no-auth` 13/13, no
+  reindex. Old `https://` client URL fails; `http://` with old token works and logs the
+  owner. make check 685 passed / 2 skipped.
+- 2026-10-11 [USER+CODE] **`KB_AUTH=off` and no document route, same branch
+  `feat/plain-http-option` (now 9 commits, not merged, not pushed).** `KB_AUTH=off` (config
+  `kb_auth_required`) does what `--allow-anonymous` does; compose passes it to kb-mcp; log
+  user is `anonymous`. `/kb/*` route, `kb-static` and `forward_auth` removed; kb-mcp gets no
+  `KB_URL_BASE`, so `url` is null, `citation` stays; `kb serve` no longer requires
+  `KB_URL_BASE`; `require_kb_url_base` deleted. `/auth/check` kept in kb-mcp, UNUSED.
+  `http_probe.py`: `--no-auth`, checks `/kb/` is 404, `--kb-file`/`--url-base` gone. Deleted
+  `test_compose_citation_url.py`, `test_http_probe_client_mode.py`. [TOOL] make check 684
+  passed / 2 skipped. Live scratch stack, nomic-embed-text:v1.5, fixtures indexed: HTTPS +
+  tokens 19/19, HTTP + tokens 19/19, HTTP + `KB_AUTH=off` 13/13. Guide step 13 counts
+  updated to match (was 23/23).
+- 2026-10-11 [USER+CODE] **Plain-HTTP option, `KB_TLS=off`, on branch
+  `feat/plain-http-option` (3 commits, not merged, not pushed).** Client admins regard their
+  network/VPN as the boundary and want no per-user certificate trust. Entrypoint prefixes
+  site names with `http://` (`__SCHEME__` placeholder) and deletes the `tls` line; Makefile
+  derives `KB_LISTEN_PORT` (80/443) via `scripts/check_tls_mode.py --port`; compose-env-check
+  refuses a cert or a `KB_URL_BASE` scheme that contradicts the mode. Bearer auth unchanged.
+  [TOOL] make check 681 passed / 2 skipped; real `caddy:2` validates both renders (:443 /
+  :80); live scratch stack: HTTP mode probe 10/11 (the miss is search on an unindexed
+  stack), HTTPS default still 200 on 443 with nothing on 80. Not run: a full probe on an
+  indexed stack in HTTP mode.
 - 2026-10-07 [USER] Rewrote the DGX runbook for operators as `docs/deployment-dgx-guide.md`
   (old `docs/deployment-dgx.md` kept, not yet removed). Decisions: own self-signed cert via
   `scripts/make_tls_cert.sh` only, no client-CA path; DGX assumed online; `EMBED_MODEL` pinned

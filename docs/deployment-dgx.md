@@ -25,7 +25,7 @@ checkout of this repository; that machine is not the host.
 | `nvidia-smi` works and lists at least one GPU | step 1 refuses otherwise; the driver is not ours to install |
 | ~150 GB free on the filesystem holding `/var/lib/docker` | images, the database volume and the model volume all land there |
 | A host name clients will dial, resolvable by them | the certificate is issued for a name, and a client dialling a bare address fails verification unless the certificate carries that address |
-| Inbound 443/tcp from the user networks | the only port anything in the stack publishes |
+| Inbound 443/tcp from the user networks (80/tcp with plain HTTP, step 7) | the only port anything in the stack publishes |
 | The login user can `sudo` | two commands need it, the bootstrap script and one `install -d`; step 5's repair `chown` is a conditional third |
 
 Two things you will want before step 7 and cannot produce yourself: a certificate and key
@@ -98,7 +98,6 @@ Set these (the example file has them commented out; remove the `#`):
 ```bash
 KB_PATH=/home/<you>/dgx-knowledge
 KB_PUBLIC_HOST=<the name clients dial>
-KB_URL_BASE=https://<the name clients dial>
 KB_TOKENS_FILE=/srv/kb/tokens.json
 KB_TOKENS_DIR=/srv/kb
 KB_GPU=on
@@ -109,7 +108,7 @@ Set real passwords for `POSTGRES_PASSWORD`, `KB_INDEX_PASSWORD` and `KB_READ_PAS
 too. The values in `.env.example` are development defaults, and the file is not in version
 control.
 
-Four of these have each broken a deployment, so read them rather than
+Three of these have each broken a deployment, so read them rather than
 copying:
 
 - **`KB_PATH` must be absolute.** Compose resolves a relative bind-mount source against
@@ -117,10 +116,6 @@ copying:
   the content repository's **root**, with `kb/` inside it.
 - **`KB_PUBLIC_HOST` is the address clients actually dial.** The server checks the `Host`
   header, and a mismatch is refused with an error that reads like a fault in the client.
-- **`KB_URL_BASE` is the site root, with no `/kb`.** Each document is stored as
-  `kb/<file>.md` and the proxy routes `/kb/*`, so both halves already supply that segment;
-  a value ending in `/kb` makes every citation a dead link. `make compose-up` refuses such
-  a value outright.
 - **`KB_TOKENS_DIR` must be `KB_TOKENS_FILE`'s parent.** The stack mounts the directory,
   because issuing or revoking a credential replaces the file and a single-file mount would
   bind the old copy. `make compose-up` checks this.
@@ -213,6 +208,20 @@ docker compose -f compose/docker-compose.yml cp \
   caddy:/data/caddy/pki/authorities/local/root.crt ./dgx-kb-ca.crt
 ```
 
+**No certificate: plain HTTP.** For an organisation that treats its own network and VPN
+as the boundary and does not want users to trust any certificate. Set `KB_TLS=off` in
+`.env` and leave `TLS_CERT` and `TLS_KEY` unset. The proxy then serves the same route on
+port 80 with no certificate. Credentials are still checked unless `KB_AUTH=off` (below),
+but they and everything the service returns cross the network unencrypted, so this is the
+organisation's decision to record, not a default. `make compose-up` refuses a certificate
+alongside `KB_TLS=off`. In step 13, use `http://` and leave out `--ca`.
+
+**No credentials.** `KB_AUTH=off` in `.env` makes the MCP server accept every request with
+no token: anyone who can reach the host can search and read every converted document, and
+the log records each request as `anonymous`. Skip step 8; in step 13, run the probe with
+`--no-auth` in place of `--tokens-file`. Reversible: remove the line, issue credentials
+and run `make compose-up`.
+
 ## 8. Issue the first credentials, before the stack is up
 
 ```bash
@@ -238,8 +247,9 @@ make token ARGS="issue probe@example.com"
 make compose-up
 ```
 
-**Expect** the GPU verdict again, then five containers: the database, the model server, the
-MCP server, the static file server, and the proxy. Only the proxy publishes a port.
+**Expect** the GPU verdict again, then four containers: the database, the model server, the
+MCP server and the proxy. Only the proxy publishes a port, and it routes nothing but the MCP
+endpoint and the health check: converted documents are not served over HTTP.
 
 The model is a separate, deliberate step. Nothing in the stack pulls a model by itself:
 
@@ -381,12 +391,11 @@ uv run python scripts/http_probe.py --base-url https://<the name clients dial>
 
 `read -rs` does not echo, so the secrets stay out of shell history. Add `--ca <file>` if
 the certificate's issuer is not already trusted on that machine. Nothing about the
-deployment is taken from the local checkout: the document to request comes from the
-server's own listing, and a citation link is judged against `--base-url`.
+deployment is taken from the local checkout.
 
-It checks what is open and what is closed, drives the MCP protocol through a search and a
-fetch, and **follows the citation link it gets back to confirm the cited document is
-actually fetchable**, the check that catches step 5's silent permission failure.
+It checks what is open and what is closed (including that no document route answers),
+and drives the MCP protocol through a search and a fetch, checking the citation that comes
+back.
 
 The revocation checks have to write the credential store, which exists only on the host, so
 that half runs there, through the one service whose mount is read-write:
@@ -405,7 +414,7 @@ in rather than already present. **Do not drop `--no-sync`** if you rewrite that 
 bare `uv run` re-resolves dependencies at container start and fetches them, which is a
 surprise on an on-premises host and a failure on one without that reach.
 
-It issues its own throwaway pair, withdraws one, confirms that closes **both** routes
+It issues its own throwaway pair, withdraws one, confirms that closes `/mcp` for it
 within the cache window while the other keeps working, and withdraws both on the way out.
 No secret is printed.
 
@@ -445,7 +454,7 @@ required of any other user.
 | Add or remove documents | put them in, or take them out of, the source directory; re-run step 11, then `make compose-index` |
 | Add or remove a person | `make token ARGS="issue ..."` / `ARGS="revoke ..."`; no restart |
 | Restart the stack | `make compose-down` then `make compose-up`. Volumes are kept unless you pass `ARGS=-v` |
-| Check it is healthy | `curl -sS https://<name>/health`, which needs no credential |
+| Check it is healthy | `curl -sS https://<name>/health` (`http://` with `KB_TLS=off`), which needs no credential |
 | What to back up | the credential store `/srv/kb`, the `.env` file, the certificate and key, and the content repository. The database and the model volume are rebuilt by steps 9 and 12 from those |
 | Update the code | `git pull`, then `make compose-up` to rebuild, then `make compose-index` if the indexer changed |
 
@@ -454,7 +463,6 @@ required of any other user.
 | Symptom | Where to look |
 |---|---|
 | The proxy answers 502 | the MCP server is not running. `docker compose ... logs kb-mcp`. The usual cause is the credential store's ownership (step 5) |
-| Every citation link is a 404 | `KB_URL_BASE` has a `/kb` on the end, or the content tree is not readable by uid 10001 (steps 4 and 5) |
 | A client fails before any HTTP | the certificate does not carry the name that client dialled (step 7) |
 | A client gets an error about the host | `KB_PUBLIC_HOST` is not the name the client dials (step 4) |
 | Indexing is slow and the GPU is idle | `ollama ps` says `100% CPU`. With `KB_GPU=on` the stack should have refused to start; `make gpu-check` says what it decides and why |

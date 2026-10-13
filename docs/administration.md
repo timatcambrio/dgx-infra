@@ -32,14 +32,16 @@ documents in a container, indexing, and the end-to-end probe), follow
 ## Starting the stack
 
 The service runs under Docker Compose: Postgres (`db`), the embedding server (`ollama`),
-the MCP server (`kb-mcp`), a static file server for the converted markdown (`kb-static`)
-and Caddy in front of them on 443. On a host that already has Docker, the order is:
+the MCP server (`kb-mcp`) and Caddy in front of it on 443 (80 with `KB_TLS=off`). Caddy
+routes the MCP endpoint and the health check and nothing else: the converted documents
+are not served over HTTP, and search results carry a `citation` string rather than a link.
+On a host that already has Docker, the order is:
 
 ```bash
-cp .env.example .env               # then set KB_PATH (absolute), KB_PUBLIC_HOST, KB_URL_BASE
+cp .env.example .env               # then set KB_PATH (absolute), KB_PUBLIC_HOST
 sudo install -d -o 10001 -g 10001 -m 700 /srv/kb    # the token store's directory, once
 make token ARGS="issue you@example.com"             # prints your bearer token ONCE
-make compose-up                    # builds and starts db, ollama, kb-mcp, kb-static, caddy
+make compose-up                    # builds and starts db, ollama, kb-mcp, caddy
 docker compose -f compose/docker-compose.yml exec ollama ollama pull nomic-embed-text
 make compose-index ARGS=--init     # applies the database schema (first run only)
 make compose-index                 # walks kb/, embeds it, loads it into Postgres
@@ -53,16 +55,12 @@ Issue the first token **before** `make compose-up`, not after: `kb serve` refuse
 an unauthenticated HTTP server, so with an empty store `kb-mcp` exits 2 and Compose keeps
 restarting it (Caddy answering 502 meanwhile) until a credential exists. It recovers on its
 own once one does, but issuing the token first avoids the restart loop. `make token` builds
-what it needs, so it works before anything is up.
+what it needs, so it works before anything is up. With `KB_AUTH=off` (see
+[No credentials](#no-credentials)) there is no token to issue.
 
 `KB_PATH` must be an absolute path here: the compose stack bind-mounts it, and a relative
 path would be resolved against the `compose/` directory rather than this one. `make
 compose-up` checks and refuses otherwise.
-
-`KB_URL_BASE` is the **site root**, not the `/kb` path: `https://kb.internal.example`,
-with no `/kb` on the end. Both halves of a citation url already supply that segment (the
-indexer stores each document as `kb/<file>.md`, and Caddy routes `/kb/*`), so a value
-ending in `/kb` makes every citation url a 404. `make compose-up` refuses one.
 
 `install -d` is the one host command this deployment needs, and it is needed once. It
 creates the token store's directory owned by the uid the containers run as (10001), so
@@ -184,7 +182,7 @@ so a one-time `chown` is not undone by the next `issue` or `revoke`.
 **Revoking a token affects only that user.** The records are stored in `KB_TOKENS_FILE`
 (default: `tokens.json` beside `.env`, gitignored, mode 0600) and the server re-reads that
 file as it changes, so a revocation is in force within `KB_TOKEN_CACHE_SECONDS` (default 5)
-on both `/mcp*` and `/kb/*`, with no restart and nothing required of any other user. This
+on `/mcp*`, with no restart and nothing required of any other user. This
 is why the token store exists: with tokens in `.env`, withdrawing one credential meant
 restarting the server, which disconnected everybody, so in practice it was never done.
 
@@ -223,15 +221,20 @@ and restarting, which disconnects every user. `kb serve` warns on startup when i
 and `kb token list` says how many are in play. To migrate: issue a token per user, hand them
 out, then remove `KB_TOKENS` from `.env` and restart once.
 
-### How `/kb/*` is checked
+### No credentials
 
-`kb-mcp` checks `/mcp*` itself. `/kb/*` is served by `kb-static`, which is a plain
-`file_server` with no auth, so Caddy enforces the token in front of it by asking
-`kb-mcp` (`forward_auth` to an internal `/auth/check`, which answers 204 or 401) rather
-than matching the token itself, so one live store covers both routes and a revocation
-takes effect on `/kb/*` as quickly as on `/mcp*`. `/auth/check` is
-reachable only inside the compose network; the Caddyfile answers 404 for every path it
-does not route.
+`KB_AUTH=off` in `.env` makes `kb-mcp` accept every request to `/mcp*` without a token,
+for a deployment where users are to configure nothing. Anyone who can reach the host can
+then search and read every converted document, so the network is the only boundary. The
+audit log records such requests as `"user":"anonymous"`; a request that does carry a valid
+token is still logged under its owner. No one can be withdrawn individually: closing access
+means changing the network or turning credentials back on. It is reversible: remove the
+line, issue tokens, and run `make compose-up`.
+
+`kb-mcp` also answers an internal `/auth/check` (204 or 401), which a reverse proxy can use
+to put the same token check in front of a backend with no auth of its own. Nothing uses it
+since the document route was removed; it is reachable only inside the compose network, and
+the Caddyfile answers 404 for every path it does not route.
 
 ## TLS
 
@@ -260,6 +263,15 @@ pair issued by a CA your users' machines already trust (an internal corporate CA
 client-issued cert). `compose/caddy-entrypoint.sh` uses that pair instead of `tls
 internal` whenever both are set, and no user-side trust step is needed.
 
+**Plain HTTP.** `KB_TLS=off` in `.env` serves the same site on port 80 with no
+certificate, so no user-side trust step exists at all. Bearer tokens are still required on
+`/mcp*` unless `KB_AUTH=off`, but they, and everything returned, cross the network in clear
+text: anyone able to observe traffic between a client and the host can read both and
+reuse the token. Use it only where the organisation accepts that inside its network and
+VPN. `TLS_CERT`/`TLS_KEY` must then be unset; `make compose-up` checks
+(`scripts/check_tls_mode.py`) and publishes port 80 instead of 443.
+`scripts/http_probe.py --base-url http://...` runs the same checks without `--ca`.
+
 **You must put the right names on a supplied certificate.** With `tls internal` Caddy issues
 a certificate per name on demand, so the set of names it answers for is open. With one
 supplied pair that set is fixed when the certificate is made, and a client dialling a name
@@ -273,9 +285,8 @@ testing the path, not for production. Both options work without any code change.
 
 ## Checking a deployment end to end
 
-`make check` tests the code. It cannot test the certificate, the reverse proxy, the
-`/kb/*` forward_auth hop or the live token store, because none of those exist in a test
-process. `scripts/http_probe.py` drives a *running* stack over TLS at its public address,
+`make check` tests the code. It cannot test the certificate, the reverse proxy or the
+live token store, because none of those exist in a test process. `scripts/http_probe.py` drives a *running* stack over TLS at its public address,
 the way a client on the LAN reaches it:
 
 ```bash
@@ -285,14 +296,16 @@ uv run python scripts/http_probe.py \
     --tokens-file /srv/kb/tokens.json
 ```
 
-It checks what is open and what is closed (`/health` without a token, `/mcp` and `/kb/*`
-with and without one, `/auth/check` unreachable from outside), drives MCP over streamable
-HTTP through `initialize` → `search` → `fetch`, follows the citation url it gets back to
-confirm the cited document is fetchable, and, given `--tokens-file` so it can reach the
-store, revokes a throwaway token and confirms that closes **both** `/mcp*` and
-`/kb/*` within `KB_TOKEN_CACHE_SECONDS` while another user's token keeps working. It
+It checks what is open and what is closed (`/health` without a token, `/mcp` with and
+without one, `/kb/` and `/auth/check` not routed at all), drives MCP over streamable HTTP
+through `initialize` → `search` → `fetch` and checks the citation and that no link comes
+back, and, given `--tokens-file` so it can reach the store, revokes a throwaway token and
+confirms that closes `/mcp*` within `KB_TOKEN_CACHE_SECONDS` while another user's token
+keeps working. It
 issues its own throwaway credentials, revokes them on the way out, and never prints a
 secret. Exit status is 0 only if every check passed.
 
 Without `--tokens-file` it runs the read-only checks from any client machine, taking two
 issued tokens as `KB_PROBE_TOKEN` and `KB_PROBE_TOKEN_2`, and skips the revocation checks.
+For a stack running `KB_AUTH=off`, pass `--no-auth` instead: it then uses no token and
+expects `/mcp` to answer without one.

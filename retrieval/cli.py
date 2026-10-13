@@ -262,8 +262,8 @@ def serve(
         False,
         "--allow-anonymous",
         help=(
-            "Start `--transport http` even with KB_TOKENS empty (dev only). Every "
-            "request to /mcp* is then accepted with no authentication."
+            "Start `--transport http` even with KB_TOKENS empty. Every request to "
+            "/mcp* is then accepted with no authentication. KB_AUTH=off does the same."
         ),
     ),
     env_file: Optional[Path] = ENV_FILE_OPTION,
@@ -279,7 +279,6 @@ def serve(
 
     try:
         cfg.require_database_url()
-        cfg.require_kb_url_base()
     except ConfigError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(EXIT_CONFIG_ERROR) from exc
@@ -292,6 +291,9 @@ def serve(
         mcp_server = server_module.build_server(cfg)
         mcp_server.run(transport="stdio")
         return
+
+    # KB_AUTH=off asks for exactly what the flag does; see Config.kb_auth_required.
+    allow_anonymous = allow_anonymous or not cfg.kb_auth_required
 
     # --transport http|streamable-http: refuse an
     # unauthenticated HTTP server unless the operator explicitly opts in. The question is
@@ -320,9 +322,9 @@ def serve(
             )
             raise typer.Exit(code=2)
         typer.secho(
-            "kb serve --transport http: no usable credential and --allow-anonymous was "
-            "passed. Every request to /mcp* will be accepted with NO authentication. Do "
-            "not run this against a network you do not fully control.",
+            "kb serve --transport http: no usable credential, and KB_AUTH=off or "
+            "--allow-anonymous was given. Every request to /mcp* will be accepted with NO "
+            "authentication. Do not run this against a network you do not fully control.",
             fg=typer.colors.RED,
             err=True,
         )

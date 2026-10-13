@@ -182,6 +182,89 @@ def test_serve_http_with_no_credential_and_no_allow_anonymous_exits_2(
     assert "kb token issue" in result.stderr
 
 
+def test_kb_auth_off_starts_with_no_credential_and_serves_without_a_token(
+    indexed_dsn: str, fake_ollama_http: str
+) -> None:
+    """`KB_AUTH=off` is the deployment's way of asking for what `--allow-anonymous` does,
+    because the compose stack starts `kb serve` with a fixed command line and a setting is
+    the only thing an operator changes. It must do the whole job: start with no credential
+    at all, and then let a request with no token through."""
+    kb_bin = _kb_bin()
+    if not kb_bin.is_file():
+        pytest.skip(f"console script not found at {kb_bin} (needs `uv sync --extra serve`)")
+
+    port = _free_port()
+    env = _base_env(indexed_dsn, fake_ollama_http)
+    env["KB_TOKENS"] = ""
+    env["KB_AUTH"] = "off"
+    env["KB_BIND"] = f"127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [str(kb_bin), "serve", "--transport", "http"],
+        cwd=str(REPO_ROOT),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        _wait_for_health(base_url, proc)
+        resp = httpx.post(
+            f"{base_url}/mcp",
+            json={
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                           "clientInfo": {"name": "test", "version": "0"}},
+            },
+            headers={"Accept": "application/json, text/event-stream"},
+            timeout=5.0,
+        )
+        assert resp.status_code == 200, resp.text
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+def test_serve_http_starts_without_kb_url_base(
+    indexed_dsn: str, fake_ollama_http: str
+) -> None:
+    """KB_URL_BASE used to be required, because every result carried a link built from
+    it. The deployment now serves no documents and sets none, so requiring it would stop
+    the server starting."""
+    kb_bin = _kb_bin()
+    if not kb_bin.is_file():
+        pytest.skip(f"console script not found at {kb_bin} (needs `uv sync --extra serve`)")
+
+    port = _free_port()
+    env = _base_env(indexed_dsn, fake_ollama_http)
+    # Empty, not deleted: `kb serve` also reads the repo's .env, which would fill a
+    # missing variable back in, while an empty one is kept and means unset (config.py).
+    env["KB_URL_BASE"] = ""
+    env["KB_TOKENS"] = TOKEN
+    env["KB_BIND"] = f"127.0.0.1:{port}"
+
+    proc = subprocess.Popen(
+        [str(kb_bin), "serve", "--transport", "http"],
+        cwd=str(REPO_ROOT),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+        _wait_for_health(f"http://127.0.0.1:{port}", proc)
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
 def test_serve_http_with_only_revoked_tokens_exits_2(
     indexed_dsn: str, fake_ollama_http: str, tmp_path: Path
 ) -> None:

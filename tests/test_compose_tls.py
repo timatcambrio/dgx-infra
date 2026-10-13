@@ -51,7 +51,7 @@ def test_an_sni_less_client_is_given_a_default_certificate() -> None:
 def test_the_default_certificate_is_one_the_site_has() -> None:
     """`default_sni` naming anything the site block does not list would hand out a
     certificate Caddy never issues, turning a handshake failure into a name mismatch."""
-    text = _text()
+    text = _text().replace("__SCHEME__", "")  # filled by caddy-entrypoint.sh
     site_line = next(l for l in text.splitlines() if l.startswith(PUBLIC_HOST))
     names = [n.strip() for n in site_line.rstrip("{").strip().split(",")]
     assert PUBLIC_HOST in names, site_line
