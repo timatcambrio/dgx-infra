@@ -24,15 +24,15 @@ instead.
 | Withdrawing one person's access | one command | not possible; access is the network's to control |
 | Traffic between users and the DGX | encrypted | unencrypted |
 
-That last row and the two before it are the cost of the switch, and the decision to accept
-them is your organisation's. The IT brief describes both options.
+The last three rows are what the switch gives up. Whether to accept that is a decision for
+your organisation; the IT brief describes both options.
 
 ## Before you start
 
-- **Port 80 must be open** from the user network to the DGX. Until now only 443 was
+- Port 80 must be open from the user network to the DGX. Until now only 443 was
   needed. Check with whoever manages the network; if port 80 is closed, users will be
   unable to connect after the switch.
-- **Change every user's settings at the same time.** The old `https://` address stops
+- Change every user's settings at the same time. The old `https://` address stops
   working the moment the DGX restarts. [Users' computers](#users-computers) says what each
   person changes.
 - About 15 minutes on the DGX, logged in as `kbadmin`, either at the DGX's keyboard or with
@@ -47,6 +47,9 @@ them is your organisation's. The IT brief describes both options.
 cd ~/dgx-infra
 git pull
 ```
+
+If the code was copied to the DGX from a Mac rather than cloned there, update it from the
+Mac instead, as in [Get the latest code](troubleshooting.md#1-get-the-latest-code).
 
 **Expect** the update to download and finish without errors. Then confirm this version has
 the two settings the switch uses:
@@ -177,8 +180,8 @@ On Windows: also its icon in the system tray, if it has one.
 **Expect** Codex to answer a question from the documents, with a citation, as before.
 
 A settings file that still has the credential block keeps working, and those requests are
-logged under that person's name, so there is no harm in a user who has not removed it yet.
-What does not work is the old `https://` address.
+logged under that person's name, so a user who has not removed it yet is not a problem.
+Only the old `https://` address stops working.
 
 ### Removing the certificate (optional)
 
