@@ -643,7 +643,7 @@ Open `.env` (`nano .env`) and make the change for each switch you want:
 | Switch | Change in `.env` |
 |---|---|
 | HTTPS to plain HTTP | add `KB_TLS=off`, and delete the `TLS_CERT` and `TLS_KEY` lines |
-| Plain HTTP to HTTPS | delete `KB_TLS=off`, then create the certificate and add its two lines as in [step 6](#the-certificate) |
+| Plain HTTP to HTTPS | delete `KB_TLS=off`, and add the certificate's two lines as in [step 6](#the-certificate). If `tls/cert.pem` and `tls/key.pem` are still there, the same lines work; otherwise create the certificate first |
 | Credentials to none | add `KB_AUTH=off` |
 | None to credentials | delete `KB_AUTH=off`, and issue at least one credential first ([step 8](#8-issue-your-credential)); without one the service will not start |
 
@@ -668,7 +668,8 @@ Last, users' settings have to match the new ones:
   back), and the port from 443 to 80 (or back). The old address stops working at once,
   so change everyone's settings at the same time. The network has to allow the new port
   from the user network; port 80 is often closed where only HTTPS was expected. Going
-  back to HTTPS makes a new certificate, so each computer trusts it again
+  back to HTTPS with the same certificate needs nothing more on users' computers that
+  still trust it; with a new one, each computer trusts it again
   ([step 14](#14-check-from-a-second-computer)).
 - **To no credentials**, existing settings that still carry a credential keep working,
   and those requests are still logged under that person's name. The line can be removed.
