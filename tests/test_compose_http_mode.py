@@ -53,6 +53,8 @@ def _check(tmp_path: Path, env_text: str, *args: str) -> subprocess.CompletedPro
     "KB_TLS=on\nTLS_CERT=/c.pem\nTLS_KEY=/k.pem\n",
     "KB_TLS=off\n",
     'KB_TLS="off"\n',
+    "KB_TLS=off\nKB_AUTH=off\n",
+    "KB_AUTH=on\n",
 ])
 def test_consistent_settings_pass(tmp_path: Path, env_text: str) -> None:
     got = _check(tmp_path, env_text)
@@ -62,6 +64,11 @@ def test_consistent_settings_pass(tmp_path: Path, env_text: str) -> None:
 @pytest.mark.parametrize("env_text, names", [
     ("KB_TLS=off\nTLS_CERT=/c.pem\nTLS_KEY=/k.pem\n", "TLS_CERT"),
     ("KB_TLS=no\n", "KB_TLS"),
+    # KB_AUTH is read by kb serve, which refuses anything but on/off -- inside the
+    # container, after `make compose-up` has reported success, so the search server
+    # restarts in a loop and users see 502. The pre-flight has to refuse it first.
+    ("KB_AUTH=of\n", "KB_AUTH"),
+    ("KB_TLS=off\nKB_AUTH=no\n", "KB_AUTH"),
 ])
 def test_each_mismatch_is_refused_by_name(tmp_path: Path, env_text: str, names: str) -> None:
     got = _check(tmp_path, env_text)
