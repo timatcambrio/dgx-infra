@@ -157,7 +157,7 @@ $COMPOSE exec -T db psql -U postgres -d kb -tA \
     -c "select 'chunks:    ' || count(*) from chunks" 2>&1 | head -n 4
 
 section "Ports 80 and 443 on this host"
-# Who holds each port, in words. `ss -p` cannot name a process owned by another user
+# Which program uses each port, in words. `ss -p` cannot name a process owned by another user
 # without sudo, and Docker's port forwarder runs as root, so the owner is worked out from
 # Docker instead: a published port belongs to the container that publishes it, and a port
 # that is listening but published by no container belongs to something outside Docker.
@@ -173,7 +173,7 @@ for p in 80 443; do
     elif [ -n "$holders" ]; then
         say "port $p: used by another container: $holders ($need)"
     elif [ -n "$listening" ]; then
-        say "port $p: used by a program outside Docker ($need); sudo ss -ltnp 'sport = :$p' names it"
+        say "port $p: used by a program outside Docker ($need); sudo ss -ltnp 'sport = :$p' shows which"
     else
         say "port $p: free ($need)"
     fi

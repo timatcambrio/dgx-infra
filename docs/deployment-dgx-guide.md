@@ -191,7 +191,7 @@ first, Docker creates them owned by `root`, and you would then need `sudo` to fi
 
 ## 6. Choose how people connect
 
-Two separate choices. The defaults are the most protective; each alternative asks less of
+There are two separate choices. The defaults are the most protective; each alternative asks less of
 users and protects less. Either can be changed later without reinstalling; see
 [Change how people connect](#change-how-people-connect).
 
@@ -631,7 +631,7 @@ Repeat this step whenever documents are added or removed.
 | Restart the service | `make compose-down`, then `make compose-up` |
 | Check it is running | `curl -sS --cacert tls/cert.pem https://<KB_HOST>/health` (plain HTTP: `curl -sS http://<KB_HOST>/health`) |
 | Back up | `/srv/kb`, `.env`, the `tls/` directory (HTTPS only), and `~/dgx-knowledge` |
-| Update the code | `git pull`, `make compose-up`, then `make compose-index`. `make compose-up` also removes any container the new version no longer uses |
+| Update the code | `git pull` (or, for code copied from a Mac, [rsync](troubleshooting.md#1-get-the-latest-code)), `make compose-up`, then `make compose-index`. `make compose-up` also removes any container the new version no longer uses |
 | Switch between HTTPS and plain HTTP, or turn credentials on or off | [Change how people connect](#change-how-people-connect) |
 
 ## Change how people connect
@@ -670,16 +670,16 @@ the new settings.
 
 Last, users' settings have to match the new ones:
 
-- **Between HTTPS and plain HTTP**, the address changes from `https://` to `http://` (or
+- Between HTTPS and plain HTTP, the address changes from `https://` to `http://` (or
   back), and the port from 443 to 80 (or back). The old address stops working at once,
   so change everyone's settings at the same time. The network has to allow the new port
   from the user network; port 80 is often closed where only HTTPS was expected. Going
   back to HTTPS with the same certificate needs nothing more on users' computers that
   still trust it; with a new one, each computer trusts it again
   ([step 14](#14-check-from-a-second-computer)).
-- **To no credentials**, existing settings that still carry a credential keep working,
+- To no credentials: existing settings that still contain a credential keep working,
   and those requests are still logged under that person's name. The line can be removed.
-- **To credentials**, everyone needs one ([step 15](#15-give-each-person-a-credential))
+- To credentials: everyone needs one ([step 15](#15-give-each-person-a-credential))
   before they can connect again.
 
 ## When something does not work
@@ -692,4 +692,4 @@ Last, users' settings have to match the new ones:
 | An error about the host name | `KB_PUBLIC_HOST` is not the name the computer dialled ([step 4](#4-create-the-settings-file)) |
 | `Cannot write to the output directory` during conversion | the `convert` command was changed; paste the one in [step 11](#11-convert-the-test-documents) again |
 | A credential stops working | it was withdrawn; check `make token ARGS=list` |
-| Nothing answers, a container keeps restarting, or step 13 cannot find a document | see [When the service does not answer](troubleshooting.md), which starts with a script that collects the cause |
+| Nothing answers, a container keeps restarting, or step 13 fails to connect | [When the service does not answer](troubleshooting.md), which starts with a script that collects what is needed to find the cause |

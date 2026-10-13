@@ -49,7 +49,7 @@ by a host name that must resolve on those networks and, with HTTPS, match the ce
 ([TLS](#tls)).
 
 The reverse proxy answers two paths: a health check and the search interface. Everything
-else returns 404. Converted documents are not served as files; their text reaches users only
+else returns 404. Converted documents are not served as files; users get their text only
 through the search interface.
 
 ## Egress
