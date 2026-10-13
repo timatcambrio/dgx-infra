@@ -65,9 +65,10 @@ Outbound fetches happen at install and update time:
 
 ## TLS
 
-TLS terminates at the reverse proxy, using a certificate issued by a private CA we generate for
-this deployment. Each user's machine is set to trust that CA once. The certificate is issued for
-the host name users dial.
+TLS terminates at the reverse proxy, using a self-signed certificate (RSA 2048, valid 825 days)
+generated on the DGX during installation. Each user's machine is set to trust that certificate
+once. It is issued for the host name or IP address users dial. A certificate from your
+organisation's own certificate authority can be used instead.
 
 Plain HTTP is available as an alternative, chosen by the installing administrator with one
 setting. It removes the certificate and the trust step entirely, and the service answers on
