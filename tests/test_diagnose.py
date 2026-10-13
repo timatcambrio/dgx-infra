@@ -126,3 +126,14 @@ def test_no_secret_from_env_or_the_private_key_is_printed(tmp_path):
         assert f"{key} is set (value not shown)" in out
     body = "".join((root / "tls" / "key.pem").read_text().splitlines()[1:-1])
     assert body[:40] not in out.replace("\n", "")
+
+
+def test_plain_http_skips_the_certificate_and_names_leftover_certificate_lines(tmp_path):
+    """With KB_TLS=off the proxy refuses to start while TLS_CERT/TLS_KEY are still set."""
+    root = _layout(tmp_path)
+    with (root / ".env").open("a", encoding="utf-8") as f:
+        f.write("KB_TLS=off\nKB_AUTH=off\n")
+    out = _run(root)
+    assert "mode: http on port 80" in out
+    assert "plain HTTP: no certificate is used" in out
+    assert "TLS_CERT/TLS_KEY are set alongside KB_TLS=off" in out
