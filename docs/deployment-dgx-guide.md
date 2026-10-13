@@ -634,7 +634,10 @@ Repeat this step whenever documents are added or removed.
 ## Change how people connect
 
 Switches an installed service between HTTPS and plain HTTP, or turns credentials on or off
-([step 6](#6-choose-how-people-connect) explains each choice). Nothing is reinstalled: the
+([step 6](#6-choose-how-people-connect) explains each choice). For the most common switch,
+from HTTPS with credentials to plain HTTP with none, follow
+[Switching to plain HTTP with no credentials](switch-to-plain-http.md), which walks through
+it end to end, users' computers included. Nothing is reinstalled: the
 documents, the index and the credentials are kept, and nothing is converted or indexed
 again.
 
