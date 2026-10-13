@@ -6,6 +6,13 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-13 [USER+CODE] Tim ran `aws-http-upgrade-test-guide.md` on the AWS instance
+  (stage 1 run on the branch's probe: 17/19, the two failures being the old `/kb/` route
+  and link, as expected); stages 4 to 6 matched, stage 6 19/19. Client guide
+  `docs/switch-to-plain-http.md` added (HTTPS + tokens to HTTP + none, users' side,
+  switching back via `.env.before-http`). Pre-flight now refuses a mistyped `KB_AUTH`
+  (was a crash loop behind 502). make check 689 passed / 2 skipped. 3 commits not pushed.
+  To ship: add `docs:switch-to-plain-http.md` to `publish/config.sh` allowlist after merge.
 - 2026-10-11 [USER+CODE] **In-place switching, same branch (13 commits, not merged, not
   pushed).** `make compose-up` now passes `--remove-orphans` (test
   `tests/test_compose_upgrade.py`); guide gains "Change how people connect" (per-switch
