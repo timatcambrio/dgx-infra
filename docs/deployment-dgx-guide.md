@@ -203,6 +203,9 @@ certificate in [step 14](#14-check-from-a-second-computer).
 sh scripts/make_tls_cert.sh <KB_HOST> <DGX_IP>
 ```
 
+Give the name or IP alone, exactly as in `KB_PUBLIC_HOST`, with no `https://`; the script
+refuses anything else.
+
 It writes `tls/cert.pem` and `tls/key.pem`, and prints two lines. Add them to `.env`:
 
 ```bash
@@ -586,3 +589,4 @@ Repeat this step whenever documents are added or removed.
 | An error about the host name | `KB_PUBLIC_HOST` is not the name the computer dialled ([step 4](#4-create-the-settings-file)) |
 | `Cannot write to the output directory` during conversion | the `convert` command was changed; paste the one in [step 11](#11-convert-the-test-documents) again |
 | A credential stops working | it was withdrawn; check `make token ARGS=list` |
+| Nothing answers, a container keeps restarting, or step 13 cannot find a document | see [When the service does not answer](troubleshooting.md), which starts with a script that collects the cause |
