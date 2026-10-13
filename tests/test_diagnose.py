@@ -137,3 +137,19 @@ def test_plain_http_skips_the_certificate_and_names_leftover_certificate_lines(t
     assert "mode: http on port 80" in out
     assert "plain HTTP: no certificate is used" in out
     assert "TLS_CERT/TLS_KEY are set alongside KB_TLS=off" in out
+
+
+def test_a_port_held_outside_docker_is_named_without_sudo(tmp_path):
+    """Without sudo `ss` cannot name another user's process, and Docker's forwarder runs as
+    root, so "a process other than docker-proxy" is not something the operator can see.
+    The script must say who holds the port in words instead."""
+    root = _layout(tmp_path, tls_lines=False)
+    fake = root.parent / "bin"
+    fake.mkdir(exist_ok=True)
+    (fake / "ss").write_text(
+        '#!/bin/sh\ncase "$*" in *":443"*) echo "LISTEN 0 511 0.0.0.0:443 0.0.0.0:*";; esac\n',
+        encoding="utf-8")
+    (fake / "ss").chmod(0o755)
+    out = _run(root)
+    assert "port 443: used by a program outside Docker (needed by this service)" in out
+    assert "port 80: free (not needed in this mode)" in out

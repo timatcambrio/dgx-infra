@@ -156,12 +156,28 @@ $COMPOSE exec -T db psql -U postgres -d kb -tA \
     -c "select 'documents: ' || count(*) from documents" \
     -c "select 'chunks:    ' || count(*) from chunks" 2>&1 | head -n 4
 
-section "Ports in use on this host (80 and 443)"
-if command -v ss >/dev/null 2>&1; then
-    ss -ltnp 2>/dev/null | awk 'NR == 1 || $4 ~ /:(80|443)$/'
-else
-    say "ss not found"
-fi
+section "Ports 80 and 443 on this host"
+# Who holds each port, in words. `ss -p` cannot name a process owned by another user
+# without sudo, and Docker's port forwarder runs as root, so the owner is worked out from
+# Docker instead: a published port belongs to the container that publishes it, and a port
+# that is listening but published by no container belongs to something outside Docker.
+caddy_id=$($COMPOSE --profile prod ps -a -q caddy 2>/dev/null | head -n 1)
+caddy_name=$( [ -n "$caddy_id" ] && docker inspect -f '{{.Name}}' "$caddy_id" 2>/dev/null | sed 's#^/##')
+for p in 80 443; do
+    if [ "$p" = "$PORT" ]; then need="needed by this service"; else need="not needed in this mode"; fi
+    holders=$(docker ps --filter "publish=$p" --format '{{.Names}}' 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+    listening=""
+    command -v ss >/dev/null 2>&1 && listening=$(ss -ltnH "sport = :$p" 2>/dev/null)
+    if [ -n "$caddy_name" ] && printf '%s\n' $holders | grep -qx "$caddy_name"; then
+        say "port $p: used by this service's proxy ($need)"
+    elif [ -n "$holders" ]; then
+        say "port $p: used by another container: $holders ($need)"
+    elif [ -n "$listening" ]; then
+        say "port $p: used by a program outside Docker ($need); sudo ss -ltnp 'sport = :$p' names it"
+    else
+        say "port $p: free ($need)"
+    fi
+done
 
 section "Requests from this host"
 if command -v getent >/dev/null 2>&1 && [ -n "$HOST" ]; then
