@@ -6,6 +6,12 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-13 [CODE] Also merged to main (still not pushed; Tim's push was blocked for the
+  agent): diagnose.sh now says which program uses ports 80 and 443 (from Docker, no sudo)
+  and whether the mode needs it; troubleshooting.md section 4 "Finish an installation that
+  stopped at step 13" (plain HTTP + no credentials, Mac check, step 16, second diagnose
+  run); KB_URL_BASE mention dropped; slop pass over new docs. make check: 707 passed, 2
+  skipped. No custom-port setting exists yet; build only if diagnose shows 80 taken.
 - 2026-10-13 [CODE] **Merged to main, not pushed:** `fix/tls-cert-script` (make_tls_cert.sh
   refuses a host with scheme/port/path/space, writes the pair to temp names, checks they
   match, then moves both; shows openssl's error; names a Docker-made directory),
