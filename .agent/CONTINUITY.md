@@ -6,6 +6,14 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-13 [CODE] **Merged to main, not pushed:** `fix/tls-cert-script` (make_tls_cert.sh
+  refuses a host with scheme/port/path/space, writes the pair to temp names, checks they
+  match, then moves both; shows openssl's error; names a Docker-made directory),
+  `scripts/diagnose.sh` + `docs/troubleshooting.md` (client runs it, sends output; prints
+  no secret), `feat/plain-http-option`, and `docs/troubleshooting-http-mode`. make check on
+  merged main: 705 passed, 2 skipped (db + ollama up). diagnose.sh verified in Ubuntu 24.04
+  against a real caddy restart loop (mismatched pair): it named the mismatch and Caddy's
+  error line, and printed no planted secret.
 - 2026-10-13 [USER+CODE] Tim ran `aws-http-upgrade-test-guide.md` on the AWS instance
   (stage 1 run on the branch's probe: 17/19, the two failures being the old `/kb/` route
   and link, as expected); stages 4 to 6 matched, stage 6 19/19. Client guide
