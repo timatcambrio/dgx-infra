@@ -43,6 +43,7 @@ through their own assistant.
 | Convert documents and read the report and the converted markdown | [Document conversion](docs/conversion.md) |
 | Understand search and the MCP tools, or connect an assistant | [Search and the MCP server](docs/search-and-mcp.md) |
 | Reindex, manage credentials and certificates, or check a deployment | [Administration](docs/administration.md) |
+| Find out why the service does not answer | [When the service does not answer](docs/troubleshooting.md) |
 | Measure whether conversion and search find the right text | [Evaluation](docs/evaluation.md) |
 | Work on the code | [Development](docs/development.md) |
 
