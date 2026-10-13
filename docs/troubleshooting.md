@@ -121,21 +121,17 @@ before you start.
 Do sections 1 and 2 first, and send us `diagnose.txt` before going on. It records how the
 DGX was set up before these changes.
 
-Open the settings file:
+Change the settings file with these three commands, so no editor is needed. The first
+keeps a copy of the current file, the second deletes the certificate lines and the unused
+`KB_URL_BASE` line, and the third adds the two new settings:
 
 ```bash
-nano .env
+cp .env .env.before-http
+sed -i '/^\(TLS_CERT\|TLS_KEY\|KB_URL_BASE\)=/d' .env
+printf '\nKB_TLS=off\nKB_AUTH=off\n' >> .env
 ```
 
-Add these two lines at the end:
-
-```bash
-KB_TLS=off
-KB_AUTH=off
-```
-
-Delete any lines that start with `TLS_CERT=`, `TLS_KEY=` or `KB_URL_BASE=`. Save
-(Control-O, Return) and exit (Control-X). Check the result:
+Check the result:
 
 ```bash
 grep -E '^(KB_TLS|KB_AUTH|TLS_CERT|TLS_KEY|KB_URL_BASE)=' .env
