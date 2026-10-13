@@ -3,8 +3,7 @@
 Use this page when [step 13 of the guide](deployment-dgx-guide.md#13-test-the-service-from-the-dgx)
 or a check from another computer fails, for example with:
 
-- `could not work out which document to request` from step 13 (in versions before this
-  page existed; the current check names the failure itself);
+- `FAIL` on `the stack answers at all` or `TLS handshake completes` from step 13;
 - `Connection refused` or a timeout from `curl`;
 - a container listed as `Restarting`.
 
@@ -12,19 +11,14 @@ You run one script on the DGX. It collects everything needed to find the cause, 
 send us its output. The table below covers the causes we have seen, so you may be able to
 fix it straight away.
 
-Two of those messages mislead:
-
-- **`could not work out which document to request`** almost always means the check could
-  not reach the service at all, not that documents are missing.
-- **`Connection refused` on port 80** is expected with HTTPS. Over HTTPS the service
-  listens only on port 443, so an address typed without `https://` (which `curl` sends to
-  port 80) is refused. Always include `https://` in front of the address. With plain HTTP
-  (`KB_TLS=off`) it is the other way round: port 80 only, and `http://`.
+One message misleads: **`Connection refused` on port 80** is expected with HTTPS. Over
+HTTPS the service listens only on port 443, so an address typed without `https://` (which
+`curl` sends to port 80) is refused. Always include `https://` in front of the address.
+With plain HTTP (`KB_TLS=off`) it is the other way round: port 80 only, and `http://`.
 
 ## 1. Get the latest code
 
-The script and a fix to the certificate script are in the latest version. Update the code
-on the DGX the way you first put it there.
+Update the code on the DGX the way you first put it there, so the script below is present.
 
 **If the DGX can reach GitHub**, on the DGX:
 
