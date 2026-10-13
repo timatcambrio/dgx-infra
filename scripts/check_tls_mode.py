@@ -1,4 +1,4 @@
-"""Pre-flight for `make compose-up`: the settings that depend on HTTPS versus HTTP agree.
+"""Pre-flight for `make compose-up`: the settings that choose how people connect are valid.
 
 `KB_TLS=off` serves the stack over plain HTTP on port 80, for a deployment whose network
 and VPN are its boundary and whose users should not have to trust a certificate. Unset or
@@ -7,6 +7,10 @@ and VPN are its boundary and whose users should not have to trust a certificate.
 A certificate must not be set alongside it: Caddy refuses one on a site it serves over
 HTTP and would not start, and the front door would simply stop answering without naming
 the cause (see tests/test_compose_http_mode.py).
+
+`KB_AUTH` is checked here too, though only `kb serve` reads it. It refuses anything but
+`on` or `off`, but inside the container, after Compose has reported success, so a typo
+shows up as the search server restarting in a loop and users seeing 502.
 
     python3 scripts/check_tls_mode.py [.env]          exit 2 naming the mismatch, else 0
     python3 scripts/check_tls_mode.py --port [.env]   print the port Caddy listens on
@@ -54,6 +58,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if mode not in PORTS:
         print(f"KB_TLS must be `on` or `off` (or unset, meaning on). Found KB_TLS={mode}",
+              file=sys.stderr)
+        return 2
+
+    auth = (env.get("KB_AUTH", "") or "on").strip().lower()
+    if auth not in ("on", "off"):
+        print(f"KB_AUTH must be `on` or `off` (or unset, meaning on). Found KB_AUTH={auth}",
               file=sys.stderr)
         return 2
 
