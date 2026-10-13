@@ -3,7 +3,8 @@
 Use this page when [step 13 of the guide](deployment-dgx-guide.md#13-test-the-service-from-the-dgx)
 or a check from another computer fails, for example with:
 
-- `could not work out which document to request` from step 13;
+- `could not work out which document to request` from step 13 (in versions before this
+  page existed; the current check names the failure itself);
 - `Connection refused` or a timeout from `curl`;
 - a container listed as `Restarting`.
 
@@ -17,7 +18,8 @@ Two of those messages mislead:
   not reach the service at all, not that documents are missing.
 - **`Connection refused` on port 80** is expected with HTTPS. Over HTTPS the service
   listens only on port 443, so an address typed without `https://` (which `curl` sends to
-  port 80) is refused. Always include `https://` in front of the address.
+  port 80) is refused. Always include `https://` in front of the address. With plain HTTP
+  (`KB_TLS=off`) it is the other way round: port 80 only, and `http://`.
 
 ## 1. Get the latest code
 
@@ -67,7 +69,9 @@ file it is. Lines naming who used the service are removed from the log.
 ## 3. Read the result
 
 Look for these lines in `diagnose.txt`. Each one names a cause and its fix. After any fix,
-run `make compose-up`, then the script again.
+run `make compose-up`, then the script again. The script says near the top which mode the
+service is in (`mode: https on port 443` or `mode: http on port 80`). With plain HTTP no
+certificate is used, so the certificate rows do not apply.
 
 | The output says | Cause | Fix |
 |---|---|---|
@@ -79,7 +83,7 @@ run `make compose-up`, then the script again.
 | `KB_PUBLIC_HOST ... is not a bare name or IP` | `.env` has `https://`, a port or a `/` in `KB_PUBLIC_HOST` | Use the name or IP alone, e.g. `KB_PUBLIC_HOST=10.20.30.40`. `KB_URL_BASE` keeps its `https://`. |
 | `is not among the certificate's names` | The certificate was made for a different name than `KB_PUBLIC_HOST` | Make a new pair with the `KB_PUBLIC_HOST` value |
 | `Windows line endings` | The code passed through a Windows computer | Copy it again from a Mac or Linux clone, as in section 1 |
-| A process other than `docker-proxy` on port 443 | Another service on the DGX already uses the port | Stop that service, or tell us and we will move ours |
+| A process other than `docker-proxy` on port 443 (80 with plain HTTP) | Another service on the DGX already uses the port | Stop that service, or tell us and we will move ours |
 | `kb-mcp` shows `Restarting` | The search server cannot start. Its log section says why. | Send us the output |
 | `documents: 0` | Nothing has been indexed yet | Steps [11](deployment-dgx-guide.md#11-convert-the-test-documents) and [12](deployment-dgx-guide.md#12-index-the-documents) |
 | `https://localhost/health -> 200` but the line for your address times out | The address does not lead to this DGX, or a firewall blocks it | Check `<KB_HOST>` resolves to this DGX's IP, as shown in the same section |
