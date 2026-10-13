@@ -43,6 +43,19 @@ PUBLIC_HOST=${1:-}
 }
 shift
 
+# Every name must be bare: no scheme, port, path or space. Measured 2026-10-13: given
+# `https://<ip>`, openssl wrote a new key, then refused the name and wrote no certificate,
+# leaving a pair Caddy will not load. Refused here, before anything is written.
+for name in "$PUBLIC_HOST" "$@"; do
+    case $name in
+        *[!A-Za-z0-9.-]*|'')
+            printf '%s is not a bare host name or IP address. Give the name alone, with no\n' "'$name'" >&2
+            printf 'https://, port or trailing /, e.g. 10.20.30.40 or dgx01.example.org.\n' >&2
+            printf 'Nothing was written.\n' >&2
+            exit 2 ;;
+    esac
+done
+
 command -v openssl >/dev/null 2>&1 || {
     printf 'no openssl on this host. Every Ubuntu and macOS image ships one; if this is a\n' >&2
     printf 'minimal image, generate the pair in a container instead:\n' >&2
@@ -54,6 +67,18 @@ command -v openssl >/dev/null 2>&1 || {
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT="$HERE/tls"
 mkdir -p "$OUT"
+
+# Docker creates a missing bind-mount source as an empty directory, owned by root. That is
+# what `tls/cert.pem` becomes if the stack was started with TLS_CERT set before this script
+# ever ran, and openssl cannot write over it.
+for f in "$OUT/cert.pem" "$OUT/key.pem"; do
+    if [ -d "$f" ]; then
+        printf '%s is a directory, not a file. Docker creates one when the stack starts\n' "$f" >&2
+        printf 'with TLS_CERT/TLS_KEY pointing at a file that does not exist yet. Remove it\n' >&2
+        printf '(sudo rmdir %s) and run this again. Nothing was written.\n' "$f" >&2
+        exit 2
+    fi
+done
 
 # Every name the Caddyfile's site block answers for, plus whatever else was asked for.
 # `localhost`/`127.0.0.1` are not padding: the deployment is probed from the host itself
@@ -77,20 +102,44 @@ for n in $IP_NAMES;  do SAN="${SAN:+$SAN,}IP:$n"; done
 
 printf 'subjectAltName = %s\n' "$SAN" >&2
 
+# The pair is written under temporary names and moved into place only once both exist and
+# match, so a failure part way leaves whatever pair was there before untouched. openssl
+# writes the key first; writing it straight to key.pem is what produced the mismatch.
+NEW_KEY="$OUT/.key.pem.new"
+NEW_CERT="$OUT/.cert.pem.new"
+ERR="$OUT/.openssl.err"
+trap 'rm -f "$NEW_KEY" "$NEW_CERT" "$ERR"' EXIT
+
 # -nodes: no passphrase. Caddy starts unattended and there is nobody to type one.
 # 825 days is the CA/Browser-Forum maximum a public client will accept; irrelevant to a
 # self-signed test cert but it costs nothing to stay inside what clients tolerate.
-openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 825 \
-    -keyout "$OUT/key.pem" -out "$OUT/cert.pem" \
+# openssl's stderr is kept rather than discarded: it is the only explanation of a failure.
+if ! openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 825 \
+    -keyout "$NEW_KEY" -out "$NEW_CERT" \
     -subj "/CN=$PUBLIC_HOST" \
     -addext "subjectAltName = $SAN" \
     -addext "basicConstraints = critical,CA:TRUE" \
-    2>/dev/null
+    2>"$ERR"; then
+    printf '\nopenssl could not make the certificate:\n\n' >&2
+    cat "$ERR" >&2
+    printf '\nThe existing files in %s were left as they were.\n' "$OUT" >&2
+    exit 1
+fi
+
+cert_pub=$(openssl x509 -in "$NEW_CERT" -noout -pubkey 2>/dev/null) || cert_pub=""
+key_pub=$(openssl pkey -in "$NEW_KEY" -pubout 2>/dev/null) || key_pub=""
+if [ -z "$cert_pub" ] || [ "$cert_pub" != "$key_pub" ]; then
+    printf 'openssl produced a certificate and key that do not match. The existing files in\n' >&2
+    printf '%s were left as they were.\n' "$OUT" >&2
+    exit 1
+fi
 
 # The caddy image runs as root, so 0600 is readable by it through the bind mount. Keep it
 # narrow anyway: this is a private key on a host that may have other logins.
-chmod 600 "$OUT/key.pem"
-chmod 644 "$OUT/cert.pem"
+chmod 600 "$NEW_KEY"
+chmod 644 "$NEW_CERT"
+mv -f "$NEW_KEY" "$OUT/key.pem"
+mv -f "$NEW_CERT" "$OUT/cert.pem"
 
 printf '\nwrote %s\n' "$OUT/cert.pem" >&2
 printf 'wrote %s (mode 0600)\n\n' "$OUT/key.pem" >&2
