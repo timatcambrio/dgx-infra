@@ -17,7 +17,7 @@ from typing import Any
 
 from . import StopAndAsk
 from .config import Config
-from .converters import csv_table, markdown, normalize_markdown, office, pdf
+from .converters import csv_table, markdown, normalize_markdown, office, pdf, slides
 from .frontmatter import build as build_frontmatter
 from .frontmatter import render as render_frontmatter
 from .manifest import (
@@ -226,6 +226,12 @@ def _dispatch(
         )
         return body, converter, STATUS_WRITTEN, provenance, extras
 
+    if source_format == "pptx":
+        body, converter, provenance, extras = slides.convert_with_provenance(
+            source_path, config, provenance_slug=entry["slug"]
+        )
+        return body, converter, STATUS_WRITTEN, provenance, extras
+
     if source_format == "md":
         body, converter, provenance, extras = markdown.convert_with_provenance(
             source_path, provenance_slug=entry["slug"]
@@ -238,7 +244,7 @@ def _dispatch(
 def _needs_provenance_sidecar(source_format: str, text_class: str) -> bool:
     if source_format == "pdf":
         return text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL)
-    return source_format in ("docx", "doc", "csv", "md")
+    return source_format in ("docx", "doc", "csv", "md", "pptx")
 
 
 def _render_provenance_sidecar(

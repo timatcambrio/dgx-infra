@@ -35,7 +35,7 @@ FIELD_ORDER = (
     "content_sha256",
 )
 
-VALID_FORMATS = frozenset({"pdf", "docx", "doc", "csv", "md"})
+VALID_FORMATS = frozenset({"pdf", "docx", "doc", "csv", "md", "pptx"})
 VALID_TEXT_CLASSES = frozenset({"clean", "partial", "needs_ocr"})
 UNCONFIRMED = "UNCONFIRMED"
 

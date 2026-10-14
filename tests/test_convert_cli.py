@@ -131,3 +131,20 @@ def test_prune_removes_missing_entries_and_their_outputs_only_with_yes(workspace
 
     again = runner.invoke(app, ["prune", "--source-dir", str(source), "--yes"])
     assert again.exit_code == 0 and "Nothing to prune" in again.output
+
+
+def test_google_shortcuts_are_reported_with_how_to_export_them(workspace):
+    """A synced Google Drive folder holds `.gslides`/`.gdoc` shortcuts with no content.
+
+    Counted only as an unsupported extension, a whole folder of decks looked ignored for no
+    reason; the report says what to do instead.
+    """
+    _, source = workspace
+    (source / "review.gslides").write_text('{"doc_id": "x"}', encoding="utf-8")
+    (source / "memo.gdoc").write_text('{"doc_id": "y"}', encoding="utf-8")
+
+    result = runner.invoke(app, ["inventory", "--source-dir", str(source)])
+
+    assert result.exit_code == 0, result.output
+    assert "download it from Google Slides as .pptx" in result.output
+    assert "download it from Google Docs as .docx" in result.output

@@ -6,6 +6,15 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-14 [CODE] `feat/markdown-source` merged to local main (65f8fb9), not pushed.
+  Branch `feat/pptx-source` (not merged, not pushed): `.pptx` via `pipeline/converters/slides.py`,
+  python-pptx walk (docling-slim[format-pptx] extra) reusing docling `_is_list_item` and
+  `_iter_shapes_by_position` (private; tests catch drift). [TOOL] Measured: docling 2.126 own
+  PPTX walk flattens nested bullets. Page = slide number; `## Slide N: title`; notes kept;
+  comments dropped; hidden slides marked; chart data as table; SmartArt text from diagram
+  data part; subtitle is a paragraph (as `###` the sectioniser filed slide 2 under it).
+  Citations say `slides a-b` for pptx. Inventory hints for .gslides/.gdoc/.gsheet. Fixture
+  `deck.pptx` + golden. make check 749 passed, 2 skipped. Next: phase 3, .ppt/.odp via soffice.
 - 2026-10-14 [CODE] Branch `feat/markdown-source` (not merged, not pushed): `.md`/`.markdown`
   converted verbatim by `pipeline/converters/markdown.py` (markdown-it-py, now a declared
   dependency, used only for block boundaries; `normalize_markdown` skipped for md). Source

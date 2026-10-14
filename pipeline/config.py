@@ -26,6 +26,7 @@ SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".csv": "csv",
     ".md": "md",
     ".markdown": "md",
+    ".pptx": "pptx",
 }
 
 #: Docling's OCR engine, pinned even though OCR is off for this whole phase.
