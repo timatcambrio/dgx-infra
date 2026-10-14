@@ -91,6 +91,27 @@ def render_block_provenance(
     return "\n\n".join(parts), provenance
 
 
+def render_paged_block_provenance(
+    pages: list[tuple[int, list[tuple[str, str, str]]]], slug: str
+) -> tuple[str, list[dict[str, Any]]]:
+    """Anchor blocks that belong to numbered pages (a deck's slides) and build their records.
+
+    Ids are `<slug>:pNNN:bNNN` with the block count restarting on each page, the convention
+    `pdf._render_blocks` uses, and each record carries its page number. No `bbox`: a slide's
+    blocks are placed by reading order, not measured on the page.
+    """
+    parts: list[str] = []
+    provenance: list[dict[str, Any]] = []
+    for page, blocks in pages:
+        for index, (text, kind, confidence) in enumerate(blocks, start=1):
+            block_id = f"{slug}:p{page:03d}:b{index:03d}"
+            parts.append(f"<!-- dgx:block={block_id} -->\n{text}")
+            provenance.append(
+                {"block_id": block_id, "page": page, "kind": kind, "confidence": confidence}
+            )
+    return "\n\n".join(parts), provenance
+
+
 def _normalize_leaders(line: str) -> str:
     """Collapse leader runs; split a joined table of contents into one entry per line."""
     if "...." not in line and ". . . ." not in line:

@@ -4,7 +4,8 @@ server's `fetch`/`get_section` share one implementation instead of two.
 
 Citation format: `"{title}, {heading_path} (source: {source_file}, pages {a}-{b}, dated
 {doc_date}; blocks {first_block_id}...{last_block_id})"`, omitting the pages clause when
-pages are null. `source_file` and the block ids are looked up, never guessed.
+pages are null. A deck's pages are its slides, so its clause says `slides {a}-{b}`.
+`source_file` and the block ids are looked up, never guessed.
 """
 
 from __future__ import annotations
@@ -12,6 +13,16 @@ from __future__ import annotations
 from typing import Optional
 
 import asyncpg
+
+#: Source formats whose page numbers are slide numbers.
+SLIDE_FORMATS = frozenset({"pptx"})
+
+
+def _is_deck(source_format: Optional[str], source_file: Optional[str]) -> bool:
+    if source_format is not None:
+        return source_format in SLIDE_FORMATS
+    suffix = (source_file or "").rsplit(".", 1)[-1].lower() if "." in (source_file or "") else ""
+    return suffix in SLIDE_FORMATS
 
 
 def build_citation(
@@ -24,10 +35,12 @@ def build_citation(
     doc_date: str,
     first_block_id: str,
     last_block_id: str,
+    source_format: Optional[str] = None,
 ) -> str:
     pages_clause = ""
     if page_first is not None and page_last is not None:
-        pages_clause = f", pages {page_first}–{page_last}"
+        unit = "slides" if _is_deck(source_format, source_file) else "pages"
+        pages_clause = f", {unit} {page_first}–{page_last}"
     return (
         f"{title}, {heading_path} (source: {source_file}{pages_clause}, "
         f"dated {doc_date}; blocks {first_block_id}…{last_block_id})"

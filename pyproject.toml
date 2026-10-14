@@ -19,7 +19,7 @@ dependencies = [
     # sees them. Naming extras keeps them off the machine in the first place.
     #
     # The PDF extras live in [project.optional-dependencies] below, not here.
-    "docling-slim[format-docx]>=2.126.0,<3",
+    "docling-slim[format-docx,format-pptx]>=2.126.0,<3",
     "pypdfium2>=5.0.3,<6",          # BSD   - page text extraction for triage
     "pdfplumber>=0.11.7,<0.12",     # MIT   - table geometry rescue
     "pyyaml>=6.0.2,<7",             # MIT   - corpus.yaml

@@ -40,7 +40,7 @@ def _blocks_on(sidecar: dict, page: int) -> list[dict]:
 
 def _block_text(text: str, block_id: str) -> str:
     after = text.split(f"<!-- dgx:block={block_id} -->\n", 1)[1]
-    return after.split("\n\n<!-- dgx:block=", 1)[0]
+    return after.split("\n\n<!-- dgx:block=", 1)[0].rstrip("\n")
 
 
 def test_pptx_extension_is_inventoried():
@@ -79,14 +79,16 @@ def test_block_ids_and_pages_are_slide_numbers(converted):
     assert sorted({b["page"] for b in sidecar["blocks"]}) == [1, 2, 3, 4, 5, 6]
 
 
-def test_headings_inside_a_slide_sit_below_the_slide_heading(converted):
-    """A subtitle or second title must not open a section above its own slide."""
+def test_each_slide_with_content_is_its_own_section(converted):
+    """A subtitle emitted as a heading had nothing under it, so the sectioniser merged it
+    into the next section and slide 2's bullets were filed under slide 1's subtitle."""
     _, output, _, _ = converted
     document = load_document(output)
     levels = [b.level for b in document.blocks if b.kind == "heading"]
     assert all(level >= 2 for level in levels)
-    titles = [s.heading_path for s in build_sections(document)]
-    assert any("Slide 2: Travel Rates" in path for path in titles)
+    paths = [s.heading_path for s in build_sections(document)]
+    assert "Deck › Slide 2: Travel Rates" in paths
+    assert not any("Quarterly travel status" in path for path in paths)
 
 
 def test_nested_bullets_keep_their_level(converted):

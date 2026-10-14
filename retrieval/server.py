@@ -286,6 +286,7 @@ def _build_citation(doc: asyncpg.Record, *, heading_path: str, page_first, page_
         title=doc["title"],
         heading_path=heading_path,
         source_file=doc["source_file"],
+        source_format=doc["source_format"],
         page_first=page_first,
         page_last=page_last,
         doc_date=doc["doc_date"],
