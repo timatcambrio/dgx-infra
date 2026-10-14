@@ -6,6 +6,24 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-14 [USER] **Open problem, to come back to: there is no corpus/markdown management.**
+  Sources change on purpose or by accident (edited, renamed, moved, a same-named sibling
+  added) and that changes what conversion produces: file names, block ids, citations.
+  Today the only remedy is reconvert + reindex, which may not be reasonable for a large
+  corpus. Needs a design (stable document identity independent of path? incremental
+  reindex? change log?) before the client corpus grows. Not started.
+- 2026-10-14 [TOOL] Real LibreOffice check (throwaway container, LibreOffice 7.4.7, Debian
+  bookworm): deck.pptx -> .ppt/.odp by soffice, then the pipeline with a docker-backed
+  `soffice` on PATH. Bodies identical to the .pptx output except SmartArt, which LibreOffice
+  had already dropped making the inputs (the fixture SmartArt has no drawing fallback part).
+  SUPERSEDES "real soffice step UNTESTED" for decks. [DISCOVERY] slug is path minus
+  extension, so `deck.ppt` + `deck.odp` (or `x.pdf` + `x.docx`) in one folder write the same
+  kb/ file; inventory does not detect it. Pre-existing; not fixed.
+- 2026-10-14 [CODE] `feat/pptx-source` merged to local main (3203318), not pushed. Branch
+  `feat/legacy-slides`: `.ppt`/`.odp` -> `soffice_convert` (shared with .doc; removes stale
+  WORK_DIR output first) -> `.pptx` converter; converter `libreoffice+python-pptx (slides)`.
+  [TOOL] LibreOffice is not installed on the dev Mac and not in the deployment image, so the
+  real soffice step is UNTESTED; tests use a stand-in. make check 757 passed, 2 skipped.
 - 2026-10-14 [CODE] `feat/markdown-source` merged to local main (65f8fb9), not pushed.
   Branch `feat/pptx-source` (not merged, not pushed): `.pptx` via `pipeline/converters/slides.py`,
   python-pptx walk (docling-slim[format-pptx] extra) reusing docling `_is_list_item` and
@@ -189,6 +207,12 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   documents carry a discoverable `doc_date`.
 
 ## [DECISIONS]
+- 2026-10-14 [USER] **Same-stem collision: option A decided.** Every slug includes the
+  source extension (`deck.pdf` -> `deck-pdf`, `deck.pptx` -> `deck-pptx`), so no two sources
+  share a kb/ file. Accepted cost: every existing name, block id and citation changes once;
+  everything is reconverted and reindexed. Chosen now because the client has likely not
+  indexed a real corpus yet (DGX stuck at step 13). Rejected: B (extension only on a clash;
+  names stable but a later sibling renames an existing file). To be built in its own session.
 - 2026-10-01 [TOOL→DECISION] **`KB_URL_BASE` is the site root, and `kb-static` stays rooted
   at the corpus.** The doubled `/kb` segment in every citation url had two self-consistent
   repairs and only one of them is safe. Rooting `kb-static` at `${KB_PATH}` would make

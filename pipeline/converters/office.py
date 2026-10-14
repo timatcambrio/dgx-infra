@@ -1,4 +1,4 @@
-"""DOCX, and legacy DOC/DOT via LibreOffice.
+"""DOCX, and legacy DOC/DOT via LibreOffice. `soffice_convert` also serves legacy decks.
 
 Legacy `.doc` / `.dot` go through `soffice` as a **subprocess**. That is the whole reason
 LibreOffice is usable here: invoking a separate program is not linking, so its copyleft
@@ -29,6 +29,7 @@ CONVERTER_DOCLING = "docling (docx)"
 CONVERTER_LIBREOFFICE_DOCLING = "libreoffice+docling"
 
 SOFFICE_BINARY = "soffice"
+MAC_SOFFICE = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
 #: Timeout for one LibreOffice invocation. It is a GUI application in headless clothing and
 #: will hang forever on a malformed file rather than exit non-zero.
 SOFFICE_TIMEOUT_SECONDS = 180
@@ -59,12 +60,11 @@ def find_soffice() -> str:
     if found:
         return found
 
-    mac_bundle = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
-    if mac_bundle.is_file():
-        return str(mac_bundle)
+    if MAC_SOFFICE.is_file():
+        return str(MAC_SOFFICE)
 
     raise SofficeMissingError(
-        f"{SOFFICE_BINARY!r} not found on PATH. Legacy .doc/.dot conversion needs "
+        f"{SOFFICE_BINARY!r} not found on PATH. Legacy .doc/.dot, .ppt and .odp conversion needs "
         "LibreOffice, invoked as a subprocess. Install it and pin its major version -- see "
         "docs/development.md, 'LibreOffice (subprocess only)'. There is no fallback: a "
         "copyleft Python library is not an option."
@@ -72,26 +72,35 @@ def find_soffice() -> str:
 
 
 def doc_to_docx(path: Path, config: Config) -> Path:
-    """Convert a legacy `.doc`/`.dot` to `.docx` inside `WORK_DIR`.
+    """Convert a legacy `.doc`/`.dot` to `.docx` inside `WORK_DIR`."""
+    return soffice_convert(path, config, "docx", "doc2docx")
 
-    `WORK_DIR` is disposable: deleting it must only ever cost time, never information.
+
+def soffice_convert(path: Path, config: Config, target: str, subdir: str) -> Path:
+    """Convert `path` to the `target` format with LibreOffice, into `WORK_DIR/<subdir>`.
+
+    `WORK_DIR` is disposable: deleting it must only ever cost time, never information. A
+    file left there by an earlier run is removed first, so a conversion that fails cannot
+    be mistaken for one that worked, and two sources with the same stem cannot hand each
+    other their output.
     """
     soffice = find_soffice()
-    outdir = config.work_dir / "doc2docx"
+    outdir = config.work_dir / subdir
     outdir.mkdir(parents=True, exist_ok=True)
+    produced = outdir / f"{path.stem}.{target}"
+    produced.unlink(missing_ok=True)
 
     completed = subprocess.run(  # noqa: S603 - fixed binary, no shell, path-only argument
-        [soffice, "--headless", "--convert-to", "docx", "--outdir", str(outdir), str(path)],
+        [soffice, "--headless", "--convert-to", target, "--outdir", str(outdir), str(path)],
         capture_output=True,
         text=True,
         timeout=SOFFICE_TIMEOUT_SECONDS,
         check=False,
     )
 
-    produced = outdir / f"{path.stem}.docx"
     if not produced.is_file():
         raise SofficeConversionError(
-            f"LibreOffice produced no .docx for {path.name} "
+            f"LibreOffice produced no .{target} for {path.name} "
             f"(exit {completed.returncode}).\nstdout: {completed.stdout.strip()}\n"
             f"stderr: {completed.stderr.strip()}"
         )

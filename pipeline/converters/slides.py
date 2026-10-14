@@ -1,5 +1,8 @@
 """PowerPoint decks (`.pptx`). Google Slides arrive as a `.pptx` exported from Slides.
 
+Legacy `.ppt` and OpenDocument `.odp` decks are turned into a `.pptx` by LibreOffice first,
+as a subprocess into `WORK_DIR`, the same route legacy Word files take.
+
 Each slide is one page: its blocks are anchored `pNNN` with NNN the slide number, and the
 slide opens with `## Slide N: <title>` so a reader (and the sectioniser) can find it by the
 number people use for it.
@@ -34,9 +37,13 @@ from typing import Any
 from ..config import Config
 from . import render_paged_block_provenance
 from .csv_table import escape_cell
-from .office import PICTURE_MARKER, _sanitise_package
+from .office import PICTURE_MARKER, _sanitise_package, soffice_convert
 
 CONVERTER_PPTX = "python-pptx (slides)"
+CONVERTER_LIBREOFFICE_PPTX = "libreoffice+python-pptx (slides)"
+
+#: Deck formats LibreOffice turns into `.pptx` before conversion.
+LEGACY_SUFFIXES = (".ppt", ".odp")
 
 HIDDEN_MARKER = "> **Hidden slide:** not shown when the deck is presented."
 
@@ -270,7 +277,10 @@ def convert_with_provenance(
     `extras` records `images`, `charts`, `hidden_slides`, `unreadable_smartart` and
     `dangling_relationships` for the manifest and the report.
     """
-    del config  # nothing to configure yet; kept for the shared converter signature
+    converter = CONVERTER_PPTX
+    if path.suffix.lower() in LEGACY_SUFFIXES:
+        path = soffice_convert(path, config, "pptx", "slides2pptx")
+        converter = CONVERTER_LIBREOFFICE_PPTX
     backend, dangling = _load(path)
     presentation = backend.pptx_obj
     counts = {"images": 0, "charts": 0, "hidden_slides": 0, "unreadable_smartart": 0}
@@ -317,4 +327,4 @@ def convert_with_provenance(
         body = "\n\n".join([*notes, body])
 
     extras = {**counts, "dangling_relationships": len(dangling)}
-    return body, CONVERTER_PPTX, provenance, extras
+    return body, converter, provenance, extras

@@ -15,7 +15,7 @@ from typing import Optional
 import asyncpg
 
 #: Source formats whose page numbers are slide numbers.
-SLIDE_FORMATS = frozenset({"pptx"})
+SLIDE_FORMATS = frozenset({"pptx", "ppt", "odp"})
 
 
 def _is_deck(source_format: Optional[str], source_file: Optional[str]) -> bool:

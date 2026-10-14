@@ -226,7 +226,7 @@ def _dispatch(
         )
         return body, converter, STATUS_WRITTEN, provenance, extras
 
-    if source_format == "pptx":
+    if source_format in ("pptx", "ppt", "odp"):
         body, converter, provenance, extras = slides.convert_with_provenance(
             source_path, config, provenance_slug=entry["slug"]
         )
@@ -244,7 +244,7 @@ def _dispatch(
 def _needs_provenance_sidecar(source_format: str, text_class: str) -> bool:
     if source_format == "pdf":
         return text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL)
-    return source_format in ("docx", "doc", "csv", "md", "pptx")
+    return source_format in ("docx", "doc", "csv", "md", "pptx", "ppt", "odp")
 
 
 def _render_provenance_sidecar(
