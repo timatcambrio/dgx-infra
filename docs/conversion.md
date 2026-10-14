@@ -1,6 +1,6 @@
 # Document conversion
 
-Point this at a folder of documents (PDF, DOCX, legacy DOC, CSV, Markdown). It writes clean markdown
+Point this at a folder of documents (PDF, DOCX, legacy DOC, CSV, Markdown, PowerPoint). It writes clean markdown
 with metadata, and a report saying which documents converted completely and which did not.
 
 Nothing here uses a model. No OCR, no LLM, no ML runtime, and nothing is downloaded while it
@@ -86,7 +86,7 @@ and paste the result into a ticket.
 | `needs_ocr` | Not enough readable text to convert. Needs OCR, which this pipeline does not do. |
 | `error` | The file could not be opened. Encrypted files get their own message. |
 
-DOCX, CSV and Markdown skip triage, since their text is structural rather than drawn on a page, and are
+DOCX, CSV, Markdown and PowerPoint skip triage, since their text is structural rather than drawn on a page, and are
 recorded as `clean`.
 
 The three measurements behind the class:
@@ -150,7 +150,7 @@ Every file opens with frontmatter recording where it came from, what converted i
 text coverage, including `needs_ocr: true` where that applies. Whatever consumes the markdown
 can then tell a complete document from an incomplete one without working it out again.
 
-Every converted document (PDF, DOCX, DOC, CSV and Markdown alike) has a sidecar next to it, and
+Every converted document (PDF, DOCX, DOC, CSV, Markdown and PowerPoint alike) has a sidecar next to it, and
 every content block has a stable HTML comment anchor immediately before it:
 
 ```markdown
@@ -187,6 +187,34 @@ the document (`travel-handbook:p000:b004`; `p000` reads as "no page"). Their `ki
 mapped with confidence, or `"docling:<label>"` naming the item type when it met something the
 mapping does not have a rule for, so an unfamiliar block type is visible rather than silently
 flattened into ordinary prose.
+
+### PowerPoint decks
+
+A `.pptx` file converts one slide to one page: its blocks are anchored with the slide number
+(`deck:p007:b002` is on slide 7), and each slide opens with a heading, `## Slide 7: <title>`,
+or `## Slide 7` when the slide has no title. Citations for a deck name slides rather than
+pages (`slides 7–8`).
+
+**Google Slides:** download the deck with **File > Download > Microsoft PowerPoint (.pptx)**
+and put the `.pptx` in the source folder. A Google Drive folder synced to disk holds only
+`.gslides` shortcuts with no content; `make inventory` lists them as skipped and says to
+download them. The same applies to `.gdoc` (download as `.docx`) and `.gsheet` (as `.csv`).
+
+What a deck carries beyond its slide text:
+
+| What | What happens |
+| --- | --- |
+| Bullets | Kept as a list at their indent level. |
+| Tables | Kept as markdown tables. |
+| Charts | The plotted numbers are kept as a table under `**Chart:** <chart title>`. `corpus.yaml` counts them under `conversion.charts`. |
+| Speaker notes | Kept at the end of their slide as `> **Speaker notes:** ...`. |
+| Hidden slides | Kept, with `> **Hidden slide:** not shown when the deck is presented.` under the slide heading. Counted under `conversion.hidden_slides`. |
+| SmartArt | Its text is kept as a list, after the slide's other content. A diagram whose text cannot be read is counted in an INCOMPLETE note. |
+| Pictures | Marked in place with `> **Image:**`, as for Word, and counted in an INCOMPLETE note at the top. |
+| Reviewer comments | Left out, as for Word. |
+
+A slide with only a title (a section divider) is searched together with the slide after it,
+so the citation for that content spans both slides.
 
 ### Markdown sources
 
