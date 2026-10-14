@@ -1205,6 +1205,60 @@ def toc_page(path: Path) -> None:
     canvas.save()
 
 
+#: A Markdown handbook page: front matter, a setext heading, dotted leaders, a code fence
+#: with a `#` line and inner blank lines, a table, a nested list, a reference definition, an
+#: image, and a line shaped like a block anchor. Each is something the converter must carry
+#: through unchanged (or, for the anchor, escape) rather than tidy.
+NOTES_MARKDOWN = """---
+title: Travel Notes
+date: 2026-02-10
+owner: Finance Office
+---
+
+Travel Notes
+============
+
+Contents ........ 1
+Rates . . . . . . 2
+
+## Rates
+
+Lodging is reimbursed at the published rate.  
+Meals follow the daily allowance.
+
+| Code | Expense category | Limit |
+|---|---|---|
+| L1 | Lodging | 180 |
+| M1 | Meals | 64 |
+
+- Before travel
+  - Request approval
+  - Book through the travel desk
+- After travel
+
+  Submit receipts within sixty days.
+
+```text
+# example claim line, not a heading
+
+
+CLAIM L1 180
+```
+
+See the [rate table][rates] and the map below.
+
+![Office map](map.png)
+
+<!-- dgx:block=notes:p001:b001 -->
+
+[rates]: https://example.invalid/rates
+"""
+
+
+def notes_markdown(path: Path) -> None:
+    path.write_bytes(NOTES_MARKDOWN.encode("utf-8"))
+
+
 GENERATORS = {
     "born_digital.pdf": born_digital,
     "toc_page.pdf": toc_page,
@@ -1217,6 +1271,7 @@ GENERATORS = {
     "dangling_rels.docx": dangling_rels_docx,
     "reference_table.csv": reference_table_csv,
     "too_big.csv": too_big_csv,
+    "notes.md": notes_markdown,
     "annotated_form.pdf": annotated_form,
     "linked_form.pdf": linked_form,
     "ruled_form.pdf": ruled_form,
