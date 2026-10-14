@@ -6,6 +6,13 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-14 [CODE] Branch `feat/markdown-source` (not merged, not pushed): `.md`/`.markdown`
+  converted verbatim by `pipeline/converters/markdown.py` (markdown-it-py, now a declared
+  dependency, used only for block boundaries; `normalize_markdown` skipped for md). Source
+  front matter kept as a fenced yaml block, supplies title and ISO date; anchor-shaped lines
+  get one leading space (`conversion.escaped_anchors`); images get an INCOMPLETE note.
+  kbfiles: setext heading levels; no missing-pages parsing for md. Fixture `notes.md` +
+  golden. [TOOL] make check: 729 passed, 2 skipped (db + ollama up). Next: phase 2, PPTX.
 - 2026-10-13 [CODE] Also merged to main (still not pushed; Tim's push was blocked for the
   agent): diagnose.sh now says which program uses ports 80 and 443 (from Docker, no sudo)
   and whether the mode needs it; troubleshooting.md section 4 "Finish an installation that
