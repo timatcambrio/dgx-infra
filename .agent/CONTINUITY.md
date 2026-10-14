@@ -6,6 +6,13 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-14 [TOOL] Real LibreOffice check (throwaway container, LibreOffice 7.4.7, Debian
+  bookworm): deck.pptx -> .ppt/.odp by soffice, then the pipeline with a docker-backed
+  `soffice` on PATH. Bodies identical to the .pptx output except SmartArt, which LibreOffice
+  had already dropped making the inputs (the fixture SmartArt has no drawing fallback part).
+  SUPERSEDES "real soffice step UNTESTED" for decks. [DISCOVERY] slug is path minus
+  extension, so `deck.ppt` + `deck.odp` (or `x.pdf` + `x.docx`) in one folder write the same
+  kb/ file; inventory does not detect it. Pre-existing; not fixed.
 - 2026-10-14 [CODE] `feat/pptx-source` merged to local main (3203318), not pushed. Branch
   `feat/legacy-slides`: `.ppt`/`.odp` -> `soffice_convert` (shared with .doc; removes stale
   WORK_DIR output first) -> `.pptx` converter; converter `libreoffice+python-pptx (slides)`.
