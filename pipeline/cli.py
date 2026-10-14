@@ -158,7 +158,17 @@ def inventory(
     if skipped:
         typer.echo("\nSkipped, unsupported extension:")
         for extension, count in sorted(skipped.items()):
-            typer.echo(f"  {extension:<12}: {count}")
+            hint = _SHORTCUT_HINTS.get(extension)
+            typer.echo(f"  {extension:<12}: {count}" + (f"  ({hint})" if hint else ""))
+
+
+#: A Google Drive folder synced to disk holds shortcuts for Google's own formats: small
+#: files naming a document online, with none of its content.
+_SHORTCUT_HINTS = {
+    ".gslides": "Google shortcut, no content: download it from Google Slides as .pptx",
+    ".gdoc": "Google shortcut, no content: download it from Google Docs as .docx",
+    ".gsheet": "Google shortcut, no content: download it from Google Sheets as .csv",
+}
 
 
 @app.command()
