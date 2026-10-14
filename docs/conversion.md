@@ -1,6 +1,6 @@
 # Document conversion
 
-Point this at a folder of documents (PDF, DOCX, legacy DOC, CSV, Markdown, PowerPoint). It writes clean markdown
+Point this at a folder of documents (PDF, DOCX, legacy DOC, CSV, Markdown, PowerPoint including legacy PPT and ODP). It writes clean markdown
 with metadata, and a report saying which documents converted completely and which did not.
 
 Nothing here uses a model. No OCR, no LLM, no ML runtime, and nothing is downloaded while it
@@ -37,7 +37,8 @@ That is the only setting you have to fill in. Everything else in `.env.example` 
 out with its default shown. To change any of the others, uncomment the corresponding line
 and edit it.
 
-Legacy `.doc` and `.dot` files also need LibreOffice. See [LibreOffice (subprocess
+Legacy `.doc` and `.dot` files, and legacy `.ppt` and OpenDocument `.odp` decks, also need
+LibreOffice. See [LibreOffice (subprocess
 only)](development.md#libreoffice-subprocess-only). Every other format works with `uv sync`
 alone.
 
@@ -190,7 +191,8 @@ flattened into ordinary prose.
 
 ### PowerPoint decks
 
-A `.pptx` file converts one slide to one page: its blocks are anchored with the slide number
+A `.pptx` file converts one slide to one page (a `.ppt` or `.odp` deck too, once LibreOffice
+has turned it into a `.pptx`): its blocks are anchored with the slide number
 (`deck:p007:b002` is on slide 7), and each slide opens with a heading, `## Slide 7: <title>`,
 or `## Slide 7` when the slide has no title. Citations for a deck name slides rather than
 pages (`slides 7–8`).

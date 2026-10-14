@@ -59,17 +59,19 @@ stops being true. Models a future conversion path would fetch are recorded under
 
 ## LibreOffice (subprocess only)
 
-Legacy `.doc` and `.dot` conversion shells out to the `soffice` binary:
+Legacy `.doc` and `.dot` conversion, and legacy `.ppt` and `.odp` decks, shell out to the
+`soffice` binary:
 
 ```bash
 soffice --headless --convert-to docx --outdir "$WORK_DIR/doc2docx/" <file>
+soffice --headless --convert-to pptx --outdir "$WORK_DIR/slides2pptx/" <file>
 ```
 
 If `soffice` is missing the pipeline fails with an error naming it. There is no fallback to a
 copyleft Python library.
 
-> Pin the major version and match it across machines. LibreOffice's `.doc` import filter is
-> not byte-stable between releases, and byte-stable output is a hard requirement here. The
+> Pin the major version and match it across machines. LibreOffice's `.doc` and `.ppt` import
+> filters are not byte-stable between releases, and byte-stable output is a hard requirement here. The
 > pin is not decided yet, so this path is currently unexercised.
 
 ## Platform constraint
