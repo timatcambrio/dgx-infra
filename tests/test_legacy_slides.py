@@ -43,8 +43,11 @@ def legacy_config(tmp_path, source_root, monkeypatch):
 def fake_soffice(monkeypatch):
     """Stand in for LibreOffice: write the fixture deck where `--outdir` says."""
     calls: list[list[str]] = []
+    real_run = subprocess.run
 
-    def run(args, **_kwargs):
+    def run(args, **kwargs):
+        if not args or args[0] != "soffice":
+            return real_run(args, **kwargs)  # only LibreOffice is stood in for
         calls.append(list(args))
         outdir = Path(args[args.index("--outdir") + 1])
         target = args[args.index("--convert-to") + 1]
