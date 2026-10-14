@@ -32,6 +32,7 @@ GOLDEN_BY_FIXTURE = {
     "boxed_notes.pdf": "boxed_notes.md",
     "simple.docx": "simple.md",
     "tables_and_image.docx": "tables_and_image.md",
+    "notes.md": "notes.md",
 }
 
 

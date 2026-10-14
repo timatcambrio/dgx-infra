@@ -1,6 +1,6 @@
 # Document conversion
 
-Point this at a folder of documents (PDF, DOCX, legacy DOC, CSV). It writes clean markdown
+Point this at a folder of documents (PDF, DOCX, legacy DOC, CSV, Markdown). It writes clean markdown
 with metadata, and a report saying which documents converted completely and which did not.
 
 Nothing here uses a model. No OCR, no LLM, no ML runtime, and nothing is downloaded while it
@@ -86,7 +86,7 @@ and paste the result into a ticket.
 | `needs_ocr` | Not enough readable text to convert. Needs OCR, which this pipeline does not do. |
 | `error` | The file could not be opened. Encrypted files get their own message. |
 
-DOCX and CSV skip triage, since their text is structural rather than drawn on a page, and are
+DOCX, CSV and Markdown skip triage, since their text is structural rather than drawn on a page, and are
 recorded as `clean`.
 
 The three measurements behind the class:
@@ -150,7 +150,7 @@ Every file opens with frontmatter recording where it came from, what converted i
 text coverage, including `needs_ocr: true` where that applies. Whatever consumes the markdown
 can then tell a complete document from an incomplete one without working it out again.
 
-Every converted document (PDF, DOCX, DOC and CSV alike) has a sidecar next to it, and
+Every converted document (PDF, DOCX, DOC, CSV and Markdown alike) has a sidecar next to it, and
 every content block has a stable HTML comment anchor immediately before it:
 
 ```markdown
@@ -187,6 +187,29 @@ the document (`travel-handbook:p000:b004`; `p000` reads as "no page"). Their `ki
 mapped with confidence, or `"docling:<label>"` naming the item type when it met something the
 mapping does not have a rule for, so an unfamiliar block type is visible rather than silently
 flattened into ordinary prose.
+
+### Markdown sources
+
+A `.md` or `.markdown` file is already markdown, so it is not rebuilt. It is cut into blocks
+at its headings, paragraphs, lists, tables and code blocks, and every line is copied as the
+author wrote it: dotted leaders, trailing spaces and blank lines inside code blocks included.
+Only the blank lines between blocks are not kept. Its blocks carry `page: null`, like Word.
+Code blocks, quotes, raw HTML and rules are `kind: "paragraph"` with `confidence` naming the
+construct (`"markdown:fence"`, `"markdown:blockquote"` and so on).
+
+Two things differ from the source, and both are visible:
+
+- **Front matter.** A `---` block at the top of the file is kept, unchanged, as a fenced
+  `yaml` block at the top of the body (`confidence: "markdown:front_matter"`). Its `title`
+  becomes the document title, and its `date` becomes `doc_date` if it is an ISO date
+  (`2026-03-04`), unless `corpus.yaml` already gives either one.
+- **Lines that look like an anchor.** A line starting with `<!-- dgx:block=` would be read as
+  a block boundary, so it gets one leading space. The block is marked
+  `confidence: "markdown:anchor-escaped"` and `corpus.yaml` counts them under
+  `conversion.escaped_anchors`.
+
+A Markdown file that shows images opens with an INCOMPLETE note giving the count, since the
+pictures are not in the text; the image lines themselves stay where they were.
 
 When an answer needs verification, cite both places: the markdown file and `dgx:block=...`
 for the extracted text, plus the sidecar's `source_file` and, for a PDF, `page` for the
@@ -353,6 +376,8 @@ and the reason.
 - A source file that changed since it was recorded. Each entry stores a checksum, and a
   mismatch is a loud error rather than a silent re-convert.
 - An encrypted or password-protected PDF.
+- A Markdown file that is not UTF-8. Re-save it as UTF-8; guessing the encoding would
+  corrupt every accented character.
 - A file listed in `corpus.yaml` but no longer in `SOURCE_DIR` is reported `MISSING` and the
   run carries on. The entry is never deleted and the run never fails because of it. To
   remove such entries and the `kb/` files they produced, run `make inventory` so the marks

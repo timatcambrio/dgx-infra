@@ -64,15 +64,27 @@ class Document:
 
 
 def _heading_level(text: str) -> int:
-    """Leading '#' count of the first line, 1-6; 3 if the block does not start with '#'."""
-    first_line = text.splitlines()[0] if text else ""
+    """Leading '#' count of the first line, 1-6; for a setext heading (a line underlined
+    with `=` or `-`, which Markdown sources use) 1 or 2; otherwise 3."""
+    lines = text.splitlines()
+    first_line = lines[0] if lines else ""
     m = re.match(r"^(#{1,6})(?:\s|$)", first_line)
     if m:
         return len(m.group(1))
+    if len(lines) >= 2:
+        underline = lines[-1].strip()
+        if underline and set(underline) == {"="}:
+            return 1
+        if underline and set(underline) == {"-"}:
+            return 2
     return 3
 
 
-def _parse_incomplete_pages(body: str) -> list[int]:
+def _parse_incomplete_pages(body: str, meta: dict[str, Any]) -> list[int]:
+    # The missing-pages note is written only by the PDF converter. A Markdown source has no
+    # pages, so the same words there are the author's, not a note.
+    if meta.get("source_format") == "md":
+        return []
     pages: set[int] = set()
     for m in _INCOMPLETE_RE.finditer(body):
         pages.update(int(n) for n in re.findall(r"\d+", m.group(1)))
@@ -171,7 +183,7 @@ def _load_with_sidecar(
         meta=meta,
         blocks=blocks,
         has_sidecar=True,
-        incomplete_pages=_parse_incomplete_pages(body),
+        incomplete_pages=_parse_incomplete_pages(body, meta),
         page_count=page_count,
         dropped_empty_blocks=dropped,
         chars=len(body),
@@ -237,7 +249,7 @@ def _load_fallback(slug: str, md_path: Path, meta: dict[str, Any], body: str) ->
         meta=meta,
         blocks=blocks,
         has_sidecar=False,
-        incomplete_pages=_parse_incomplete_pages(body),
+        incomplete_pages=_parse_incomplete_pages(body, meta),
         page_count=None,
         dropped_empty_blocks=0,
         chars=len(body),

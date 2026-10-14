@@ -25,6 +25,7 @@ dependencies = [
     "pyyaml>=6.0.2,<7",             # MIT   - corpus.yaml
     "python-frontmatter>=1.1.0,<2", # MIT   - kb/ frontmatter
     "typer>=0.19.2,<0.20",          # MIT   - CLI
+    "markdown-it-py>=4.0,<5",      # MIT   - Markdown sources: block boundaries only
 ]
 
 [project.optional-dependencies]
