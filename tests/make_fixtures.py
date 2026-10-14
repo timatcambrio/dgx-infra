@@ -1205,6 +1205,212 @@ def toc_page(path: Path) -> None:
     canvas.save()
 
 
+#: SmartArt's text lives in a separate diagram-data part, not on the slide. python-pptx
+#: cannot author SmartArt, so the fixture carries a minimal data part by hand: a document
+#: point, three node points with text, and the connector points SmartArt files also hold.
+_DGM_NS = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+_R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+SMARTART_STEPS = ("Request approval", "Book through the travel desk", "Submit receipts")
+REVIEWER_COMMENT = "Reviewer remark: check these rates before release"
+
+
+def _smartart_data_xml() -> bytes:
+    def node(model_id: str, text: str) -> str:
+        return (
+            f'<dgm:pt modelId="{model_id}"><dgm:prSet/><dgm:spPr/><dgm:t><a:bodyPr/>'
+            f"<a:lstStyle/><a:p><a:r><a:rPr/><a:t>{text}</a:t></a:r></a:p></dgm:t></dgm:pt>"
+        )
+
+    points = ['<dgm:pt modelId="{00000000-0000-0000-0000-000000000000}" type="doc">'
+              "<dgm:prSet/><dgm:spPr/><dgm:t><a:bodyPr/><a:lstStyle/><a:p/></dgm:t></dgm:pt>"]
+    for index, step in enumerate(SMARTART_STEPS, start=1):
+        points.append(node(f"{{00000000-0000-0000-0000-00000000000{index}}}", step))
+        points.append(
+            f'<dgm:pt modelId="{{00000000-0000-0000-0000-00000000010{index}}}" type="parTrans">'
+            "<dgm:prSet/><dgm:spPr/><dgm:t><a:bodyPr/><a:lstStyle/><a:p/></dgm:t></dgm:pt>"
+        )
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f'<dgm:dataModel xmlns:dgm="{_DGM_NS}" xmlns:a="{_A_NS}">'
+        f"<dgm:ptLst>{''.join(points)}</dgm:ptLst><dgm:cxnLst/><dgm:bg/><dgm:whole/>"
+        "</dgm:dataModel>"
+    ).encode("utf-8")
+
+
+def _add_smartart(slide) -> None:
+    from lxml import etree
+    from pptx.opc.packuri import PackURI
+    from pptx.opc.package import Part
+
+    data_part = Part(
+        PackURI("/ppt/diagrams/data1.xml"),
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
+        slide.part.package,
+        _smartart_data_xml(),
+    )
+    r_id = slide.part.relate_to(
+        data_part, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData"
+    )
+    frame = etree.fromstring(
+        '<p:graphicFrame xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        f'xmlns:a="{_A_NS}" xmlns:r="{_R_NS}">'
+        '<p:nvGraphicFramePr><p:cNvPr id="90" name="Diagram 1"/><p:cNvGraphicFramePr/><p:nvPr/>'
+        "</p:nvGraphicFramePr>"
+        '<p:xfrm><a:off x="914400" y="1828800"/><a:ext cx="6400800" cy="2743200"/></p:xfrm>'
+        f'<a:graphic><a:graphicData uri="{_DGM_NS}">'
+        f'<dgm:relIds xmlns:dgm="{_DGM_NS}" r:dm="{r_id}"/>'
+        "</a:graphicData></a:graphic></p:graphicFrame>"
+    )
+    slide.shapes._spTree.append(frame)
+
+
+def _add_reviewer_comment(presentation, slide) -> None:
+    """A legacy slide comment, which the converter must leave out of `kb/`."""
+    from pptx.opc.packuri import PackURI
+    from pptx.opc.package import Part
+
+    ns = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    authors = Part(
+        PackURI("/ppt/commentAuthors.xml"),
+        "application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml",
+        presentation.part.package,
+        (
+            f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:cmAuthorLst xmlns:p="{ns}">'
+            '<p:cmAuthor id="0" name="fixture" initials="F" lastIdx="1" clrIdx="0"/>'
+            "</p:cmAuthorLst>"
+        ).encode("utf-8"),
+    )
+    presentation.part.relate_to(
+        authors,
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/commentAuthors",
+    )
+    comments = Part(
+        PackURI("/ppt/comments/comment1.xml"),
+        "application/vnd.openxmlformats-officedocument.presentationml.comments+xml",
+        presentation.part.package,
+        (
+            f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:cmLst xmlns:p="{ns}">'
+            '<p:cm authorId="0" dt="2020-01-01T00:00:00.000" idx="1"><p:pos x="10" y="10"/>'
+            f"<p:text>{REVIEWER_COMMENT}</p:text></p:cm></p:cmLst>"
+        ).encode("utf-8"),
+    )
+    slide.part.relate_to(
+        comments, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments"
+    )
+
+
+def _normalise_embedded_xlsx(blob: bytes) -> bytes:
+    """A chart's data workbook is a zip inside the zip, stamped with the time it was made."""
+    import re
+
+    with zipfile.ZipFile(BytesIO(blob)) as archive:
+        payload = {name: archive.read(name) for name in sorted(archive.namelist())}
+    if "docProps/core.xml" in payload:
+        payload["docProps/core.xml"] = re.sub(
+            rb"(<dcterms:(created|modified)[^>]*>)[^<]*",
+            rb"\g<1>2020-01-01T00:00:00Z",
+            payload["docProps/core.xml"],
+        )
+    out = BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in payload.items():
+            info = zipfile.ZipInfo(name, date_time=ZIP_DATE_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o600 << 16
+            archive.writestr(info, data)
+    return out.getvalue()
+
+
+def deck_pptx(path: Path) -> None:
+    """A six-slide deck with one of each thing a real deck carries.
+
+    1. a title slide with a subtitle; 2. nested bullets, speaker notes and a reviewer
+    comment; 3. a table and a column chart; 4. a hidden slide; 5. a group of text boxes and
+    a picture; 6. SmartArt. Each is something the converter has to place, keep, or leave out
+    deliberately.
+    """
+    from pptx import Presentation
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+    from pptx.util import Inches
+
+    presentation = Presentation()
+
+    slide = presentation.slides.add_slide(presentation.slide_layouts[0])
+    slide.shapes.title.text = "Program Review"
+    slide.placeholders[1].text = "Quarterly travel status"
+
+    slide = presentation.slides.add_slide(presentation.slide_layouts[1])
+    slide.shapes.title.text = "Travel Rates"
+    body = slide.placeholders[1].text_frame
+    body.text = "Lodging"
+    for text, level in (("Published rate applies", 1), ("Meals", 0), ("Daily allowance", 1)):
+        paragraph = body.add_paragraph()
+        paragraph.text = text
+        paragraph.level = level
+    slide.notes_slide.notes_text_frame.text = (
+        "Mention the lodging change.\nRates take effect at the start of the quarter."
+    )
+    _add_reviewer_comment(presentation, slide)
+
+    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    slide.shapes.title.text = "Limits"
+    table = slide.shapes.add_table(
+        len(TABLE_ROWS), len(TABLE_ROWS[0]), Inches(0.5), Inches(1.5), Inches(5), Inches(1.5)
+    ).table
+    for row_index, row in enumerate(TABLE_ROWS):
+        for column_index, cell in enumerate(row):
+            table.cell(row_index, column_index).text = cell
+    chart_data = CategoryChartData()
+    chart_data.categories = ["Q1", "Q2", "Q3"]
+    chart_data.add_series("Trips", (12, 18, 9))
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(0.5), Inches(3.5), Inches(5), Inches(3),
+        chart_data,
+    ).chart
+    chart.has_title = True
+    chart.chart_title.text_frame.text = "Trips per quarter"
+
+    slide = presentation.slides.add_slide(presentation.slide_layouts[1])
+    slide.shapes.title.text = "Draft Options"
+    slide.placeholders[1].text_frame.text = "Option under discussion"
+    slide._element.set("show", "0")
+
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    group = slide.shapes.add_group_shape()
+    for index, text in enumerate(("Travel desk hours", "Weekdays only")):
+        box = group.shapes.add_textbox(Inches(0.5), Inches(0.5 + index), Inches(4), Inches(0.8))
+        box.text_frame.text = text
+    image = _floor_plan_thumbnail_bytes()
+    slide.shapes.add_picture(image, Inches(5), Inches(0.5), width=Inches(2))
+
+    slide = presentation.slides.add_slide(presentation.slide_layouts[5])
+    slide.shapes.title.text = "Process"
+    _add_smartart(slide)
+
+    properties = presentation.core_properties
+    properties.created = EPOCH.replace(tzinfo=None)
+    properties.modified = EPOCH.replace(tzinfo=None)
+    properties.title = "Program Review"
+    properties.author = "fixture"
+    properties.last_modified_by = "fixture"
+    properties.revision = 1
+    presentation.save(str(path))
+
+    with zipfile.ZipFile(path) as archive:
+        payload = {name: archive.read(name) for name in sorted(archive.namelist())}
+    for name in payload:
+        if name.endswith(".xlsx"):
+            payload[name] = _normalise_embedded_xlsx(payload[name])
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in payload.items():
+            info = zipfile.ZipInfo(name, date_time=ZIP_DATE_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o600 << 16
+            archive.writestr(info, data)
+
+
 #: A Markdown handbook page: front matter, a setext heading, dotted leaders, a code fence
 #: with a `#` line and inner blank lines, a table, a nested list, a reference definition, an
 #: image, and a line shaped like a block anchor. Each is something the converter must carry
@@ -1272,6 +1478,7 @@ GENERATORS = {
     "reference_table.csv": reference_table_csv,
     "too_big.csv": too_big_csv,
     "notes.md": notes_markdown,
+    "deck.pptx": deck_pptx,
     "annotated_form.pdf": annotated_form,
     "linked_form.pdf": linked_form,
     "ruled_form.pdf": ruled_form,
