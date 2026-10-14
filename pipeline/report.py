@@ -277,8 +277,9 @@ def render_table(report: dict[str, Any]) -> str:
             )
         for row in sorted(docx_with_images, key=lambda item: item["source_file"] or ""):
             lines.append(
-                f"  {row['source_file']}: {row['images']} embedded image(s) not in the text "
-                "layer"
+                f"  {row['source_file']}: {row['images']} "
+                f"{'referenced' if row.get('source_format') == 'md' else 'embedded'} image(s) "
+                "not in the text layer"
             )
         for row in sorted(dangling, key=lambda item: item["source_file"] or ""):
             lines.append(

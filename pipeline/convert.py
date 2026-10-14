@@ -17,7 +17,7 @@ from typing import Any
 
 from . import StopAndAsk
 from .config import Config
-from .converters import csv_table, normalize_markdown, office, pdf
+from .converters import csv_table, markdown, normalize_markdown, office, pdf
 from .frontmatter import build as build_frontmatter
 from .frontmatter import render as render_frontmatter
 from .manifest import (
@@ -58,10 +58,12 @@ def provenance_path(output: Path) -> Path:
     return output.with_suffix(".provenance.json")
 
 
-def _title_for(entry: dict[str, Any], source_path: Path) -> str:
+def _title_for(entry: dict[str, Any], source_path: Path, declared: str | None = None) -> str:
     title = entry.get("title")
     if isinstance(title, str) and title.strip():
         return title.strip()
+    if declared:
+        return declared
     return csv_table.prettify_filename(source_path)
 
 
@@ -128,10 +130,19 @@ def convert_entry(
     except StopAndAsk as exc:
         return ConversionResult(slug, source_file, STATUS_STOP_AND_ASK, message=str(exc))
 
-    body = normalize_markdown(body)
+    # A Markdown source is the author's own markdown: tidying it would change their text.
+    if source_format != "md":
+        body = normalize_markdown(body)
+
+    # What a source declares about itself (Markdown front matter) fills only what the
+    # manifest leaves open; it is not a conversion fact, so it is not recorded there.
+    declared = extras.pop("declared", None) or {}
+    doc_date = entry.get("doc_date") or "UNCONFIRMED"
+    if doc_date == "UNCONFIRMED":
+        doc_date = declared.get("doc_date", doc_date)
 
     meta = build_frontmatter(
-        title=_title_for(entry, source_path),
+        title=_title_for(entry, source_path, declared.get("title")),
         source_file=source_file,
         source_format=source_format,
         converter=converter,
@@ -139,7 +150,7 @@ def convert_entry(
         text_class=text_class,
         text_coverage=_text_coverage(entry),
         source_url=entry.get("source_url"),
-        doc_date=entry.get("doc_date") or "UNCONFIRMED",
+        doc_date=doc_date,
         retrieved=entry.get("retrieved"),
     )
 
@@ -215,13 +226,19 @@ def _dispatch(
         )
         return body, converter, STATUS_WRITTEN, provenance, extras
 
+    if source_format == "md":
+        body, converter, provenance, extras = markdown.convert_with_provenance(
+            source_path, provenance_slug=entry["slug"]
+        )
+        return body, converter, STATUS_WRITTEN, provenance, extras
+
     raise StopAndAsk(f"no converter for source_format {source_format!r}")
 
 
 def _needs_provenance_sidecar(source_format: str, text_class: str) -> bool:
     if source_format == "pdf":
         return text_class in (TEXT_CLASS_CLEAN, TEXT_CLASS_PARTIAL)
-    return source_format in ("docx", "doc", "csv")
+    return source_format in ("docx", "doc", "csv", "md")
 
 
 def _render_provenance_sidecar(

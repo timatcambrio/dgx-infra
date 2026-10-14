@@ -201,6 +201,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "docling-slim", extra = ["format-docx"] },
+    { name = "markdown-it-py" },
     { name = "pdfplumber" },
     { name = "pypdfium2" },
     { name = "python-frontmatter" },
@@ -234,6 +235,7 @@ requires-dist = [
     { name = "docling-slim", extras = ["format-docx"], specifier = ">=2.126.0,<3" },
     { name = "docling-slim", extras = ["format-pdf-docling"], marker = "extra == 'pdf'", specifier = ">=2.126.0,<3" },
     { name = "httpx", marker = "extra == 'serve'", specifier = ">=0.27,<1" },
+    { name = "markdown-it-py", specifier = ">=4.0,<5" },
     { name = "mcp", marker = "extra == 'serve'", specifier = ">=1.28,<2" },
     { name = "numpy", marker = "platform_machine == 'x86_64' and sys_platform == 'darwin' and extra == 'pdf'", specifier = "<2" },
     { name = "pdfplumber", specifier = ">=0.11.7,<0.12" },
