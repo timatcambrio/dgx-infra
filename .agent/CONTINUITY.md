@@ -6,6 +6,11 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-14 [CODE] `feat/pptx-source` merged to local main (3203318), not pushed. Branch
+  `feat/legacy-slides`: `.ppt`/`.odp` -> `soffice_convert` (shared with .doc; removes stale
+  WORK_DIR output first) -> `.pptx` converter; converter `libreoffice+python-pptx (slides)`.
+  [TOOL] LibreOffice is not installed on the dev Mac and not in the deployment image, so the
+  real soffice step is UNTESTED; tests use a stand-in. make check 757 passed, 2 skipped.
 - 2026-10-14 [CODE] `feat/markdown-source` merged to local main (65f8fb9), not pushed.
   Branch `feat/pptx-source` (not merged, not pushed): `.pptx` via `pipeline/converters/slides.py`,
   python-pptx walk (docling-slim[format-pptx] extra) reusing docling `_is_list_item` and
