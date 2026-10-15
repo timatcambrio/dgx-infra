@@ -190,6 +190,22 @@ def upsert(manifest: dict[str, Any], path: Path, source_root: Path) -> tuple[dic
     return entry, "restored" if was_missing else "unchanged"
 
 
+def shared_slugs(manifest: dict[str, Any]) -> dict[str, list[str]]:
+    """Slugs that more than one present source maps to, with those sources, sorted.
+
+    `slug_for` folds case and punctuation, so `a.b.pdf` and `a-b.pdf` (or `Deck.pdf` and
+    `deck.pdf` on Linux) share a kb/ file name. Nothing is renamed here: every id would
+    change again. The operator renames or excludes one of the files instead.
+    """
+    groups: dict[str, list[str]] = {}
+    for entry in manifest.get("documents", []):
+        if entry.get("status") == STATUS_PRESENT:
+            groups.setdefault(entry["slug"], []).append(entry["source_file"])
+    return {
+        slug: sorted(sources) for slug, sources in sorted(groups.items()) if len(sources) > 1
+    }
+
+
 def mark_missing(entry: dict[str, Any]) -> None:
     """A source file that has disappeared is recorded, not removed, and never fails a run."""
     entry["status"] = STATUS_MISSING

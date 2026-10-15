@@ -55,6 +55,14 @@ class SourceDigestMismatch(RuntimeError):
     """The source bytes no longer match what the manifest recorded for this output."""
 
 
+class SharedKbName(RuntimeError):
+    """This entry's kb/ file name already holds another source's conversion.
+
+    Raised, not returned as STOP-AND-ASK: `convert` exits 0 on those, and a document
+    missing from the knowledge base must fail the run and stay recorded on the entry.
+    """
+
+
 def output_path(entry: dict[str, Any], config: Config) -> Path:
     return config.kb_dir / f"{entry['slug']}.md"
 
@@ -115,6 +123,14 @@ def convert_entry(
         )
 
     destination = output_path(entry, config)
+    owner = _foreign_owner(destination, source_file)
+    if owner is not None:
+        path, other = owner
+        raise SharedKbName(
+            f"{path.relative_to(config.kb_path).as_posix()} already holds {other}, which "
+            "has the same kb/ name. Rename or exclude one of the two in SOURCE_DIR; if "
+            f"{other} was renamed to this file, run `pipeline prune --yes` first."
+        )
     conversion = entry.get("conversion") or {}
     previous = conversion
     source_format = entry["source_format"]
@@ -218,6 +234,22 @@ def _remove_superseded(
         candidate.unlink()
         removed.append(rel)
     return tuple(removed)
+
+
+def _foreign_owner(destination: Path, source_file: str) -> tuple[Path, str] | None:
+    """A kb/ file at this entry's name that says it came from another source, and that source.
+
+    Two sources differing only in punctuation or case share a slug; without this the second
+    conversion overwrote the first's markdown and sidecar without a word. A file naming no
+    source (unreadable, or written by hand) is not claimed by anyone and may be replaced.
+    """
+    for path in (destination, provenance_path(destination)):
+        if not path.is_file():
+            continue
+        declared = _declared_source(path)
+        if declared is not None and declared != source_file:
+            return path, declared
+    return None
 
 
 def _declared_source(path: Path) -> str | None:

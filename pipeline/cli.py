@@ -173,6 +173,21 @@ def inventory(
             hint = _SHORTCUT_HINTS.get(extension)
             typer.echo(f"  {extension:<12}: {count}" + (f"  ({hint})" if hint else ""))
 
+    # Recorded, then refused: the manifest above is complete, but converting would give
+    # these sources one kb/ file between them, and `convert` refuses the second anyway.
+    shared = manifest_module.shared_slugs(manifest)
+    if shared:
+        typer.secho(
+            "\nSHARED kb/ NAMES: these files differ only in punctuation or case, so they "
+            "would be one kb/ file. Rename or exclude all but one of each group in "
+            "SOURCE_DIR, then re-run inventory.",
+            fg=typer.colors.RED,
+            bold=True,
+        )
+        for slug, sources in shared.items():
+            typer.secho(f"  kb/{slug}.md  <-  {', '.join(sources)}", fg=typer.colors.RED)
+        raise typer.Exit(1)
+
 
 #: A Google Drive folder synced to disk holds shortcuts for Google's own formats: small
 #: files naming a document online, with none of its content.
