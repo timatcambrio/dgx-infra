@@ -243,3 +243,92 @@ def test_an_old_kb_file_now_naming_another_source_is_not_removed(workspace):
     assert (kb / "kb" / "simple.md").read_text(encoding="utf-8") == foreign
     assert (kb / "kb" / "simple-docx.md").is_file()
     assert not (kb / "kb" / "simple.provenance.json").exists()
+
+
+def _two_sources_sharing_a_slug(tmp_path, monkeypatch):
+    """`a.b.pdf` and `a-b.pdf` differ only in punctuation, so both are slug `a-b-pdf`."""
+    kb = tmp_path / "dgx-knowledge"
+    monkeypatch.setenv("KB_PATH", str(kb))
+    source = tmp_path / "docs"
+    source.mkdir()
+    shutil.copy(FIXTURES / "born_digital.pdf", source / "a.b.pdf")
+    shutil.copy(FIXTURES / "mixed.pdf", source / "a-b.pdf")
+    return kb, source
+
+
+def test_inventory_fails_naming_every_source_that_shares_a_slug(tmp_path, monkeypatch):
+    """Two source paths that differ only in punctuation or case got one kb/ name, and the
+    second conversion silently replaced the first. Inventory said nothing, so the lost
+    document was only noticed by searching for it."""
+    kb, source = _two_sources_sharing_a_slug(tmp_path, monkeypatch)
+
+    result = runner.invoke(app, ["inventory", "--source-dir", str(source)])
+
+    assert result.exit_code == 1, result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    assert "Traceback" not in result.output
+    assert "kb/a-b-pdf.md" in result.output
+    assert "a-b.pdf" in result.output and "a.b.pdf" in result.output
+    assert "rename" in result.output.lower()
+    # The entries are still recorded: the manifest is complete, only the run fails.
+    manifest = yaml.safe_load((kb / "corpus.yaml").read_text(encoding="utf-8"))
+    assert sorted(d["source_file"] for d in manifest["documents"]) == ["a-b.pdf", "a.b.pdf"]
+
+
+def test_shared_slugs_include_sources_differing_only_in_case():
+    """`Deck.pdf` and `deck.pdf` are two files on the Linux deployment host but one slug.
+    (The dev Mac's filesystem cannot hold both, so this is checked on the manifest.)"""
+    manifest = manifest_module.empty()
+    for name in ("Deck.pdf", "deck.pdf", "other.pdf"):
+        manifest["documents"].append(manifest_module.new_entry(name, "pdf"))
+    gone = manifest_module.new_entry("DECK.pdf", "pdf")
+    manifest_module.mark_missing(gone)
+    manifest["documents"].append(gone)
+
+    assert manifest_module.shared_slugs(manifest) == {"deck-pdf": ["Deck.pdf", "deck.pdf"]}
+
+
+def test_convert_refuses_to_overwrite_a_kb_file_another_source_wrote(tmp_path, monkeypatch):
+    """The second of two sources sharing a slug overwrote the first's markdown and sidecar
+    without a word. It must fail instead, recorded on the entry so `report` shows it, and
+    leave the first document's files intact."""
+    kb, source = _two_sources_sharing_a_slug(tmp_path, monkeypatch)
+    runner.invoke(app, ["inventory", "--source-dir", str(source)])
+    assert runner.invoke(app, ["triage", "--source-dir", str(source)]).exit_code == 0
+
+    first = runner.invoke(app, ["convert", "--source-dir", str(source), "--only", "a-b.pdf"])
+    assert first.exit_code == 0, first.output
+    markdown = (kb / "kb" / "a-b-pdf.md").read_text(encoding="utf-8")
+    sidecar = (kb / "kb" / "a-b-pdf.provenance.json").read_text(encoding="utf-8")
+    assert "\nsource_file: a-b.pdf\n" in markdown
+
+    result = runner.invoke(app, ["convert", "--source-dir", str(source)])
+
+    assert result.exit_code == 1, result.output
+    assert "Traceback" not in result.output
+    assert "ERROR          a.b.pdf" in result.output
+    assert "kb/a-b-pdf.md already holds a-b.pdf" in result.output
+    assert (kb / "kb" / "a-b-pdf.md").read_text(encoding="utf-8") == markdown
+    assert (kb / "kb" / "a-b-pdf.provenance.json").read_text(encoding="utf-8") == sidecar
+    manifest = yaml.safe_load((kb / "corpus.yaml").read_text(encoding="utf-8"))
+    by_file = {d["source_file"]: d for d in manifest["documents"]}
+    assert by_file["a.b.pdf"]["conversion"] is None
+    assert "already holds a-b.pdf" in by_file["a.b.pdf"]["conversion_error"]
+
+
+def test_convert_refuses_a_sidecar_another_source_wrote(tmp_path, monkeypatch):
+    """The markdown may be gone (deleted by hand) while the other source's sidecar is still
+    there; overwriting it would pair this document's blocks with that one's pages."""
+    kb, source = _two_sources_sharing_a_slug(tmp_path, monkeypatch)
+    runner.invoke(app, ["inventory", "--source-dir", str(source)])
+    runner.invoke(app, ["triage", "--source-dir", str(source)])
+    runner.invoke(app, ["convert", "--source-dir", str(source), "--only", "a-b.pdf"])
+    (kb / "kb" / "a-b-pdf.md").unlink()
+    sidecar = (kb / "kb" / "a-b-pdf.provenance.json").read_text(encoding="utf-8")
+
+    result = runner.invoke(app, ["convert", "--source-dir", str(source), "--only", "a.b.pdf"])
+
+    assert result.exit_code == 1, result.output
+    assert "kb/a-b-pdf.provenance.json already holds a-b.pdf" in result.output
+    assert not (kb / "kb" / "a-b-pdf.md").exists()
+    assert (kb / "kb" / "a-b-pdf.provenance.json").read_text(encoding="utf-8") == sidecar
