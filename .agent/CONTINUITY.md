@@ -6,6 +6,19 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-15 [TOOL] **SUPERSEDES the ollama-version hypothesis in the entry below: the vector
+  leg drop is HNSW recall, not the server and not the rename.** Official ollama v0.40.0
+  `ollama-darwin.tgz` (167,494,179 B, sha256 b490b492...26dc matched; signed, team
+  3MU9H2V9Y9 like the app) run beside the app on 11434: its embeddings equal the stored
+  0.40.1 vectors (cos 1.0 on 40 sampled chunks), so the planned `--reindex-all` on 0.40.0
+  was skipped as uninformative. Same index, same queries, read-only, in-process eval:
+  as served (pgvector default `hnsw.ef_search` 40) 33/81/86; `ef_search = 400` 33/86/89;
+  exact (`enable_indexscan = off`) 33/86/89, i.e. the recorded floor. Official `kb eval`
+  now 33/81/86 (72/81 straight after indexing, before autovacuum at 18:59 UTC cleared the
+  deleted rows: dead tuples in the graph likely cost more). mcp_probe still 2 failed
+  (`slide-table-after-fix`). So the floor was partly a property of one HNSW build. Fix
+  not built: exact search (3,370 chunks is small) or a raised `ef_search` on the serving
+  connection, with a test that scores exact vs served.
 - 2026-10-15 [TOOL] **Proxy corpus upgraded to extension slugs; the vector leg fell, and the
   rename is NOT the cause.** dgx-eval case files renamed (backups `*.bak-20261015`: 36
   slugs in proxy-cases, 6 + `expected_id page:ch-05-b-pdf:p003` in mcp-cases, 15 in
