@@ -6,6 +6,16 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-15 [TOOL] **Why the HNSW loss appeared now is UNEXPLAINED.** Nothing ever set
+  `hnsw.ef_search` (no occurrence in any commit; default 40 throughout), and on 2026-10-07
+  ef_search 1000 changed nothing on the then-current (ollama 0.21.0) index. Today, exact
+  search reproduces the pre-rename kb eval table case for case and rank for rank (36/36),
+  so the stored vectors are not the problem whatever condition might differ between ollama
+  versions. Eliminated: dead or duplicate graph entries from delete-after-insert; a fresh
+  `REINDEX INDEX chunks_embedding_idx` (in a rolled-back transaction) still scores 33/81/86
+  at ef 40. Open candidates: the old graph (built piecemeal over weeks) simply had better
+  recall at ef 40 for these queries; or the planner did not use the HNSW index for the old
+  baseline (an exact scan). Neither tested; the old index no longer exists.
 - 2026-10-15 [TOOL] **SUPERSEDES the ollama-version hypothesis in the entry below: the vector
   leg drop is HNSW recall, not the server and not the rename.** Official ollama v0.40.0
   `ollama-darwin.tgz` (167,494,179 B, sha256 b490b492...26dc matched; signed, team
