@@ -48,14 +48,14 @@ def _write_doc(tmp_path: Path, slug: str, body: str, *, sidecar_blocks=None, sha
 
 
 def test_fixtures_load_cleanly() -> None:
-    for slug in ("handbook", "budget-form", "deck", "reference-table"):
+    for slug in ("handbook-pdf", "budget-form-pdf", "deck-pdf", "reference-table-csv"):
         doc = load_document(FIXTURES / f"{slug}.md")
         assert doc.blocks, f"{slug} produced no blocks"
         assert doc.chars > 0
 
 
 def test_handbook_heading_levels_and_sidecar_shape() -> None:
-    doc = load_document(FIXTURES / "handbook.md")
+    doc = load_document(FIXTURES / "handbook-pdf.md")
     assert doc.has_sidecar is True
     headings = [b for b in doc.blocks if b.kind == "heading"]
     assert headings, "expected heading blocks"
@@ -66,22 +66,22 @@ def test_handbook_heading_levels_and_sidecar_shape() -> None:
 
 
 def test_budget_form_incomplete_pages_em_dash() -> None:
-    doc = load_document(FIXTURES / "budget-form.md")
+    doc = load_document(FIXTURES / "budget-form-pdf.md")
     assert doc.incomplete_pages == [2, 3]
 
 
 def test_reference_table_has_no_sidecar_and_synthetic_ids() -> None:
-    doc = load_document(FIXTURES / "reference-table.md")
+    doc = load_document(FIXTURES / "reference-table-csv.md")
     assert doc.has_sidecar is False
     assert doc.page_count is None
     assert len(doc.blocks) == 1
     assert doc.blocks[0].kind == "table"
     assert doc.blocks[0].page is None
-    assert doc.blocks[0].block_id == "reference-table:p000:b001"
+    assert doc.blocks[0].block_id == "reference-table-csv:p000:b001"
 
 
 def test_deck_section0_paragraph_precedes_first_heading() -> None:
-    doc = load_document(FIXTURES / "deck.md")
+    doc = load_document(FIXTURES / "deck-pdf.md")
     assert doc.blocks[0].kind == "paragraph"
     assert doc.blocks[1].kind == "heading"
 

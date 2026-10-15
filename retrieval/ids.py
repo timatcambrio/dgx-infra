@@ -8,7 +8,8 @@ chunk:<slug>:<chunk_index>
 ```
 
 `search` returns section ids; `fetch` accepts all four. Slugs match conversion's guarantee
-`^[a-z0-9][a-z0-9-]*$`.
+(`pipeline.manifest.slug_for`): one or more `[a-z0-9][a-z0-9-]*` parts joined by `__`,
+one part per source folder, so `gsa/travel.pdf` is `gsa__travel-pdf`.
 """
 
 from __future__ import annotations
@@ -18,7 +19,10 @@ from typing import Literal
 
 IdKind = Literal["doc", "sec", "page", "chunk"]
 
-_SLUG = r"[a-z0-9][a-z0-9-]*"
+# The folder separator `__` was missing until 2026-10-15: every document in a SOURCE_DIR
+# subfolder was indexed and searchable, but no id naming it would parse.
+_SLUG_PART = r"[a-z0-9][a-z0-9-]*"
+_SLUG = rf"{_SLUG_PART}(?:__{_SLUG_PART})*"
 _DOC_RE = re.compile(rf"^doc:({_SLUG})$")
 _SEC_RE = re.compile(rf"^sec:({_SLUG}):(\d+)$")
 _PAGE_RE = re.compile(rf"^page:({_SLUG}):p(\d{{3}})$")

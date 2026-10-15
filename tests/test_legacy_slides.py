@@ -88,7 +88,7 @@ def test_legacy_deck_converts_through_libreoffice(name, source_root, legacy_conf
     assert meta["converter"] == "libreoffice+python-pptx (slides)"
     text = result.output.read_text(encoding="utf-8")
     assert "## Slide 2: Travel Rates" in text
-    assert "deck:p006:b002" in text
+    assert f"deck-{entry['source_format']}:p006:b002" in text
 
 
 def test_the_intermediate_pptx_is_written_to_work_dir_not_the_source(
@@ -126,7 +126,7 @@ def test_citation_names_slides_for_legacy_decks(source_format):
         page_first=2,
         page_last=2,
         doc_date="UNCONFIRMED",
-        first_block_id="deck:p002:b001",
-        last_block_id="deck:p002:b003",
+        first_block_id=f"deck-{source_format}:p002:b001",
+        last_block_id=f"deck-{source_format}:p002:b003",
     )
     assert ", slides 2–2," in citation

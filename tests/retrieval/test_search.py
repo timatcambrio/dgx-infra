@@ -120,9 +120,9 @@ def test_planted_token_is_first_hit_in_lexical_and_fused(indexed_dsn: str) -> No
         return lexical, fused
 
     lexical, fused = _run(indexed_dsn, _go)
-    assert lexical[0].slug == "budget-form"
+    assert lexical[0].slug == "budget-form-pdf"
     assert lexical[0].lexical_rank == 1
-    assert fused[0].slug == "budget-form"
+    assert fused[0].slug == "budget-form-pdf"
 
 
 def test_stopword_only_query_returns_vector_leg_results_without_erroring(indexed_dsn: str) -> None:
@@ -144,12 +144,12 @@ def test_stopword_only_query_returns_vector_leg_results_without_erroring(indexed
 def test_slug_filter_restricts_results(indexed_dsn: str) -> None:
     async def _go(conn: asyncpg.Connection):
         return await search_module.search(
-            conn, "Mileage", embed_query_fn=_embed_fn, leg="fused", filters={"slug": "budget-form"}
+            conn, "Mileage", embed_query_fn=_embed_fn, leg="fused", filters={"slug": "budget-form-pdf"}
         )
 
     hits = _run(indexed_dsn, _go)
     assert hits
-    assert all(h.slug == "budget-form" for h in hits)
+    assert all(h.slug == "budget-form-pdf" for h in hits)
 
 
 def test_k_is_clamped(indexed_dsn: str) -> None:

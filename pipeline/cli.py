@@ -125,6 +125,10 @@ def inventory(
     outcomes: Counter[str] = Counter()
     skipped: Counter[str] = Counter()
     seen: set[str] = set()
+    slugs_before = {
+        entry["source_file"]: entry.get("slug") for entry in manifest.get("documents", [])
+    }
+    renamed = 0
 
     for path in sorted(root.rglob("*")):
         if not path.is_file() or _is_hidden(path, root):
@@ -135,6 +139,9 @@ def inventory(
         entry, outcome = manifest_module.upsert(manifest, path, root)
         outcomes[outcome] += 1
         seen.add(entry["source_file"])
+        before = slugs_before.get(entry["source_file"])
+        if before is not None and before != entry["slug"]:
+            renamed += 1
 
     for entry in manifest.get("documents", []):
         if entry["source_file"] not in seen and entry.get("status") == STATUS_PRESENT:
@@ -149,6 +156,11 @@ def inventory(
     for outcome in ("added", "changed", "unchanged", "restored", "missing"):
         if outcomes[outcome]:
             typer.echo(f"  {outcome:<10}: {outcomes[outcome]}")
+    if renamed:
+        typer.echo(
+            f"  renamed   : {renamed} (new kb/ file names; `pipeline convert` writes them "
+            "and removes the old files, then run `kb index`)"
+        )
     if not outcomes:
         typer.echo(
             "  no supported documents found "
@@ -160,6 +172,21 @@ def inventory(
         for extension, count in sorted(skipped.items()):
             hint = _SHORTCUT_HINTS.get(extension)
             typer.echo(f"  {extension:<12}: {count}" + (f"  ({hint})" if hint else ""))
+
+    # Recorded, then refused: the manifest above is complete, but converting would give
+    # these sources one kb/ file between them, and `convert` refuses the second anyway.
+    shared = manifest_module.shared_slugs(manifest)
+    if shared:
+        typer.secho(
+            "\nSHARED kb/ NAMES: these files differ only in punctuation or case, so they "
+            "would be one kb/ file. Rename or exclude all but one of each group in "
+            "SOURCE_DIR, then re-run inventory.",
+            fg=typer.colors.RED,
+            bold=True,
+        )
+        for slug, sources in shared.items():
+            typer.secho(f"  kb/{slug}.md  <-  {', '.join(sources)}", fg=typer.colors.RED)
+        raise typer.Exit(1)
 
 
 #: A Google Drive folder synced to disk holds shortcuts for Google's own formats: small
@@ -332,6 +359,8 @@ def convert(
             typer.echo(f"  STOP-AND-ASK   {result.source_file}")
         else:
             typer.echo(f"  {result.status:<14} {result.source_file}")
+        for rel in result.superseded:
+            typer.echo(f"    removed old {rel}")
 
     manifest_module.save(manifest, config.manifest_path)
 

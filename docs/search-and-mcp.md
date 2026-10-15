@@ -35,15 +35,15 @@ structure. Two cuts happen, in order:
 ## `kb search`
 
 ```bash
-uv run kb search "per diem rates" --k 8 [--slug handbook] [--text-class clean] [--leg fused]
+uv run kb search "per diem rates" --k 8 [--slug handbook-pdf] [--text-class clean] [--leg fused]
 ```
 
 Runs the same retrieval the MCP server uses, from the command line, and prints one line per
 hit, followed by an indented citation line:
 
 ```
-0.0164  sec:handbook:5  pages 12–13  Employee Handbook › Handbook › Per Diem Rates  |  Uxbane...
-    Employee Handbook, Employee Handbook › Handbook › Per Diem Rates (source: handbook.pdf, pages 12–13, dated UNCONFIRMED; blocks handbook:p012:b001…handbook:p013:b003)
+0.0164  sec:handbook-pdf:5  pages 12–13  Employee Handbook › Handbook › Per Diem Rates  |  Uxbane...
+    Employee Handbook, Employee Handbook › Handbook › Per Diem Rates (source: handbook.pdf, pages 12–13, dated UNCONFIRMED; blocks handbook-pdf:p012:b001…handbook-pdf:p013:b003)
 ```
 
 Every search runs two independent legs over the indexed chunks and merges them:

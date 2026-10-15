@@ -6,6 +6,55 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-15 [CODE] **Option A built on branch `fix/slug-extension`** (from main 2e10d15; not
+  merged, not pushed): tests 4b5a8d7, fix f99ea3e, regenerated goldens + retrieval fixtures
+  bc0dc68. `slug_for` appends `-<ext>` lowercased (`gsa/travel.pdf` -> `gsa__travel-pdf`).
+  `upsert` now always recomputes the slug (was `setdefault`, so an old corpus.yaml kept old
+  names); inventory prints `renamed   : N`; `convert_entry` deletes the entry's previously
+  recorded output/sidecar under the old name only if inside kb/ and its frontmatter/sidecar
+  `source_file` still names this source (`removed old kb/x.md`). `kb index` then drops the
+  old rows (it keys on file stem). Retrieval fixtures renamed (handbook-pdf, budget-form-pdf,
+  deck-pdf, reference-table-csv) with the same RNG seeds, so only ids/names/hashes changed;
+  the generator spells slugs out (layout rule: it may import only pipeline.frontmatter) and
+  tests/test_determinism.py pins them to `slug_for`. Docs: conversion.md "File names",
+  administration.md "After an update that renames documents". [TOOL] make check 766 passed,
+  2 skipped (db + ollama up; main was 757); `make fixtures` and `fixtures-retrieval` no-ops.
+  NOT done (needs Tim): dgx-knowledge reconvert + reindex; every `expected_slug` in
+  dgx-eval proxy-cases/mcp-cases/candidates plus `expected_id page:ch-05-b:p003` (mapping in
+  the side-session notes folder, `slug-extension.md`).
+- 2026-10-15 [CODE] **Subfolder ids fixed on branch `fix/subfolder-ids`** (cut from
+  `fix/slug-extension` 8703308, so it carries that branch; not merged, not pushed): tests
+  1162eab, fix 1c29388. `_SLUG` is now `part(__part)*`, part `[a-z0-9][a-z0-9-]*`, the exact
+  shape `slug_for` writes; leading `-`/`_`, single or triple `_`, trailing `__`, and a part
+  starting with `-` are still rejected. E2E test `tests/retrieval/test_server_subfolder.py`
+  indexes a copy of the handbook fixture as `gsa__handbook-pdf` beside the fixtures (dropped
+  afterwards) and fetches doc/sec/page/chunk ids, get_outline and get_section through the
+  server. Before the fix `search` returned `sec:gsa__handbook-pdf:8` and `fetch` on it said
+  "unknown id". Nothing else assumed the pattern: search filters match slug exactly, the
+  server only calls `parse_id`, mcp_probe splits on `:`, http_probe never parses ids.
+  [TOOL] make check 780 passed, 2 skipped (root-only chown tests; db + ollama up).
+- 2026-10-15 [DISCOVERY] SUPERSEDED by the entry above for the `_` part: `retrieval/ids.py`
+  `_SLUG` allowed no `_`, so a document in a SOURCE_DIR subfolder could not be fetched by id.
+  Punctuation/case-only collisions (`a.b.pdf` vs `a-b.pdf`; `Deck.pdf` vs `deck.pdf` on
+  Linux) still share a slug; now detected, see the next entry.
+- 2026-10-15 [CODE] **Shared slugs fail loudly on branch `fix/slug-collisions`** (cut from
+  `fix/subfolder-ids` 38e71b4; not merged, not pushed): tests ae6ea17, fix 15418e1. No slug
+  changes, no suffixing (per the agreed plan: add stable `-2` suffixes in corpus.yaml only
+  if the client corpus turns out to have collisions). `manifest.shared_slugs` groups
+  PRESENT entries by slug (MISSING ignored). `inventory` saves the manifest, then prints
+  `SHARED kb/ NAMES` with `kb/<slug>.md  <-  a, b` per group and exits 1. `convert_entry`
+  raises `SharedKbName` before writing (and before the "unchanged" shortcut) when the
+  existing kb/<slug>.md or its sidecar names another `source_file` (a file naming none is
+  replaceable); it reaches the CLI's generic handler: `ERROR`, `conversion_error` on the
+  entry (so `report` lists it), exit 1. [DECISION] Not STOP-AND-ASK because `convert` exits
+  0 on those. A renamed source (old entry MISSING, new one same slug) is also refused until
+  `pipeline prune --yes`; the message says so. Docs: conversion.md "File names".
+  [DISCOVERY] `prune` deletes a MISSING entry's recorded outputs without the
+  `_declared_source` ownership check; harmless now that convert refuses foreign files, but
+  a kb/ file overwritten before this fix could be deleted from under its new owner.
+  [DISCOVERY] cli.py `convert` ends with an unreachable `raise typer.Exit(EXIT_STOP_AND_ASK)`
+  after `raise typer.Exit(1)`; convert has exited 0 on STOP-AND-ASK since e532d8b. Unchanged.
+  [TOOL] make check 784 passed, 2 skipped (db + ollama up; was 780).
 - 2026-10-14 [USER] **Open problem, to come back to: there is no corpus/markdown management.**
   Sources change on purpose or by accident (edited, renamed, moved, a same-named sibling
   added) and that changes what conversion produces: file names, block ids, citations.
@@ -18,7 +67,8 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   had already dropped making the inputs (the fixture SmartArt has no drawing fallback part).
   SUPERSEDES "real soffice step UNTESTED" for decks. [DISCOVERY] slug is path minus
   extension, so `deck.ppt` + `deck.odp` (or `x.pdf` + `x.docx`) in one folder write the same
-  kb/ file; inventory does not detect it. Pre-existing; not fixed.
+  kb/ file; inventory does not detect it. Pre-existing. SUPERSEDED 2026-10-15: fixed for
+  extension-only differences on `fix/slug-extension`.
 - 2026-10-14 [CODE] `feat/pptx-source` merged to local main (3203318), not pushed. Branch
   `feat/legacy-slides`: `.ppt`/`.odp` -> `soffice_convert` (shared with .doc; removes stale
   WORK_DIR output first) -> `.pptx` converter; converter `libreoffice+python-pptx (slides)`.
@@ -212,7 +262,8 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   share a kb/ file. Accepted cost: every existing name, block id and citation changes once;
   everything is reconverted and reindexed. Chosen now because the client has likely not
   indexed a real corpus yet (DGX stuck at step 13). Rejected: B (extension only on a clash;
-  names stable but a later sibling renames an existing file). To be built in its own session.
+  names stable but a later sibling renames an existing file). Built 2026-10-15 on
+  `fix/slug-extension` (see [PLANS]).
 - 2026-10-01 [TOOL→DECISION] **`KB_URL_BASE` is the site root, and `kb-static` stays rooted
   at the corpus.** The doubled `/kb` segment in every citation url had two self-consistent
   repairs and only one of them is safe. Rooting `kb-static` at `${KB_PATH}` would make

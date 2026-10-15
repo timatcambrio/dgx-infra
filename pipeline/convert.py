@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import frontmatter as frontmatter_lib
+import yaml
+
 from . import StopAndAsk
 from .config import Config
 from .converters import csv_table, markdown, normalize_markdown, office, pdf, slides
@@ -44,10 +47,20 @@ class ConversionResult:
     output: Path | None = None
     converter: str | None = None
     message: str | None = None
+    #: Files this entry wrote under an earlier name and that this run removed.
+    superseded: tuple[str, ...] = ()
 
 
 class SourceDigestMismatch(RuntimeError):
     """The source bytes no longer match what the manifest recorded for this output."""
+
+
+class SharedKbName(RuntimeError):
+    """This entry's kb/ file name already holds another source's conversion.
+
+    Raised, not returned as STOP-AND-ASK: `convert` exits 0 on those, and a document
+    missing from the knowledge base must fail the run and stay recorded on the entry.
+    """
 
 
 def output_path(entry: dict[str, Any], config: Config) -> Path:
@@ -110,7 +123,16 @@ def convert_entry(
         )
 
     destination = output_path(entry, config)
+    owner = _foreign_owner(destination, source_file)
+    if owner is not None:
+        path, other = owner
+        raise SharedKbName(
+            f"{path.relative_to(config.kb_path).as_posix()} already holds {other}, which "
+            "has the same kb/ name. Rename or exclude one of the two in SOURCE_DIR; if "
+            f"{other} was renamed to this file, run `pipeline prune --yes` first."
+        )
     conversion = entry.get("conversion") or {}
+    previous = conversion
     source_format = entry["source_format"]
     sidecar_required = _needs_provenance_sidecar(source_format, text_class)
     if (
@@ -179,7 +201,66 @@ def convert_entry(
     if sidecar is not None:
         entry["conversion"]["provenance"] = sidecar.relative_to(config.kb_path).as_posix()
     entry["conversion"].update(extras)
-    return ConversionResult(slug, source_file, status, destination, converter)
+    written = {destination} | ({sidecar} if sidecar is not None else set())
+    superseded = _remove_superseded(previous, written, source_file, config)
+    return ConversionResult(
+        slug, source_file, status, destination, converter, superseded=superseded
+    )
+
+
+def _remove_superseded(
+    previous: dict[str, Any], written: set[Path], source_file: str, config: Config
+) -> tuple[str, ...]:
+    """Delete the files an earlier conversion of this entry wrote under another name.
+
+    A slug change (the extension became part of every slug) moves an entry's output from
+    `kb/deck.md` to `kb/deck-pdf.md`. Left in place, the old file is still indexed by
+    `kb index`, which reads every `kb/*.md`, and every passage in it is served twice. Only
+    a file inside `kb/` that the manifest recorded for this entry AND that still names
+    this source is removed: another source may have been given that name since.
+    """
+    kb_root = config.kb_dir.resolve()
+    keep = {path.resolve() for path in written}
+    removed: list[str] = []
+    for key in ("output", "provenance"):
+        rel = previous.get(key)
+        if not rel:
+            continue
+        candidate = (config.kb_path / rel).resolve()
+        if candidate in keep or kb_root not in candidate.parents or not candidate.is_file():
+            continue
+        if _declared_source(candidate) != source_file:
+            continue
+        candidate.unlink()
+        removed.append(rel)
+    return tuple(removed)
+
+
+def _foreign_owner(destination: Path, source_file: str) -> tuple[Path, str] | None:
+    """A kb/ file at this entry's name that says it came from another source, and that source.
+
+    Two sources differing only in punctuation or case share a slug; without this the second
+    conversion overwrote the first's markdown and sidecar without a word. A file naming no
+    source (unreadable, or written by hand) is not claimed by anyone and may be replaced.
+    """
+    for path in (destination, provenance_path(destination)):
+        if not path.is_file():
+            continue
+        declared = _declared_source(path)
+        if declared is not None and declared != source_file:
+            return path, declared
+    return None
+
+
+def _declared_source(path: Path) -> str | None:
+    """The `source_file` a kb/ markdown file or sidecar names, or None if unreadable."""
+    try:
+        text = path.read_text(encoding="utf-8")
+        if path.name.endswith(".provenance.json"):
+            return json.loads(text).get("source_file")
+        return frontmatter_lib.loads(text).metadata.get("source_file")
+    except (OSError, ValueError, AttributeError, yaml.YAMLError):
+        return None
 
 
 def _dispatch(

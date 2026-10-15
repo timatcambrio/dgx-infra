@@ -54,6 +54,29 @@ alone.
 Source documents are kept outside both repos on purpose. If `SOURCE_DIR` is unset, commands
 stop with an error rather than guess.
 
+### File names
+
+A document's name in `kb/` comes from its path inside `SOURCE_DIR`: lowercased, anything
+other than letters and digits turned into `-`, folders joined with `__`, and the extension
+kept at the end. `Travel Handbook.pdf` becomes `kb/travel-handbook-pdf.md`, and
+`gsa/Travel Handbook.pdf` becomes `kb/gsa__travel-handbook-pdf.md`. The same name starts
+every block id in the file and every id search hands out (`doc:travel-handbook-pdf`).
+
+The extension is part of the name so that a deck and its PDF export, `deck.pptx` and
+`deck.pdf`, can sit in one folder: they become `deck-pptx` and `deck-pdf`.
+
+Two files whose paths differ only in punctuation or case, such as `a.b.pdf` and
+`a-b.pdf`, or `Deck.pdf` and `deck.pdf`, get the same name. `inventory` lists every such
+group under `SHARED kb/ NAMES` and exits with an error; rename or exclude all but one file
+in each group and run it again. `convert` never writes over a `kb/` file that came from a
+different source: it reports the document as `ERROR`, records why in `corpus.yaml`, and
+exits with an error. If the other file was renamed into this one, run `pipeline prune
+--yes` to drop the old entry first.
+
+Renaming or
+moving a source file changes its name in `kb/`; see
+[After an update that renames documents](administration.md#after-an-update-that-renames-documents).
+
 ## Running it
 
 Four commands, in order:
@@ -155,7 +178,7 @@ Every converted document (PDF, DOCX, DOC, CSV, Markdown and PowerPoint alike) ha
 every content block has a stable HTML comment anchor immediately before it:
 
 ```markdown
-<!-- dgx:block=travel-handbook:p012:b004 -->
+<!-- dgx:block=travel-handbook-pdf:p012:b004 -->
 | Expense category | Limit | Receipt required |
 ```
 
@@ -171,7 +194,7 @@ the original source page and, when geometry has it, the page bounding box:
   "converter": "pdfplumber-geometry (model-free)",
   "blocks": [
     {
-      "block_id": "travel-handbook:p012:b004",
+      "block_id": "travel-handbook-pdf:p012:b004",
       "page": 12,
       "kind": "table",
       "confidence": "geometry",
@@ -183,7 +206,7 @@ the original source page and, when geometry has it, the page bounding box:
 
 Word and CSV documents have no fixed page geometry, so their blocks carry `page: null` and no
 `bbox` at all. The block's position in the file is the only locator, and its id still names
-the document (`travel-handbook:p000:b004`; `p000` reads as "no page"). Their `kind` and
+the document (`travel-handbook-docx:p000:b004`; `p000` reads as "no page"). Their `kind` and
 `confidence` mean the same thing PDF's do: `confidence` is `"structural"` for a block docling
 mapped with confidence, or `"docling:<label>"` naming the item type when it met something the
 mapping does not have a rule for, so an unfamiliar block type is visible rather than silently
@@ -193,7 +216,7 @@ flattened into ordinary prose.
 
 A `.pptx` file converts one slide to one page (a `.ppt` or `.odp` deck too, once LibreOffice
 has turned it into a `.pptx`): its blocks are anchored with the slide number
-(`deck:p007:b002` is on slide 7), and each slide opens with a heading, `## Slide 7: <title>`,
+(`deck-pptx:p007:b002` is on slide 7), and each slide opens with a heading, `## Slide 7: <title>`,
 or `## Slide 7` when the slide has no title. Citations for a deck name slides rather than
 pages (`slides 7–8`).
 

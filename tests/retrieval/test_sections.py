@@ -119,7 +119,7 @@ def test_page_ranges() -> None:
 
 
 def test_fixtures_sections_are_well_formed() -> None:
-    for slug in ("handbook", "budget-form", "deck", "reference-table"):
+    for slug in ("handbook-pdf", "budget-form-pdf", "deck-pdf", "reference-table-csv"):
         doc = load_document(FIXTURES / f"{slug}.md")
         sections = build_sections(doc)
         assert sections

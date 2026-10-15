@@ -32,7 +32,7 @@ def test_pdf_conversion_writes_block_anchors_and_sidecar(config, entry_for):
 
     assert ids_in_markdown
     assert ids_in_markdown == ids_in_sidecar
-    assert ids_in_markdown[0] == "born-digital:p001:b001"
+    assert ids_in_markdown[0] == "born-digital-pdf:p001:b001"
     assert markdown.count("<!-- dgx:block=") == len(data["blocks"])
     assert data["version"] == 1
     assert data["source_file"] == "born_digital.pdf"
@@ -48,10 +48,10 @@ def test_pdf_sidecar_records_source_page_kind_and_geometry(config, entry_for):
 
     by_id = {block["block_id"]: block for block in data["blocks"]}
 
-    assert by_id["born-digital:p001:b001"]["kind"] == "heading"
-    assert by_id["born-digital:p001:b001"]["page"] == 1
-    assert by_id["born-digital:p001:b001"]["confidence"] == "geometry"
-    assert len(by_id["born-digital:p001:b001"]["bbox"]) == 4
+    assert by_id["born-digital-pdf:p001:b001"]["kind"] == "heading"
+    assert by_id["born-digital-pdf:p001:b001"]["page"] == 1
+    assert by_id["born-digital-pdf:p001:b001"]["confidence"] == "geometry"
+    assert len(by_id["born-digital-pdf:p001:b001"]["bbox"]) == 4
     assert any(block["kind"] == "table" and block["page"] == 2 for block in data["blocks"])
 
 
