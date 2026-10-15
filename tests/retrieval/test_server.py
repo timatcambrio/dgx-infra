@@ -75,10 +75,10 @@ def test_search_then_fetch_round_trip(indexed_dsn: str, fake_ollama_http: str) -
             return search_json, fetch_json
 
     search_json, fetch_json = _run(_go)
-    assert search_json["results"][0]["id"].startswith("sec:budget-form:")
+    assert search_json["results"][0]["id"].startswith("sec:budget-form-pdf:")
     assert "FORM-7731" in fetch_json["text"]
     assert fetch_json["metadata"]["kind"] == "section"
-    assert "budget-form" in fetch_json["metadata"]["citation"]
+    assert "budget-form-pdf" in fetch_json["metadata"]["citation"]
     assert fetch_json["url"].startswith(KB_URL_BASE)
 
 
@@ -101,7 +101,7 @@ def test_without_kb_url_base_results_carry_no_url_but_keep_the_citation(
     search_json, fetch_json = _run(_go)
     assert all(r["url"] is None for r in search_json["results"])
     assert fetch_json["url"] is None
-    assert "budget-form" in fetch_json["metadata"]["citation"]
+    assert "budget-form-pdf" in fetch_json["metadata"]["citation"]
 
 
 def test_no_reply_tells_the_assistant_to_follow_a_url() -> None:
@@ -118,7 +118,7 @@ def test_dual_encoding_search_and_fetch(indexed_dsn: str, fake_ollama_http: str)
         srv = server_module.build_server(cfg)
         async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
             search_res = await s.call_tool("search", {"query": "Mileage"})
-            fetch_res = await s.call_tool("fetch", {"id": "doc:handbook"})
+            fetch_res = await s.call_tool("fetch", {"id": "doc:handbook-pdf"})
             return search_res, fetch_res
 
     search_res, fetch_res = _run(_go)
@@ -132,7 +132,7 @@ def test_fetch_document_returns_full_body_with_no_anchor_substring(indexed_dsn: 
     async def _go():
         srv = server_module.build_server(cfg)
         async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
-            res = await s.call_tool("fetch", {"id": "doc:handbook"})
+            res = await s.call_tool("fetch", {"id": "doc:handbook-pdf"})
             return json.loads(res.content[0].text)
 
     fetch_json = _run(_go)
@@ -147,13 +147,13 @@ def test_fetch_document_truncated_when_over_fetch_max_chars(indexed_dsn: str) ->
     async def _go():
         srv = server_module.build_server(cfg)
         async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
-            res = await s.call_tool("fetch", {"id": "doc:handbook"})
+            res = await s.call_tool("fetch", {"id": "doc:handbook-pdf"})
             return json.loads(res.content[0].text)
 
     fetch_json = _run(_go)
     assert fetch_json["metadata"]["kind"] == "document"
     assert fetch_json["metadata"]["truncated"] is True
-    assert "sec:handbook:" in fetch_json["text"]
+    assert "sec:handbook-pdf:" in fetch_json["text"]
 
 
 def test_fetch_page_contains_incomplete_callout(indexed_dsn: str) -> None:
@@ -162,7 +162,7 @@ def test_fetch_page_contains_incomplete_callout(indexed_dsn: str) -> None:
     async def _go():
         srv = server_module.build_server(cfg)
         async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
-            res = await s.call_tool("fetch", {"id": "page:budget-form:p002"})
+            res = await s.call_tool("fetch", {"id": "page:budget-form-pdf:p002"})
             return json.loads(res.content[0].text)
 
     fetch_json = _run(_go)
@@ -179,18 +179,18 @@ def test_fetch_page_over_the_cap_is_bounded_and_names_how_to_narrow(indexed_dsn:
     async def _go():
         srv = server_module.build_server(cfg)
         async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
-            res = await s.call_tool("fetch", {"id": "page:budget-form:p002"})
+            res = await s.call_tool("fetch", {"id": "page:budget-form-pdf:p002"})
             return json.loads(res.content[0].text)
 
     fetch_json = _run(_go)
     assert fetch_json["metadata"]["kind"] == "page"
     assert fetch_json["metadata"]["truncated"] is True
     assert "FETCH_MAX_CHARS" in fetch_json["text"]
-    assert "chunk:budget-form:" in fetch_json["text"]
+    assert "chunk:budget-form-pdf:" in fetch_json["text"]
 
 
 def test_get_section_neighbours_spans_three_sections(indexed_dsn: str) -> None:
-    """`sec:handbook:3` ("Expense Reporting") is a middle section with both a predecessor
+    """`sec:handbook-pdf:3` ("Expense Reporting") is a middle section with both a predecessor
     ("Travel Policy", index 2) and a successor ("Approvals", index 4); confirmed against
     the indexed fixture's own `sections` rows."""
     cfg = _cfg(FIXTURES.parent, indexed_dsn)
@@ -198,7 +198,7 @@ def test_get_section_neighbours_spans_three_sections(indexed_dsn: str) -> None:
     async def _go():
         srv = server_module.build_server(cfg)
         async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
-            res = await s.call_tool("get_section", {"id": "sec:handbook:3", "neighbours": 1})
+            res = await s.call_tool("get_section", {"id": "sec:handbook-pdf:3", "neighbours": 1})
             return json.loads(res.content[0].text)
 
     fetch_json = _run(_go)
@@ -208,19 +208,19 @@ def test_get_section_neighbours_spans_three_sections(indexed_dsn: str) -> None:
     assert "Approvals" in text
     block_ids = fetch_json["metadata"]["block_ids"]
     assert block_ids is not None and len(block_ids) == 2
-    assert all(bid.startswith("handbook:") for bid in block_ids)
+    assert all(bid.startswith("handbook-pdf:") for bid in block_ids)
     assert block_ids[0] != block_ids[1]
 
 
 def test_fetch_section_that_opens_with_table_has_heading_and_table(indexed_dsn: str) -> None:
-    """`sec:handbook:1` ("Introduction") opens with a table that is glued to its heading
+    """`sec:handbook-pdf:1` ("Introduction") opens with a table that is glued to its heading
     block, confirmed against `sections`/`blocks` for the fixture."""
     cfg = _cfg(FIXTURES.parent, indexed_dsn)
 
     async def _go():
         srv = server_module.build_server(cfg)
         async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
-            res = await s.call_tool("fetch", {"id": "sec:handbook:1"})
+            res = await s.call_tool("fetch", {"id": "sec:handbook-pdf:1"})
             return json.loads(res.content[0].text)
 
     fetch_json = _run(_go)
@@ -275,13 +275,13 @@ def test_get_outline_has_one_entry_per_section_with_sec_ids(indexed_dsn: str) ->
     async def _go():
         srv = server_module.build_server(cfg)
         async with create_connected_server_and_client_session(srv, raise_exceptions=True) as s:
-            res = await s.call_tool("get_outline", {"id": "doc:handbook"})
+            res = await s.call_tool("get_outline", {"id": "doc:handbook-pdf"})
             return json.loads(res.content[0].text)
 
     result = _run(_go)
-    assert len(result["sections"]) == 19  # expected.json: handbook section_count
+    assert len(result["sections"]) == 19  # expected.json: handbook-pdf section_count
     for entry in result["sections"]:
-        assert entry["id"].startswith("sec:handbook:")
+        assert entry["id"].startswith("sec:handbook-pdf:")
 
 
 def test_one_tool_call_produces_exactly_one_json_log_line(
@@ -377,5 +377,5 @@ def test_stdio_subprocess_initialize_list_search_fetch(
         "get_outline",
         "get_section",
     }
-    assert search_json["results"][0]["id"].startswith("sec:budget-form:")
+    assert search_json["results"][0]["id"].startswith("sec:budget-form-pdf:")
     assert "FORM-7731" in fetch_json["text"]

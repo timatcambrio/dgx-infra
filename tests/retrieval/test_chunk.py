@@ -222,7 +222,7 @@ def test_page_first_le_page_last() -> None:
 
 def _all_fixture_chunks():
     out = {}
-    for slug in ("handbook", "budget-form", "deck", "reference-table"):
+    for slug in ("handbook-pdf", "budget-form-pdf", "deck-pdf", "reference-table-csv"):
         doc = load_document(FIXTURES / f"{slug}.md")
         sections = build_sections(doc)
         out[slug] = (sections, build_chunks(sections))

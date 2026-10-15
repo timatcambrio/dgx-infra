@@ -151,7 +151,7 @@ def test_initialize_list_tools_search_fetch_over_http(http_server: str) -> None:
         "get_outline",
         "get_section",
     }
-    assert search_json["results"][0]["id"].startswith("sec:budget-form:")
+    assert search_json["results"][0]["id"].startswith("sec:budget-form-pdf:")
     assert "FORM-7731" in fetch_json["text"]
 
 

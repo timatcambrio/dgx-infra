@@ -120,14 +120,22 @@ def test_path_outside_the_source_root_is_refused(fixtures_dir, tmp_path):
 @pytest.mark.parametrize(
     ("path", "expected"),
     [
-        ("travel.pdf", "travel"),
-        ("rfsuny/travel_handbook.pdf", "rfsuny__travel-handbook"),
-        ("RF SUNY/Travel (2024).pdf", "rf-suny__travel-2024"),
-        ("a/b/c.docx", "a__b__c"),
+        ("travel.pdf", "travel-pdf"),
+        ("rfsuny/travel_handbook.pdf", "rfsuny__travel-handbook-pdf"),
+        ("RF SUNY/Travel (2024).pdf", "rf-suny__travel-2024-pdf"),
+        ("a/b/c.docx", "a__b__c-docx"),
+        ("deck.pdf", "deck-pdf"),
+        ("deck.pptx", "deck-pptx"),
+        ("gsa/travel.pdf", "gsa__travel-pdf"),
+        ("notes.markdown", "notes-markdown"),
+        ("Deck.PDF", "deck-pdf"),
     ],
 )
 def test_slugs_are_stable_and_preserve_structure(path, expected):
-    """Two documents with the same filename in different directories must not collide."""
+    """Two documents with the same filename in different directories must not collide, and
+    neither must two in one directory that differ only by extension: `deck.pdf` and
+    `deck.pptx` were both `deck` and the second conversion overwrote the first's kb/ file.
+    """
     assert manifest_module.slug_for(path) == expected
 
 
@@ -332,3 +340,18 @@ def test_tables_and_image_docx_sidecar_is_byte_stable(config, entry_for):
     second = convert_entry(entry, config, force=True)
 
     assert provenance_path(second.output).read_bytes() == first_sidecar
+
+
+def test_retrieval_fixtures_are_named_as_conversion_would_name_them():
+    """The retrieval fixtures stand in for real kb/ output, so their file names must be the
+    slugs `slug_for` gives their declared source files. The generator spells them out (it
+    may not import `pipeline.manifest`), and a slug rule change would otherwise leave every
+    retrieval test exercising a naming scheme conversion no longer produces."""
+    import frontmatter
+
+    kb = Path(__file__).resolve().parent / "retrieval" / "fixtures" / "kb"
+    documents = sorted(kb.glob("*.md"))
+    assert documents
+    for path in documents:
+        source_file = frontmatter.load(path).metadata["source_file"]
+        assert path.stem == manifest_module.slug_for(source_file), path.name

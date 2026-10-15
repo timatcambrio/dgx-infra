@@ -50,9 +50,9 @@ def test_one_failing_document_is_reported_and_the_rest_still_convert(workspace, 
     assert result.exit_code == 1, result.output
     assert "ERROR" in result.output and "simple.docx" in result.output
     assert "synthetic converter failure" in result.output
-    assert (kb / "kb" / "reference-table.md").is_file()
-    assert (kb / "kb" / "born-digital.md").is_file()
-    assert not (kb / "kb" / "simple.md").exists()
+    assert (kb / "kb" / "reference-table-csv.md").is_file()
+    assert (kb / "kb" / "born-digital-pdf.md").is_file()
+    assert not (kb / "kb" / "simple-docx.md").exists()
 
     manifest = yaml.safe_load((kb / "corpus.yaml").read_text(encoding="utf-8"))
     by_file = {d["source_file"]: d for d in manifest["documents"]}
@@ -84,21 +84,21 @@ def test_only_filter_is_case_insensitive_substring_or_glob():
 
     manifest = {
         "documents": [
-            {"source_file": "DFARSPGI.docx", "slug": "dfarspgi"},
-            {"source_file": "Ch 05_b.pdf", "slug": "ch-05-b"},
-            {"source_file": "notes.csv", "slug": "notes"},
+            {"source_file": "DFARSPGI.docx", "slug": "dfarspgi-docx"},
+            {"source_file": "Ch 05_b.pdf", "slug": "ch-05-b-pdf"},
+            {"source_file": "notes.csv", "slug": "notes-csv"},
         ]
     }
 
     def names(only):
         return [e["slug"] for e in _selected(manifest, only)]
 
-    assert names("DFARSPGI") == ["dfarspgi"]
-    assert names("dfarspgi") == ["dfarspgi"]
-    assert names("DFARSPGI.docx") == ["dfarspgi"]
-    assert names("*.DOCX") == ["dfarspgi"]
-    assert names("05") == ["ch-05-b"]
-    assert names(None) == ["dfarspgi", "ch-05-b", "notes"]
+    assert names("DFARSPGI") == ["dfarspgi-docx"]
+    assert names("dfarspgi") == ["dfarspgi-docx"]
+    assert names("DFARSPGI.docx") == ["dfarspgi-docx"]
+    assert names("*.DOCX") == ["dfarspgi-docx"]
+    assert names("05") == ["ch-05-b-pdf"]
+    assert names(None) == ["dfarspgi-docx", "ch-05-b-pdf", "notes-csv"]
     assert names("nomatch") == []
 
 
@@ -107,8 +107,8 @@ def test_prune_removes_missing_entries_and_their_outputs_only_with_yes(workspace
     for command in ("inventory", "triage", "convert"):
         result = runner.invoke(app, [command, "--source-dir", str(source)])
         assert result.exit_code == 0, result.output
-    assert (kb / "kb" / "simple.md").is_file()
-    assert (kb / "kb" / "simple.provenance.json").is_file()
+    assert (kb / "kb" / "simple-docx.md").is_file()
+    assert (kb / "kb" / "simple-docx.provenance.json").is_file()
 
     (source / "simple.docx").unlink()
     assert runner.invoke(app, ["inventory", "--source-dir", str(source)]).exit_code == 0
@@ -116,14 +116,14 @@ def test_prune_removes_missing_entries_and_their_outputs_only_with_yes(workspace
     dry = runner.invoke(app, ["prune", "--source-dir", str(source)])
     assert dry.exit_code == 0, dry.output
     assert "Would remove" in dry.output and "simple.docx" in dry.output
-    assert (kb / "kb" / "simple.md").is_file(), "dry run must not delete"
+    assert (kb / "kb" / "simple-docx.md").is_file(), "dry run must not delete"
 
     wet = runner.invoke(app, ["prune", "--source-dir", str(source), "--yes"])
     assert wet.exit_code == 0, wet.output
-    assert not (kb / "kb" / "simple.md").exists()
-    assert not (kb / "kb" / "simple.provenance.json").exists()
-    assert (kb / "kb" / "reference-table.md").is_file()
-    assert (kb / "kb" / "born-digital.md").is_file()
+    assert not (kb / "kb" / "simple-docx.md").exists()
+    assert not (kb / "kb" / "simple-docx.provenance.json").exists()
+    assert (kb / "kb" / "reference-table-csv.md").is_file()
+    assert (kb / "kb" / "born-digital-pdf.md").is_file()
 
     manifest = yaml.safe_load((kb / "corpus.yaml").read_text(encoding="utf-8"))
     names = {d["source_file"] for d in manifest["documents"]}
@@ -148,3 +148,98 @@ def test_google_shortcuts_are_reported_with_how_to_export_them(workspace):
     assert result.exit_code == 0, result.output
     assert "download it from Google Slides as .pptx" in result.output
     assert "download it from Google Docs as .docx" in result.output
+
+
+def _run(*commands, source):
+    for command in commands:
+        result = runner.invoke(app, [command, "--source-dir", str(source)])
+        assert result.exit_code == 0, result.output
+    return result
+
+
+def test_same_stem_sources_of_different_formats_get_separate_kb_files(tmp_path, monkeypatch):
+    """A deck saved next to its PDF export is the common case. Both were slug `deck`, both
+    wrote `kb/deck.md` and its sidecar, and the second conversion silently replaced the
+    first: one of the two documents was simply not in the knowledge base."""
+    kb = tmp_path / "dgx-knowledge"
+    monkeypatch.setenv("KB_PATH", str(kb))
+    source = tmp_path / "docs"
+    source.mkdir()
+    shutil.copy(FIXTURES / "deck.pptx", source / "deck.pptx")
+    shutil.copy(FIXTURES / "born_digital.pdf", source / "deck.pdf")
+
+    _run("inventory", "triage", "convert", source=source)
+
+    manifest = yaml.safe_load((kb / "corpus.yaml").read_text(encoding="utf-8"))
+    slugs = {d["source_file"]: d["slug"] for d in manifest["documents"]}
+    assert slugs == {"deck.pdf": "deck-pdf", "deck.pptx": "deck-pptx"}
+    for slug, source_file in (("deck-pdf", "deck.pdf"), ("deck-pptx", "deck.pptx")):
+        text = (kb / "kb" / f"{slug}.md").read_text(encoding="utf-8")
+        assert f"\nsource_file: {source_file}\n" in text
+        assert f"dgx:block={slug}:p001:b001" in text
+        sidecar = (kb / "kb" / f"{slug}.provenance.json").read_text(encoding="utf-8")
+        assert f'"source_file": "{source_file}"' in sidecar
+    assert not (kb / "kb" / "deck.md").exists()
+
+
+def _age_to_old_slugs(kb):
+    """Rewrite a converted workspace as the slug scheme before the extension left it:
+    `simple.docx` -> slug `simple`, `kb/simple.md`, `kb/simple.provenance.json`."""
+    manifest_path = kb / "corpus.yaml"
+    manifest = manifest_module.load(manifest_path)
+    for entry in manifest["documents"]:
+        old = entry["slug"].rsplit("-", 1)[0]
+        entry["slug"] = old
+        conversion = entry["conversion"]
+        for key, suffix in (("output", ".md"), ("provenance", ".provenance.json")):
+            if key in conversion:
+                new_path = kb / conversion[key]
+                old_path = kb / "kb" / f"{old}{suffix}"
+                new_path.rename(old_path)
+                conversion[key] = f"kb/{old}{suffix}"
+    manifest_module.save(manifest, manifest_path)
+
+
+def test_reinventory_of_an_old_corpus_renames_and_leaves_no_orphaned_kb_files(workspace):
+    """An existing corpus.yaml kept its old slugs (`upsert` only filled a missing one), so
+    the new names would never have taken effect; and once they did, the old kb/ files would
+    have stayed behind, still indexed by `kb index`, serving every passage twice."""
+    kb, source = workspace
+    _run("inventory", "triage", "convert", source=source)
+    _age_to_old_slugs(kb)
+    assert (kb / "kb" / "simple.md").is_file()
+
+    inventoried = _run("inventory", source=source)
+    assert "renamed   : 3" in inventoried.output
+    converted = _run("convert", source=source)
+    assert "removed old kb/simple.md" in converted.output
+
+    names = sorted(p.name for p in (kb / "kb").iterdir())
+    assert names == [
+        "born-digital-pdf.md",
+        "born-digital-pdf.provenance.json",
+        "reference-table-csv.md",
+        "reference-table-csv.provenance.json",
+        "simple-docx.md",
+        "simple-docx.provenance.json",
+    ]
+    manifest = yaml.safe_load((kb / "corpus.yaml").read_text(encoding="utf-8"))
+    by_file = {d["source_file"]: d for d in manifest["documents"]}
+    assert by_file["simple.docx"]["slug"] == "simple-docx"
+    assert by_file["simple.docx"]["conversion"]["output"] == "kb/simple-docx.md"
+
+
+def test_an_old_kb_file_now_naming_another_source_is_not_removed(workspace):
+    """The old name is only the entry's to delete while the file still says it came from
+    that source; anything else at that path belongs to someone else."""
+    kb, source = workspace
+    _run("inventory", "triage", "convert", source=source)
+    _age_to_old_slugs(kb)
+    foreign = "---\nsource_file: elsewhere/simple.docx\n---\n\nNot ours.\n"
+    (kb / "kb" / "simple.md").write_text(foreign, encoding="utf-8")
+
+    _run("inventory", "convert", source=source)
+
+    assert (kb / "kb" / "simple.md").read_text(encoding="utf-8") == foreign
+    assert (kb / "kb" / "simple-docx.md").is_file()
+    assert not (kb / "kb" / "simple.provenance.json").exists()

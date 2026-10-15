@@ -14,7 +14,7 @@ cases:
     question: >
       Which box do I check for the first submission attempt, and how do I know
       the instruction belongs to that field rather than a neighbouring one?
-    document: linked-form.md
+    document: linked-form-pdf.md
     expect:
       - "1. TYPE OF SUBMISSION"
       - "[points to: TypeOfSubmission]: Use Application for the first submission attempt."
@@ -24,7 +24,7 @@ cases:
 
   - id: date-format-is-attributed-but-not-claimed
     question: What format does the date field take, and how strong is that attribution?
-    document: linked-form.md
+    document: linked-form-pdf.md
     expect:
       - "[beside: 2. DATE SUBMITTED]: Format: MM/DD/YYYY."
     forbid:
@@ -33,13 +33,13 @@ cases:
 
   - id: unanchored-notes-stay-unanchored
     question: Is there guidance that belongs to no particular field?
-    document: linked-form.md
+    document: linked-form-pdf.md
     expect:
       - "> **Annotation:** General guidance is in the programme announcement."
 
   - id: ruled-form-cells-are-answerable
     question: Which cell of the ruled form does each instruction belong to?
-    document: ruled-form.md
+    document: ruled-form-pdf.md
     expect:
       - "| 1. TYPE OF SUBMISSION |"
       - "[points to: 1. TYPE OF SUBMISSION]: Use Application for the first submission attempt."
@@ -50,20 +50,20 @@ cases:
 
   - id: ruled-grid-survives-as-a-grid
     question: What are the columns of the form's table?
-    document: ruled-form.md
+    document: ruled-form-pdf.md
     expect:
       - "| Field | Value | Notes |"
 
   - id: annotations-are-distinguishable-from-the-form
     question: Which words are the form's own, and which did someone add on top of it?
-    document: annotated-form.md
+    document: annotated-form-pdf.md
     expect:
       - "Requester:"
       - "[beside: Requester:]: YOUR NAME"
 
   - id: rates-table-is-still-a-table
     question: What is the nightly lodging limit?
-    document: born-digital.md
+    document: born-digital-pdf.md
     expect:
       - "Lodging"
       - "$180 / night"
@@ -72,7 +72,7 @@ cases:
     question: >
       This document is about a budget form. Can I read the form's rows and values,
       and if not, does the file tell me so rather than looking complete?
-    document: screenshot-form.md
+    document: screenshot-form-pdf.md
     expect:
       - "**INCOMPLETE"
       - "mostly image"
@@ -86,7 +86,7 @@ cases:
     question: >
       Where does federal funds carry over go? The label is one of several notes
       standing side by side across the page.
-    document: boxed-notes.md
+    document: boxed-notes-pdf.md
     expect:
       - "> **Boxed text:** Federal funds carry over"
       - "> **Boxed text:** Matching funds carry over"
@@ -99,7 +99,7 @@ cases:
 
   - id: a-shaded-header-is-still-a-table
     question: What is the federal amount for personnel?
-    document: boxed-notes.md
+    document: boxed-notes-pdf.md
     expect:
       - "| Category | Federal | Match |"
       - "| Personnel | 250,000 | 125,000 |"

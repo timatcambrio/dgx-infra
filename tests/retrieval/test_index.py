@@ -143,7 +143,7 @@ def test_modifying_one_fixture_byte_reindexes_only_that_document(tmp_path: Path,
     cfg = _cfg(tmp_path, db_dsn)
     _run(cfg)
 
-    target = kb_dir / "deck.md"
+    target = kb_dir / "deck-pdf.md"
     text = target.read_text(encoding="utf-8")
     # A byte change that keeps the frontmatter/sha contract irrelevant: kb_sha256 is the
     # markdown file's own bytes, computed fresh every run; it is not re-validated against
@@ -160,11 +160,11 @@ def test_deleting_one_fixture_deletes_its_rows(tmp_path: Path, db_dsn: str) -> N
     cfg = _cfg(tmp_path, db_dsn)
     _run(cfg)
 
-    (kb_dir / "reference-table.md").unlink()
+    (kb_dir / "reference-table-csv.md").unlink()
 
     result = _run(cfg)
     assert result.summary_line == "3 unchanged, 0 reindexed, 1 deleted, 0 errors"
-    counts = asyncio.run(_fetch_counts(db_dsn, "reference-table"))
+    counts = asyncio.run(_fetch_counts(db_dsn, "reference-table-csv"))
     assert counts == {"blocks": 0, "sections": 0, "chunks": 0}
 
 
@@ -173,14 +173,14 @@ def test_untouched_document_row_counts_identical_across_runs(tmp_path: Path, db_
     _copy_fixtures(kb_dir)
     cfg = _cfg(tmp_path, db_dsn)
     _run(cfg)
-    before = asyncio.run(_fetch_counts(db_dsn, "handbook"))
+    before = asyncio.run(_fetch_counts(db_dsn, "handbook-pdf"))
 
-    # touch an unrelated document so *something* reindexes, "handbook" itself untouched
-    (kb_dir / "deck.md").write_text(
-        (kb_dir / "deck.md").read_text(encoding="utf-8") + " ", encoding="utf-8"
+    # touch an unrelated document so *something* reindexes, "handbook-pdf" itself untouched
+    (kb_dir / "deck-pdf.md").write_text(
+        (kb_dir / "deck-pdf.md").read_text(encoding="utf-8") + " ", encoding="utf-8"
     )
     _run(cfg)
-    after = asyncio.run(_fetch_counts(db_dsn, "handbook"))
+    after = asyncio.run(_fetch_counts(db_dsn, "handbook-pdf"))
     assert before == after
 
 
@@ -189,11 +189,11 @@ def test_corrupted_fixture_is_reported_and_old_rows_survive(tmp_path: Path, db_d
     _copy_fixtures(kb_dir)
     cfg = _cfg(tmp_path, db_dsn)
     _run(cfg)
-    before = asyncio.run(_fetch_counts(db_dsn, "budget-form"))
+    before = asyncio.run(_fetch_counts(db_dsn, "budget-form-pdf"))
 
     # Corrupt just this document's provenance sidecar sha so it no longer matches
     # frontmatter's content_sha256 -- the sha-mismatch KbFileError.
-    sidecar_path = kb_dir / "budget-form.provenance.json"
+    sidecar_path = kb_dir / "budget-form-pdf.provenance.json"
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     sidecar["content_sha256"] = "0" * 64
     sidecar_path.write_text(json.dumps(sidecar), encoding="utf-8")
@@ -202,10 +202,10 @@ def test_corrupted_fixture_is_reported_and_old_rows_survive(tmp_path: Path, db_d
     result = _run(cfg, force=True)
 
     assert len(result.errors) == 1
-    assert result.errors[0][0].name == "budget-form.md"
+    assert result.errors[0][0].name == "budget-form-pdf.md"
     assert "sha mismatch" in result.errors[0][1]
 
-    after = asyncio.run(_fetch_counts(db_dsn, "budget-form"))
+    after = asyncio.run(_fetch_counts(db_dsn, "budget-form-pdf"))
     assert before == after
 
 
