@@ -63,7 +63,17 @@ kept at the end. `Travel Handbook.pdf` becomes `kb/travel-handbook-pdf.md`, and
 every block id in the file and every id search hands out (`doc:travel-handbook-pdf`).
 
 The extension is part of the name so that a deck and its PDF export, `deck.pptx` and
-`deck.pdf`, can sit in one folder: they become `deck-pptx` and `deck-pdf`. Renaming or
+`deck.pdf`, can sit in one folder: they become `deck-pptx` and `deck-pdf`.
+
+Two files whose paths differ only in punctuation or case, such as `a.b.pdf` and
+`a-b.pdf`, or `Deck.pdf` and `deck.pdf`, get the same name. `inventory` lists every such
+group under `SHARED kb/ NAMES` and exits with an error; rename or exclude all but one file
+in each group and run it again. `convert` never writes over a `kb/` file that came from a
+different source: it reports the document as `ERROR`, records why in `corpus.yaml`, and
+exits with an error. If the other file was renamed into this one, run `pipeline prune
+--yes` to drop the old entry first.
+
+Renaming or
 moving a source file changes its name in `kb/`; see
 [After an update that renames documents](administration.md#after-an-update-that-renames-documents).
 
