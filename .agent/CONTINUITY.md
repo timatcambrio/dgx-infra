@@ -6,6 +6,12 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-15 [CODE] **Merged to local main 0c2d5c8, not pushed:** `fix/slug-collisions`,
+  which carries `fix/subfolder-ids` and `fix/slug-extension` (the three entries below).
+  [TOOL] make check on the tested tip 5a6566d: 784 passed, 2 skipped (db + ollama up);
+  fixtures no-ops; merged tree identical to it. Branches deleted. main now 33 ahead of
+  origin. Still pending (Tim): push; dgx-eval expected_slug renames; dgx-knowledge
+  inventory + convert + kb index; eval re-run; client export.
 - 2026-10-15 [CODE] **Option A built on branch `fix/slug-extension`** (from main 2e10d15; not
   merged, not pushed): tests 4b5a8d7, fix f99ea3e, regenerated goldens + retrieval fixtures
   bc0dc68. `slug_for` appends `-<ext>` lowercased (`gsa/travel.pdf` -> `gsa__travel-pdf`).
