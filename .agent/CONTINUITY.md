@@ -35,9 +35,26 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   [TOOL] make check 780 passed, 2 skipped (root-only chown tests; db + ollama up).
 - 2026-10-15 [DISCOVERY] SUPERSEDED by the entry above for the `_` part: `retrieval/ids.py`
   `_SLUG` allowed no `_`, so a document in a SOURCE_DIR subfolder could not be fetched by id.
-  Still unfixed: punctuation/case-only collisions (`a.b.pdf` vs
-  `a-b.pdf`; `Deck.pdf` vs `deck.pdf` on Linux) still share a slug, and inventory does not
-  detect a shared slug.
+  Punctuation/case-only collisions (`a.b.pdf` vs `a-b.pdf`; `Deck.pdf` vs `deck.pdf` on
+  Linux) still share a slug; now detected, see the next entry.
+- 2026-10-15 [CODE] **Shared slugs fail loudly on branch `fix/slug-collisions`** (cut from
+  `fix/subfolder-ids` 38e71b4; not merged, not pushed): tests ae6ea17, fix 15418e1. No slug
+  changes, no suffixing (per the agreed plan: add stable `-2` suffixes in corpus.yaml only
+  if the client corpus turns out to have collisions). `manifest.shared_slugs` groups
+  PRESENT entries by slug (MISSING ignored). `inventory` saves the manifest, then prints
+  `SHARED kb/ NAMES` with `kb/<slug>.md  <-  a, b` per group and exits 1. `convert_entry`
+  raises `SharedKbName` before writing (and before the "unchanged" shortcut) when the
+  existing kb/<slug>.md or its sidecar names another `source_file` (a file naming none is
+  replaceable); it reaches the CLI's generic handler: `ERROR`, `conversion_error` on the
+  entry (so `report` lists it), exit 1. [DECISION] Not STOP-AND-ASK because `convert` exits
+  0 on those. A renamed source (old entry MISSING, new one same slug) is also refused until
+  `pipeline prune --yes`; the message says so. Docs: conversion.md "File names".
+  [DISCOVERY] `prune` deletes a MISSING entry's recorded outputs without the
+  `_declared_source` ownership check; harmless now that convert refuses foreign files, but
+  a kb/ file overwritten before this fix could be deleted from under its new owner.
+  [DISCOVERY] cli.py `convert` ends with an unreachable `raise typer.Exit(EXIT_STOP_AND_ASK)`
+  after `raise typer.Exit(1)`; convert has exited 0 on STOP-AND-ASK since e532d8b. Unchanged.
+  [TOOL] make check 784 passed, 2 skipped (db + ollama up; was 780).
 - 2026-10-14 [USER] **Open problem, to come back to: there is no corpus/markdown management.**
   Sources change on purpose or by accident (edited, renamed, moved, a same-named sibling
   added) and that changes what conversion produces: file names, block ids, citations.
