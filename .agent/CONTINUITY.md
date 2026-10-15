@@ -6,6 +6,28 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-15 [TOOL] **Proxy corpus upgraded to extension slugs; the vector leg fell, and the
+  rename is NOT the cause.** dgx-eval case files renamed (backups `*.bak-20261015`: 36
+  slugs in proxy-cases, 6 + `expected_id page:ch-05-b-pdf:p003` in mcp-cases, 15 in
+  candidates). dgx-knowledge: inventory `renamed : 12`; convert 3m37s, every old kb/ file
+  removed, new files identical to the old apart from ids; `kb index` 12 reindexed, 12
+  deleted, 0 errors, 47 min on CPU. corpus.yaml left uncommitted.
+  Before (old index, old cases): kb eval 33 / 86 / 89; check_eval_cases 0 unsatisfiable,
+  3 warnings; mcp_probe 68 checks, 0 failed. After: **33 / 72 / 81**; check_eval_cases
+  identical modulo slug; mcp_probe 2 failed (`slide-table-after-fix`: search returns
+  daffars-docx, evidence `$8,750` not reached). Lexical identical case for case.
+  Eliminated: the embedded texts (heading_path + chunk text, 3,370 chunks) are
+  byte-identical under the 2026-10-07 code and now, and none contains an id; batch vs
+  single embeddings agree (cos 1.0); stored vectors equal fresh ones (cos 1.0).
+  **Remaining variable: the embedding server.** The old index was embedded by ollama
+  0.40.0 on 2026-10-07; the Ollama app auto-updated to 0.40.1 on 2026-10-08 (its new
+  bundled llama-server runs nomic with `-c 2048 --context-shift`). Queries on 0.40.1
+  against the 0.40.0 index still scored 86%, so the difference is in document embeddings.
+  Mechanism UNCONFIRMED. Decisive test: reindex under 0.40.0 (or 0.35.1) and re-run;
+  needs a download, not done. Also found: the compose `ollama` container (0.34.2) has no
+  model pulled, and scripts/mcp_probe.py starts `kb serve` with the MCP default
+  environment, so an `OLLAMA_BASE_URL` override does not reach it (.env wins). Rollback
+  material in the session scratchpad only (old kb/ + corpus.yaml).
 - 2026-10-15 [CODE] **Merged to local main 0c2d5c8, not pushed:** `fix/slug-collisions`,
   which carries `fix/subfolder-ids` and `fix/slug-extension` (the three entries below).
   [TOOL] make check on the tested tip 5a6566d: 784 passed, 2 skipped (db + ollama up);
