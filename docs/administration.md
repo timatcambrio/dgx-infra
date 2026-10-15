@@ -146,6 +146,29 @@ lists what would be removed; `make prune ARGS=--yes` removes the entries and the
 files, and the next `kb index` drops the matching database rows. See
 [Things that stop and ask](conversion.md#things-that-stop-and-ask).
 
+## After an update that renames documents
+
+Earlier versions left the extension out of a document's name, so `deck.pdf` became
+`kb/deck.md`; it is now `kb/deck-pdf.md` ([File names](conversion.md#file-names)). After
+updating, run these once, in order:
+
+```bash
+make inventory       # records the new names; prints "renamed   : N"
+make convert         # converts every renamed document again and removes its old kb/ files
+make compose-index   # indexes the new files and drops the old ones' rows
+```
+
+`make convert` prints `removed old kb/deck.md` for each old file it deletes. It only
+deletes a file that `corpus.yaml` recorded for that document and that still names that
+document as its source. Every document is converted and embedded again, so expect the
+first-run times, not the incremental ones. `make compose-index` then reports the old names
+under `deleted`.
+
+A document whose source file is no longer in `SOURCE_DIR` keeps its old name until `make
+prune` removes it ([Removing documents](#removing-documents)). Anything outside the service
+that names a document or an id (an evaluation case file's `expected_slug` or `document`,
+a saved id such as `sec:deck:3`, a link to a `kb/` file) needs the new name.
+
 ## Tokens: issuing, revoking, rotating
 
 One token per user. `kb token` manages them; nothing here restarts the server.

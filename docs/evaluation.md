@@ -25,7 +25,7 @@ survived conversion:
 cases:
   - id: submission-type-first-attempt
     question: Which box do I check for the first submission attempt?
-    document: linked-form.md
+    document: linked-form-pdf.md
     expect:
       - "[points to: TypeOfSubmission]: Use Application for the first submission attempt."
 ```

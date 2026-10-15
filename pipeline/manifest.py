@@ -57,10 +57,13 @@ def slug_for(relative_path: str | PurePosixPath) -> str:
     """A stable, filesystem-safe slug derived from the path relative to the source root.
 
     Directory structure is preserved as `__` so that `rfsuny/travel.pdf` and
-    `gsa/travel.pdf` do not collide.
+    `gsa/travel.pdf` do not collide, and the extension is always kept as a final `-<ext>`
+    so that `deck.pdf` and `deck.pptx` in one folder do not either. Without it both were
+    `deck`, both wrote `kb/deck.md`, and the second conversion silently replaced the
+    first: a PDF export saved next to its deck is the common case.
     """
     pure = PurePosixPath(str(relative_path).replace("\\", "/"))
-    parts = list(pure.parts[:-1]) + [pure.stem]
+    parts = list(pure.parts[:-1]) + [pure.stem + pure.suffix.replace(".", "-")]
     cleaned = [_SLUG_STRIP.sub("-", part.lower()).strip("-") for part in parts]
     slug = "__".join(part for part in cleaned if part)
     return slug or "document"
@@ -171,7 +174,10 @@ def upsert(manifest: dict[str, Any], path: Path, source_root: Path) -> tuple[dic
     was_missing = entry.get("status") == STATUS_MISSING
     entry["status"] = STATUS_PRESENT
     entry["source_format"] = source_format
-    entry.setdefault("slug", slug_for(source_file))
+    # Always recomputed, never kept from the file: a corpus.yaml written before the slug
+    # carried the extension would otherwise keep converting `deck.pdf` to `kb/deck.md`
+    # forever. `convert` then writes the new name and removes the old one.
+    entry["slug"] = slug_for(source_file)
 
     if entry.get("sha256") != digest:
         entry["sha256"] = digest

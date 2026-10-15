@@ -15,6 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import frontmatter as frontmatter_lib
+import yaml
+
 from . import StopAndAsk
 from .config import Config
 from .converters import csv_table, markdown, normalize_markdown, office, pdf, slides
@@ -44,6 +47,8 @@ class ConversionResult:
     output: Path | None = None
     converter: str | None = None
     message: str | None = None
+    #: Files this entry wrote under an earlier name and that this run removed.
+    superseded: tuple[str, ...] = ()
 
 
 class SourceDigestMismatch(RuntimeError):
@@ -111,6 +116,7 @@ def convert_entry(
 
     destination = output_path(entry, config)
     conversion = entry.get("conversion") or {}
+    previous = conversion
     source_format = entry["source_format"]
     sidecar_required = _needs_provenance_sidecar(source_format, text_class)
     if (
@@ -179,7 +185,50 @@ def convert_entry(
     if sidecar is not None:
         entry["conversion"]["provenance"] = sidecar.relative_to(config.kb_path).as_posix()
     entry["conversion"].update(extras)
-    return ConversionResult(slug, source_file, status, destination, converter)
+    written = {destination} | ({sidecar} if sidecar is not None else set())
+    superseded = _remove_superseded(previous, written, source_file, config)
+    return ConversionResult(
+        slug, source_file, status, destination, converter, superseded=superseded
+    )
+
+
+def _remove_superseded(
+    previous: dict[str, Any], written: set[Path], source_file: str, config: Config
+) -> tuple[str, ...]:
+    """Delete the files an earlier conversion of this entry wrote under another name.
+
+    A slug change (the extension became part of every slug) moves an entry's output from
+    `kb/deck.md` to `kb/deck-pdf.md`. Left in place, the old file is still indexed by
+    `kb index`, which reads every `kb/*.md`, and every passage in it is served twice. Only
+    a file inside `kb/` that the manifest recorded for this entry AND that still names
+    this source is removed: another source may have been given that name since.
+    """
+    kb_root = config.kb_dir.resolve()
+    keep = {path.resolve() for path in written}
+    removed: list[str] = []
+    for key in ("output", "provenance"):
+        rel = previous.get(key)
+        if not rel:
+            continue
+        candidate = (config.kb_path / rel).resolve()
+        if candidate in keep or kb_root not in candidate.parents or not candidate.is_file():
+            continue
+        if _declared_source(candidate) != source_file:
+            continue
+        candidate.unlink()
+        removed.append(rel)
+    return tuple(removed)
+
+
+def _declared_source(path: Path) -> str | None:
+    """The `source_file` a kb/ markdown file or sidecar names, or None if unreadable."""
+    try:
+        text = path.read_text(encoding="utf-8")
+        if path.name.endswith(".provenance.json"):
+            return json.loads(text).get("source_file")
+        return frontmatter_lib.loads(text).metadata.get("source_file")
+    except (OSError, ValueError, AttributeError, yaml.YAMLError):
+        return None
 
 
 def _dispatch(

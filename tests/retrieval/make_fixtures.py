@@ -8,15 +8,15 @@ fixtures-retrieval` is checked for a no-op diff). Frontmatter is written through
 `pipeline.frontmatter.build`/`render` so the contract cannot drift out from under the
 fixtures.
 
-Four documents:
-  - `handbook`:        40 "pages", ~60k chars, headings at levels 1-4, two tables (one
-                        opening a section, one oversized), one oversized paragraph.
-  - `budget-form`:     6 pages, ~12k chars, ten annotation blocks, six boxed_text blocks,
-                        an INCOMPLETE callout, and the planted tokens `FORM-7731` and
-                        `carry over` used by the retrieval eval fixtures.
-  - `deck`:            30 pages, ~15k chars, one `###` heading per page, 2-3 blocks each.
-  - `reference-table`: a CSV-style document with no sidecar and no block anchors (the
-                        fallback path), one markdown table.
+Four documents, each named by the slug conversion gives its source file:
+  - `handbook-pdf`:        40 "pages", ~60k chars, headings at levels 1-4, two tables
+                            (one opening a section, one oversized), one oversized paragraph.
+  - `budget-form-pdf`:     6 pages, ~12k chars, ten annotation blocks, six boxed_text
+                            blocks, an INCOMPLETE callout, and the planted tokens
+                            `FORM-7731` and `carry over` used by the retrieval eval fixtures.
+  - `deck-pdf`:            30 pages, ~15k chars, one `###` heading per page, 2-3 blocks each.
+  - `reference-table-csv`: a CSV-style document with no sidecar and no block anchors (the
+                            fallback path), one markdown table.
 
 `expected.json` is derived from what this script actually generates (never hand-typed), so
 it cannot drift from the fixtures it describes. Section/chunk counts come from the real
@@ -56,13 +56,15 @@ CALLOUT_TOKEN = "FORM-7731"
 CARRY_OVER = "carry over"
 #: Planted for the retrieval eval: each appears exactly once in its
 #: document so a lexical query for it has an unambiguous target, including the two
-#: documents (`deck`, `reference-table`) that otherwise contain only nonsense words.
+#: documents (`deck-pdf`, `reference-table-csv`) that otherwise contain only nonsense words.
 DECK_TOKEN = "DECKMARK-4412"
 REFTAB_TOKEN = "REFTAB-ANCHOR-4471"
 
 
-def rng_for(slug: str) -> random.Random:
-    return random.Random(f"{SEED}:{slug}")
+def rng_for(name: str) -> random.Random:
+    # Seeded by the name each document had before slugs carried the extension, so the
+    # rename changed only ids and file names, not one generated word.
+    return random.Random(f"{SEED}:{name}")
 
 
 def word(rng: random.Random) -> str:
@@ -97,8 +99,12 @@ def table(rng: random.Random, rows: int, cols: int, plant: str | None = None) ->
 class DocBuilder:
     """Collects (page, kind, text) blocks and renders them into the `kb/` contract."""
 
-    def __init__(self, slug: str) -> None:
+    def __init__(self, slug: str, source_file: str) -> None:
+        # Written out rather than computed: this script may import only
+        # `pipeline.frontmatter` (tests/retrieval/test_layout.py). That each slug is what
+        # `slug_for` gives its source file is pinned in tests/test_determinism.py.
         self.slug = slug
+        self.source_file = source_file
         self.blocks: list[dict] = []
 
     def add(self, page: int | None, kind: str, text: str) -> None:
@@ -142,7 +148,8 @@ class DocBuilder:
 
         body = "\n".join(body_parts).strip("\n") + "\n"
         content_sha256 = hashlib.sha256(body.encode("utf-8")).hexdigest()
-        source_file = f"{self.slug}.{source_format}"
+        source_file = self.source_file
+        assert source_file.endswith(f".{source_format}"), (source_file, source_format)
         converter = (
             "pdfplumber-geometry (model-free)"
             if source_format == "pdf"
@@ -197,7 +204,7 @@ class DocBuilder:
 
 def build_handbook() -> dict:
     rng = rng_for("handbook")
-    doc = DocBuilder("handbook")
+    doc = DocBuilder("handbook-pdf", "handbook.pdf")
     page = 1
     doc.add(page, "heading", "# Handbook")
     doc.add(page, "paragraph", paragraph(rng, 5))
@@ -263,7 +270,7 @@ def build_handbook() -> dict:
 
 def build_budget_form() -> dict:
     rng = rng_for("budget-form")
-    doc = DocBuilder("budget-form")
+    doc = DocBuilder("budget-form-pdf", "budget-form.pdf")
 
     doc.add(1, "heading", "# Budget Form")
     doc.add(1, "paragraph", paragraph(rng, 3))
@@ -320,7 +327,7 @@ def build_budget_form() -> dict:
 
 def build_deck() -> dict:
     rng = rng_for("deck")
-    doc = DocBuilder("deck")
+    doc = DocBuilder("deck-pdf", "deck.pdf")
     # Content before the first heading: exercises the genuine "section 0" case: a
     # section 0 with no heading gets the document title as its heading_path.
     doc.add(1, "paragraph", paragraph(rng, 2))
@@ -344,7 +351,7 @@ def build_reference_table() -> dict:
     """CSV-style document: no sidecar, no anchors, body is a single markdown table,
     which becomes one `kind='table'` block."""
     rng = rng_for("reference-table")
-    doc = DocBuilder("reference-table")
+    doc = DocBuilder("reference-table-csv", "reference-table.csv")
     doc.add(None, "table", table(rng, rows=12, cols=5, plant=REFTAB_TOKEN))
     return doc.render(
         title="Reference Table",
