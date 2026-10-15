@@ -6,6 +6,31 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-15 [TOOL] **ROOT CAUSE of the vector-leg change: the planner switched from an exact
+  scan to the HNSW index because the chunks table doubled in size.** SUPERSEDES the
+  "UNEXPLAINED" entry below. Same rows, same query vectors, plans from EXPLAIN:
+  * Live `kb` after today's upgrade: chunks heap 7,848 kB, relpages 981 (two copies'
+    worth: new rows were inserted while the old rows still existed, old deleted at the end;
+    VACUUM frees space but does not shrink the file). Seq scan + sort costs 1112, HNSW
+    index scan 953, so the planner uses the APPROXIMATE index. Served 33/81/86.
+  * Fresh compact copy (scratch DB, rows inserted the way `kb index` does): heap 3,928 kB,
+    relpages 491, seq scan + sort costs 622 < index, so the planner does an EXACT scan.
+    86/89 on both builds tried, identical to exact search on live.
+  * So the recorded floor (33/86/89) was measured with exact search all along: the
+    2026-10-07 reindex left a compact table, and that is also why ef_search 1000 "changed
+    nothing" that day (the index was not used). Not the rename, not ollama, not names.
+  * HNSW results are a random draw per build: 10 bulk rebuilds of the live index (each
+    rolled back) gave vector 67-81, fused 78-86 at the default ef_search 40.
+  * Consequence beyond the proxy corpus: the choice is a cost threshold on table size.
+    A larger corpus (the client's) will be served by the approximate index, so its recall
+    will be lower than the floor suggests and will vary with every rebuild. Fix not chosen.
+  * Not run: the scratch replay of today's upgrade path and the old-name build, because
+    the Docker VM disk filled (59 GB, 105 MB free; 15.6 GB reclaimable in unused images;
+    Postgres itself ~0.5 GB). Scratch DBs dropped; live kb intact (3,370 chunks). Live kb
+    unchanged: every rebuild was rolled back. Script: session scratchpad `exp.py`.
+  * Method error caught on the way: asyncpg's prepared-statement cache keeps a plan made
+    before a `SET`, so a `SET enable_indexscan = off` on a reused connection was ignored
+    (smoke run reported "exact" 81). Use `statement_cache_size=0` or a fresh connection.
 - 2026-10-15 [TOOL] **Why the HNSW loss appeared now is UNEXPLAINED.** Nothing ever set
   `hnsw.ef_search` (no occurrence in any commit; default 40 throughout), and on 2026-10-07
   ef_search 1000 changed nothing on the then-current (ollama 0.21.0) index. Today, exact
