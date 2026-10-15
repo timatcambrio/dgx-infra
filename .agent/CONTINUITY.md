@@ -22,9 +22,20 @@ live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
   NOT done (needs Tim): dgx-knowledge reconvert + reindex; every `expected_slug` in
   dgx-eval proxy-cases/mcp-cases/candidates plus `expected_id page:ch-05-b:p003` (mapping in
   the side-session notes folder, `slug-extension.md`).
-- 2026-10-15 [DISCOVERY] `retrieval/ids.py` `_SLUG` allows no `_`, so a document in a
-  SOURCE_DIR subfolder (`gsa__travel-pdf`) cannot be fetched by any id: `parse_id` raises.
-  Pre-existing, unfixed. Also unfixed: punctuation/case-only collisions (`a.b.pdf` vs
+- 2026-10-15 [CODE] **Subfolder ids fixed on branch `fix/subfolder-ids`** (cut from
+  `fix/slug-extension` 8703308, so it carries that branch; not merged, not pushed): tests
+  1162eab, fix 1c29388. `_SLUG` is now `part(__part)*`, part `[a-z0-9][a-z0-9-]*`, the exact
+  shape `slug_for` writes; leading `-`/`_`, single or triple `_`, trailing `__`, and a part
+  starting with `-` are still rejected. E2E test `tests/retrieval/test_server_subfolder.py`
+  indexes a copy of the handbook fixture as `gsa__handbook-pdf` beside the fixtures (dropped
+  afterwards) and fetches doc/sec/page/chunk ids, get_outline and get_section through the
+  server. Before the fix `search` returned `sec:gsa__handbook-pdf:8` and `fetch` on it said
+  "unknown id". Nothing else assumed the pattern: search filters match slug exactly, the
+  server only calls `parse_id`, mcp_probe splits on `:`, http_probe never parses ids.
+  [TOOL] make check 780 passed, 2 skipped (root-only chown tests; db + ollama up).
+- 2026-10-15 [DISCOVERY] SUPERSEDED by the entry above for the `_` part: `retrieval/ids.py`
+  `_SLUG` allowed no `_`, so a document in a SOURCE_DIR subfolder could not be fetched by id.
+  Still unfixed: punctuation/case-only collisions (`a.b.pdf` vs
   `a-b.pdf`; `Deck.pdf` vs `deck.pdf` on Linux) still share a slug, and inventory does not
   detect a shared slug.
 - 2026-10-14 [USER] **Open problem, to come back to: there is no corpus/markdown management.**
