@@ -6,6 +6,13 @@ Facts only; ISO date + provenance tag; `UNCONFIRMED` where unknown. Project-leve
 live in `../.agent/CONTINUITY.md`; this file is the code repo's own briefing.
 
 ## [PLANS]
+- 2026-10-16 [TOOL] **Prediction confirmed on live `kb`: `VACUUM FULL chunks` (2.3 s, no
+  re-embedding) shrank the heap 7,848 -> 3,944 kB (relpages 981 -> 493); the planner went
+  back to the exact scan (cost 625 < index); kb eval 33/86/89 identical case for case to the
+  pre-rename baseline; check_eval_cases 0 unsatisfiable, 3 warnings; mcp_probe 68 checks,
+  0 failed.** So the whole regression was the table's size on disk. Docker VM disk after
+  Tim's prune: 7.7 GB free. Still open: where the planner's switch point lies (corpus
+  size), and the product decision on exact vs approximate search; no fix chosen.
 - 2026-10-15 [TOOL] **ROOT CAUSE of the vector-leg change: the planner switched from an exact
   scan to the HNSW index because the chunks table doubled in size.** SUPERSEDES the
   "UNEXPLAINED" entry below. Same rows, same query vectors, plans from EXPLAIN:
