@@ -86,5 +86,5 @@ if [ -n "$MISSING" ]; then
     exit 0
 fi
 
-say "GPU: reserving all NVIDIA GPUs for ollama"
+say "GPU: reserving 1 NVIDIA GPU for ollama"
 printf '%s\n' "-f $OVERRIDE"
