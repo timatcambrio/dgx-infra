@@ -78,8 +78,8 @@ Then add the server to an assistant using `https://<KB_PUBLIC_HOST>/mcp` and the
 
 Docker gives a container a GPU only when asked, so `make compose-up` requests
 one for you. Before starting anything it checks whether this host has NVIDIA GPUs and
-whether Docker can pass them through, and if both are true it reserves all of them for
-`ollama`; otherwise it starts on the CPU. Either way it prints which it chose. Run the
+whether Docker can pass them through, and if both are true it reserves one of them for
+`ollama`, leaving the rest free for other work; otherwise it starts on the CPU. Either way it prints which it chose. Run the
 check on its own with:
 
 ```bash

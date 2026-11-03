@@ -159,7 +159,7 @@ If you converted test documents before this update, convert them again first. Th
 changes how converted documents are named: the file type is now part of the name, so a
 document converted before it keeps its old name until it is converted again. Paste the
 first part of [step 11](deployment-dgx-guide.md#11-convert-the-test-documents) (the
-`convert` command), then run these one at a time:
+shell function `convert`, which disappears when you log out), then run these one at a time:
 
 ```bash
 convert inventory
