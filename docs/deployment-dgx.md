@@ -175,7 +175,7 @@ nothing. `make compose-up` checks for this and prints the command if it is missi
 make gpu-check
 ```
 
-**Expect** `GPU: reserving all NVIDIA GPUs for ollama`. Anything else means stop: with
+**Expect** `GPU: reserving 1 NVIDIA GPU for ollama`. Anything else means stop: with
 `KB_GPU=on` the stack would refuse to start anyway, and this asks the same question without
 bringing containers up.
 

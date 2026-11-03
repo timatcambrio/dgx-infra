@@ -259,7 +259,7 @@ Checks that the service will use the GPUs, without starting anything.
 make gpu-check
 ```
 
-**Expect** `GPU: reserving all NVIDIA GPUs for ollama`. If it says anything else, stop and
+**Expect** `GPU: reserving 1 NVIDIA GPU for ollama`. If it says anything else, stop and
 rerun [step 3](#3-bootstrap-the-host) with `--check`.
 
 ## 8. Issue your credential

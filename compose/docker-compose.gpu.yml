@@ -7,12 +7,10 @@
 # the NVIDIA Container Toolkit makes `ollama` fail to start ("could not select device
 # driver"), which is why the decision is made before Compose runs rather than here.
 #
-# `count: all` is deliberate: the host's whole set, so the same file fits a one-card
-# workstation and an eight-V100 DGX without enumerating device ids that would go stale.
-# Note what this does and does not buy. A 137M-parameter embedding model such as
-# `nomic-embed-text` is loaded onto ONE device, so indexing throughput comes from that
-# device, not from eight; the rest of the set matters for a larger embedding model, for
-# concurrent requests, and for the LLM phase of this platform.
+# `count: 1` is deliberate: ollama takes one card and leaves the rest of the host's GPUs free
+# for other work. A 137M-parameter embedding model such as `nomic-embed-text` is loaded onto
+# ONE device anyway, so indexing throughput comes from that device, not from eight. A larger
+# embedding model or the LLM phase of this platform may want more; raise the count then.
 services:
   ollama:
     deploy:
@@ -20,5 +18,5 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              count: 1
               capabilities: [gpu]

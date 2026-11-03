@@ -161,16 +161,16 @@ def test_base_stack_reserves_no_device():
 
 
 @requires_docker
-def test_override_reserves_every_gpu_for_ollama_and_nothing_else():
+def test_override_reserves_one_gpu_for_ollama_and_nothing_else():
     config = _config(BASE, OVERRIDE)
     devices = config["services"]["ollama"]["deploy"]["resources"]["reservations"]["devices"]
     assert len(devices) == 1
     device = devices[0]
     assert device["driver"] == "nvidia"
     assert "gpu" in device["capabilities"]
-    # Plural: the host's whole set, not one card, and not an enumerated subset that would
-    # go stale on different hardware.
-    assert device.get("count") in ("all", -1)
+    # One card, not the host's whole set: ollama must not hog every GPU on a shared DGX. A
+    # count and not device_ids, which would go stale on different hardware.
+    assert device.get("count") == 1
     assert not device.get("device_ids")
     for name, service in config["services"].items():
         if name == "ollama":
