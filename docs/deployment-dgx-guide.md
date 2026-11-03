@@ -588,8 +588,9 @@ This takes effect within five seconds, with no restart.
 Once the test works, copy the full collection into `~/kb-sources` on the DGX. Remove any
 test documents that are not part of the collection.
 
-Paste the first part of [step 11](#11-convert-the-test-documents) again if you have logged
-out since, then run these one at a time:
+The `convert` command below is a shell function that disappears when you log out. See
+[step 11](#11-convert-the-test-documents) for the shell function `convert`: paste it again
+if you have logged out since, then run these one at a time:
 
 ```bash
 convert inventory
@@ -690,6 +691,7 @@ Last, users' settings have to match the new ones:
 | A connection fails before any reply, with a certificate error | the computer does not trust the certificate, or it dialled a name not on it ([step 6](#6-choose-how-people-connect), [step 14](#14-check-from-a-second-computer)) |
 | The connection is refused | the computer used `https://` against a plain-HTTP service, or `http://` against an HTTPS one ([step 6](#6-choose-how-people-connect)) |
 | An error about the host name | `KB_PUBLIC_HOST` is not the name the computer dialled ([step 4](#4-create-the-settings-file)) |
+| `convert: command not found` | you have logged out since defining it; paste the first part of [step 11](#11-convert-the-test-documents) again |
 | `Cannot write to the output directory` during conversion | the `convert` command was changed; paste the one in [step 11](#11-convert-the-test-documents) again |
 | A credential stops working | it was withdrawn; check `make token ARGS=list` |
 | Nothing answers, a container keeps restarting, or step 13 fails to connect | [When the service does not answer](troubleshooting.md), which starts with a script that collects what is needed to find the cause |
